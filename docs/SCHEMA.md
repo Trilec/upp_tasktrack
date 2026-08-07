@@ -1,127 +1,82 @@
-# TaskTrack Persisted Schema — V1
+# TaskTrack Persistence Schema
 
-The persisted document is UTF-8 JSON. `schema_version` is currently `1`.
+## Authority
 
-## Document
+TaskTrack JSON is the canonical durable state. Markdown is a derived human-readable export. The current writer emits `schema_version: 2`.
 
-```json
-{
-  "schema_version": 1,
-  "tasktrack_version": "0.1.0",
-  "task_id": "task-...",
-  "project": "Ui",
-  "title": "Verify responsive button sizing",
-  "subtitle": "Human visual acceptance",
-  "actor": "agent",
-  "created_at": "2026-08-07T06:00:00Z",
-  "updated_at": "2026-08-07T06:10:00Z",
-  "last_human_activity_at": "2026-08-07T06:10:00Z",
-  "last_human_activity_epoch": 1786083000,
-  "state": "in_progress",
-  "reminder_minutes": 60,
-  "remind_while_paused": false,
-  "nudge_on_agent_poll": true,
-  "reminder_count": 0,
-  "history_limit": 20,
-  "items": []
-}
-```
+## Top-level document
 
-## States
+Important fields:
 
-- `awaiting_human`
-- `in_progress`
-- `paused`
-- `completed`
-- `closed`
-
-No state is inferred from elapsed time.
+- `schema_version` — currently `2`
+- `task_id` — stable `task-...` continuation key
+- `project`, `title`, `subtitle`, `actor`
+- `state` — `awaiting_human`, `in_progress`, `paused`, `completed`, `closed`
+- `created_at`, `updated_at`, `last_human_activity_at`
+- `last_human_activity_epoch`
+- `reminder_minutes`
+- `remind_while_paused`
+- `nudge_on_agent_poll`
+- `reminder_count`
+- `history_limit`
+- `items`
 
 ## Item
 
+Every item contains:
+
+- `id`
+- `category`
+- `type` — one of the 18 canonical semantic types in `QUESTION_TYPES.md`
+- `title`
+- `instruction`
+- `required`
+- `answer`
+
+Type-specific optional metadata:
+
+- `choices`
+- `allow_multiple`
+- `recommended`
+- `min`, `max`, `step`, `unit`
+- `colors`
+- `gradients`: `{id,label,from,to}` objects
+- `hierarchy`: `{id,parent_id,label}` objects
+- `default`
+
+V0.1 compatibility fields `expected_color` and `expected_value` remain readable but are not the preferred V2 vocabulary.
+
+## Answer
+
 ```json
 {
-  "id": "mobile",
-  "category": "Responsive",
-  "type": "visual_compare",
-  "title": "Mobile proportions",
-  "instruction": "Confirm controls reduce proportionally.",
-  "required": true,
-  "choices": [],
-  "expected_color": "",
-  "expected_value": "",
-  "answer": {
-    "answered": false,
-    "status": "",
-    "value": "",
-    "note": "",
-    "answered_at": ""
-  }
+  "answered": true,
+  "status": "selected",
+  "value": "Balanced",
+  "data": "Balanced",
+  "note": "",
+  "answered_at": "2026-08-07T12:34:56Z"
 }
 ```
 
-## Types
+`data` is canonical structured evidence and may be a boolean, number, string, array or object according to question type. `value` is display/log text. V1 answers without `data` are migrated by using their existing `value`.
 
-`check`
-: boolean confirmation. Answer status is `confirmed` and value is `true` when checked.
+## Save/recovery contract
 
-`pass_fail`
-: one of Pass, Fail, Blocked, Not applicable.
+A task save:
 
-`choice`
-: one agent-supplied choice. At least one choice is required by validation.
+1. serializes and re-parses the complete document through the authoritative schema validator;
+2. writes a temporary file;
+3. verifies the temporary bytes;
+4. preserves the previous primary as `.bak`;
+5. installs the verified temporary file as the primary.
 
-`text`
-: one-line observation.
+On load, a malformed primary may recover from a valid `.bak`; recovery is surfaced to the caller.
 
-`multiline`
-: longer human evidence.
+## Lookup and concurrency
 
-`number`
-: V0.1 captures the numeric observation as text so the exact human evidence is preserved; numeric constraints can be added later without changing the outer document.
+Each task has an independent locator file `<task_id>.path`. Task creation does not mutate one shared registry JSON document, avoiding a cross-agent write hotspot.
 
-`color`
-: expected colour swatch plus Match, Different or Unsure.
+## Migration
 
-`file`
-: Found, Missing, Wrong output or Unsure.
-
-`interaction`
-: Pass, Fail, Partial or Blocked.
-
-`visual_compare`
-: Match, Different or Unsure.
-
-## Validation
-
-The loader rejects malformed field types rather than coercing them. Examples:
-
-- `items` must be an array;
-- `choices` must be an array of strings;
-- `required` must be boolean;
-- duplicate item IDs are rejected;
-- unsupported item types are rejected;
-- colour expectations must be `#RRGGBB` or `#RRGGBBAA` when supplied;
-- empty task titles and empty item titles are rejected.
-
-## Files
-
-Primary:
-
-`<task-id>.tasktrack.json`
-
-Recovery:
-
-`<task-id>.tasktrack.json.bak`
-
-Temporary save:
-
-`<task-id>.tasktrack.json.tmp`
-
-Agent-poll signal:
-
-`<task-id>.tasktrack.json.poll`
-
-Per-task locator:
-
-`<default-store>/registry/<task-id>.path`
+The V2 reader accepts schema versions 1 and 2. V1 question aliases normalize to canonical V2 semantics in memory and are written as V2 on the next save. See `QUESTION_TYPES.md` for the alias table.

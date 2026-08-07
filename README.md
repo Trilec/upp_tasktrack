@@ -1,65 +1,49 @@
 # TaskTrack
 
-TaskTrack is a compact U++ human-in-the-loop verification tool for AI-assisted development.
+TaskTrack is a compact U++ human-in-the-loop decision and verification console for AI-assisted workflows.
 
-An agent can create a durable verification task when automated tests cannot prove a visual or interactive fact. TaskTrack presents the task as a focused desktop checklist, saves human answers as they are made, supports pause/resume and inactivity reminders, and exposes the durable result back through MCP.
+An agent uses TaskTrack when automation has reached a fact or choice that genuinely requires a person: visual judgement, interaction behaviour, wording, placement, colour, priorities, hierarchy, numeric preference, or another structured decision. TaskTrack saves the request before returning its stable task id, so the human may answer immediately, pause for hours, or come back the next day without tying the work to one tool call.
 
-Typical checks include:
+## Agent semantics, not GUI widgets
 
-- whether a GUI is actually visible and usable;
-- pass/fail interaction tests such as drag, resize, grouping, undo, or save/reload;
-- visual comparisons and colour confirmation;
-- file/export/output confirmation;
-- free-text or numeric observations;
-- multiple-choice observations where the agent needs one concrete answer.
+TaskTrack V0.2 exposes 18 semantic question types:
 
-TaskTrack does not edit source code and is not part of PatchTrack. It is a separate verification product that can be used alongside any agent or development workflow.
+`confirm`, `single_choice`, `multi_choice`, `select`, `list_select`, `text`, `notes`, `number`, `amount`, `range`, `rating`, `color`, `gradient`, `position`, `direction`, `rank_order`, `hierarchy_select`, `curve`.
 
-## Repository layout
+Agents never select `UiRadioButton`, `UiSliderEdit`, or another U++ class. They describe the human decision; TaskTrack chooses a compact renderer.
 
-- `TaskTrack/Core` — durable task model, validation, JSON, recovery, history, export.
-- `TaskTrack/App` — U++ GUI built with the `Ui` control package.
-- `TaskTrack/Mcp` — stdio MCP bridge.
-- `examples` — sample task generation and MCP request data.
-- `tests` — deterministic core/protocol tests.
-- `docs` — architecture, schema, MCP integration, and acceptance notes.
-- `build` — local output directory; ignored by Git.
+## Compact native UI
 
-The GUI intentionally follows the compact shell patterns already proven in the U++ Ui applications: restrained headings, layered panels, wrapping category controls, and a responsive task area. The application uses data-driven check cards rather than building a different screen for every request.
+Each question is a restrained `UiGroupPanel` using its title and subtitle support, with only the required response control in the content area. Questions live in a horizontal wrapping `UiBoxLayout` fixed-column grid, naturally moving from roughly three columns to two to one as space narrows.
 
-## V0.1 check types
+A multi-category request gets a small wrapped category strip. A single-category request does not waste space on it. The old extra “Verification” heading is gone, and generic per-card note editors are intentionally absent; free text is requested explicitly with `notes`.
 
-| Type | Human response |
-| --- | --- |
-| `check` | confirmed/not confirmed |
-| `pass_fail` | Pass / Fail / Blocked / N/A |
-| `choice` | agent-supplied choice |
-| `text` | short observation |
-| `multiline` | longer notes/evidence |
-| `number` | numeric observation |
-| `color` | Match / Different / Unsure, with expected swatch |
-| `file` | Found / Missing / Wrong output / Unsure |
-| `interaction` | Pass / Fail / Partial / Blocked |
-| `visual_compare` | Match / Different / Unsure |
+## Package layout
 
-Every check may be required or optional and may carry an instruction, expected value, and note.
+- `TaskTrack/Core` — schema, validation, persistence, recovery, lookup, results/export.
+- `TaskTrack/Widgets` — semantic question renderer and four small specialist selectors.
+- `TaskTrack/App` — compact native shell, categories, autosave, pause/reminders, export.
+- `TaskTrack/Mcp` — stdio MCP transport.
+- `examples/TaskTrackExample` — exactly one example of each canonical question type.
+- `tests/TaskTrackTests` — deterministic model/persistence/migration regression coverage.
+- `docs` — architecture, agent guide, semantic types, schema, MCP and Windows acceptance.
 
-## Durable lifecycle
+## Durability
 
-A newly created task begins as `awaiting_human`. Opening it moves it to `in_progress`. The operator can pause it indefinitely. Pause is explicit state, not a timeout. A task can finish as `completed`, or be deliberately closed without completion as `closed`.
+Task JSON is canonical. Saves are validated, written through a verified temporary file, and retain a `.bak` recovery copy. A tiny locator file exists per task id rather than one shared registry document.
 
-Task files are written through a verified temporary file and retain a `.bak` recovery copy. The MCP bridge works through stable `task_id` values rather than keeping a tool call open while a person works. This makes a one-minute review and an overnight review the same application-level workflow.
+Task states are:
 
-Optional reminders can ask the operator whether they are still working. TaskTrack never auto-closes a task. Optional agent-poll nudging lets a status poll become a gentle reminder signal without changing the task result.
+`awaiting_human`, `in_progress`, `paused`, `completed`, `closed`.
 
-## MCP
+Pause is indefinite. Optional inactivity reminders and agent-poll nudges may ask the operator what to do; TaskTrack never closes a task just because time passed.
 
-The stdio server supports the current `2026-07-28` stateless request shape, including `server/discover`, per-request protocol metadata, cacheable list results, and the `io.modelcontextprotocol/tasks` extension when a modern client declares it. It also retains the older `initialize` / `notifications/initialized` flow for Codex, OpenCode, Hermes, and other hosts that have not migrated yet.
+## Compatibility
 
-For clients without the Tasks extension, `create_task` returns a normal durable TaskTrack result immediately. For modern clients that declare the extension, the same tool can return a proper task handle and be polled through `tasks/get`. TaskTrack never relies on a long-lived MCP connection for the human wait.
+V0.2 writes schema version 2 and structured `answer.data`. V0.1 task files remain readable and are normalized to the new semantic vocabulary on load.
 
-## Quick start
+## Build
 
-See [GETTING_STARTED.md](GETTING_STARTED.md).
+See `GETTING_STARTED.md`. `verify.ps1` remains the Windows convenience wrapper for the four U++ Release builds, deterministic Core tests, and MCP self-test.
 
-The implementation plan is in [docs/PLAN.md](docs/PLAN.md). The persisted format is in [docs/SCHEMA.md](docs/SCHEMA.md). The MCP contract is in [docs/MCP.md](docs/MCP.md), with host registration examples in [docs/HOST_SETUP.md](docs/HOST_SETUP.md).
+For agents, start with `docs/AGENT_GUIDE.md`. For the precise 18-type contract, see `docs/QUESTION_TYPES.md`.

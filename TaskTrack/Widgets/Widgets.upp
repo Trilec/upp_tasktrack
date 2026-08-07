@@ -1,0 +1,18 @@
+uses
+    Core,
+    Draw,
+    CtrlCore,
+    CtrlLib,
+    Animation,
+    Ui,
+    TaskTrack/Core;
+
+file
+    TaskTrackWidgets.h,
+    TaskTrackWidgets.cpp,
+    TaskTrackWidgets.01.part.inc,
+    TaskTrackWidgets.02.part.inc,
+    TaskTrackWidgets.03.part.inc,
+    TaskTrackWidgets.04.part.inc,
+    TaskTrackWidgets.05.part.inc,
+    TaskTrackWidgets.06.part.inc;

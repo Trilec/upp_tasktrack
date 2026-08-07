@@ -3,4 +3,12 @@ uses
 
 file
     TaskTrackCore.h,
-    TaskTrackCore.cpp;
+    TaskTrackCore.cpp,
+    TaskTrackCore.01.part.inc,
+    TaskTrackCore.02.part.inc,
+    TaskTrackCore.03.part.inc,
+    TaskTrackCore.04.part.inc,
+    TaskTrackCore.05.part.inc,
+    TaskTrackCore.06a.part.inc,
+    TaskTrackCore.06b.part.inc,
+    TaskTrackCore.07.part.inc;

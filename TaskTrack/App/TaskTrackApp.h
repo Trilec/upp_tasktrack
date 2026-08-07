@@ -5,10 +5,9 @@
     TaskTrack GUI
     =============
 
-    Compact U++ human-in-the-loop verification console. The visual shell follows
-    the proven UiTitleCard / UiPanel / wrapped UiBoxLayout composition used by
-    the current Ui applications while keeping TaskTrack's model independent of
-    the GUI.
+    Compact U++ human-in-the-loop verification console. Semantic questions are
+    rendered by TaskTrack/Widgets; this package owns only the application shell,
+    filtering, persistence cadence, reminder lifecycle, and export actions.
 
     Copyright (c) 2026 Curtis Edwards
     Licensed under the Apache License, Version 2.0. See LICENSE.
@@ -16,44 +15,9 @@
 
 #include <Ui/Ui.h>
 #include <TaskTrack/Core/TaskTrackCore.h>
+#include <TaskTrack/Widgets/TaskTrackWidgets.h>
 
 namespace Upp {
-
-class TaskTrackItemCtrl : public UiPanel {
-public:
-    typedef TaskTrackItemCtrl CLASSNAME;
-
-    TaskTrackItemCtrl();
-
-    void Bind(TaskTrackDocument& document, int item_index);
-    int  GetItemIndex() const { return item_index_; }
-
-    Event<> WhenChanged;
-
-private:
-    void Configure();
-    void SyncFromModel();
-    void Commit();
-    void SyncCheckButton();
-    void FillStatusOptions();
-    bool ParseExpectedColor(Color& color) const;
-
-    TaskTrackDocument* document_ = nullptr;
-    int item_index_ = -1;
-    bool syncing_ = false;
-
-    UiBoxLayout body_ { UiDirection::V };
-    UiTitleCard heading_;
-    UiLabel expected_label_;
-    UiBoxLayout response_row_ { UiDirection::H };
-
-    UiCheckBox check_button_;
-    UiDropdown status_dropdown_;
-    UiLineEdit value_edit_;
-    UiMultiEdit multiline_edit_;
-    UiCompositeColor expected_color_;
-    UiLineEdit note_edit_;
-};
 
 class TaskTrackWindow : public TopWindow {
 public:
@@ -102,6 +66,7 @@ private:
 
     UiTitleCard::Style MakeTitleStyle(Font title_font, Font subtitle_font, UiRole role = UiRole::Standard) const;
     UiButton::Style MakeCategoryButtonStyle(bool selected) const;
+    UiGroupPanel::Style MakeCategoryGroupStyle() const;
 
 private:
     String task_path_;
@@ -115,7 +80,6 @@ private:
 
     UiBoxLayout header_layout_ { UiDirection::H };
     UiTitleCard app_heading_;
-    UiLabel version_label_;
     UiLabel state_label_;
     UiButton pause_button_;
     UiDropdown reminder_dropdown_;
@@ -123,24 +87,18 @@ private:
     UiButton agent_nudge_button_;
     UiButton exit_button_;
 
-    UiPanel objective_panel_;
     UiBoxLayout objective_layout_ { UiDirection::H };
     UiTitleCard objective_card_;
     UiLabel objective_progress_;
 
-    UiPanel categories_panel_;
-    UiBoxLayout categories_base_ { UiDirection::V };
-    UiTitleCard categories_heading_;
-    UiScrollPanel categories_scroll_;
+    UiGroupPanel categories_group_;
+    UiBoxLayout::ItemRef categories_item_;
     UiBoxLayout categories_flow_ { UiDirection::H };
     Array<UiButton> category_buttons_;
 
-    UiPanel task_panel_;
-    UiBoxLayout task_base_ { UiDirection::V };
-    UiTitleCard task_heading_;
     UiScrollPanel task_scroll_;
     UiBoxLayout task_flow_ { UiDirection::H };
-    Array<TaskTrackItemCtrl> item_controls_;
+    Array<TaskTrackQuestionCtrl> question_controls_;
     UiLabel empty_label_;
 
     UiBoxLayout footer_layout_ { UiDirection::H };

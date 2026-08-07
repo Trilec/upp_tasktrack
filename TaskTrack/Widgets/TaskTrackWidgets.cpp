@@ -1,0 +1,6 @@
+#include "TaskTrackWidgets.01.part.inc"
+#include "TaskTrackWidgets.02.part.inc"
+#include "TaskTrackWidgets.03.part.inc"
+#include "TaskTrackWidgets.04.part.inc"
+#include "TaskTrackWidgets.05.part.inc"
+#include "TaskTrackWidgets.06.part.inc"

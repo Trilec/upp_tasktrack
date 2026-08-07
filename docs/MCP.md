@@ -1,109 +1,44 @@
-# TaskTrack MCP
+# TaskTrack MCP Contract
 
-TaskTrackMcp is an argument-free stdio server when run normally.
+TaskTrack MCP is a thin stdio bridge over the durable Core model.
 
-## Core tools
+## Tools
 
-### `version`
+- `version` — version/schema/protocol information.
+- `create_task` — durably create structured human input; optionally launch GUI.
+- `get_task` — retrieve state and structured answers; also writes the optional poll-reminder marker.
+- `open_task` — launch GUI for an existing task.
+- `list_tasks` — recent tasks from a store.
+- `close_task` — explicitly close unfinished work.
 
-Returns TaskTrack and protocol version information.
+## Question vocabulary
 
-### `create_task`
+`create_task.items[].type` accepts the 18 canonical types documented in `QUESTION_TYPES.md`:
 
-Creates and durably saves a verification task before returning.
+`confirm`, `single_choice`, `multi_choice`, `select`, `list_select`, `text`, `notes`, `number`, `amount`, `range`, `rating`, `color`, `gradient`, `position`, `direction`, `rank_order`, `hierarchy_select`, `curve`.
 
-Important arguments:
+The public MCP schema deliberately does **not** advertise V0.1 aliases even though the persistence loader accepts them for recovery/compatibility.
 
-- `project`
-- `title` — required
-- `subtitle`
-- `actor`
-- `store_root`
-- `reminder_minutes`
-- `remind_while_paused`
-- `nudge_on_agent_poll`
-- `history_limit`
-- `launch` — defaults to true
-- `items` — required non-empty array
+## Durable asynchronous-by-design workflow
 
-The complete example is `examples/mcp_create_task.json`.
+TaskTrack does not require the original `create_task` invocation to stay alive while a human works. The task file exists before the id/handle is returned. The caller stores `task_id` and polls later.
 
-### `get_task`
+This is the preferred behaviour even if a host supports very long tool-call timeouts.
 
-Arguments:
+## Protocol eras
 
-- `task_id` — required
-- `store_root` — optional
-- `include_items` — optional, defaults true
+The server supports:
 
-The call also writes an independent poll marker. If the GUI has `Agent nudge` enabled and the operator has been inactive, this may cause a human reminder. It does not alter answers or task state by itself.
+- modern stateless `2026-07-28` request metadata and discovery;
+- the `io.modelcontextprotocol/tasks` extension when the modern client declares it;
+- conservative legacy `initialize` / `notifications/initialized` behaviour for hosts that still use older MCP revisions.
 
-### `open_task`
+Modern task-capable clients receive a task handle from `create_task` and can call `tasks/get`. Other clients receive an ordinary tool result containing the same stable TaskTrack task id.
 
-Resolves the durable task and launches `TaskTrack.exe` located beside `TaskTrackMcp.exe`.
+## Polling
 
-### `list_tasks`
+`get_task` and `tasks/get` may update a separate poll marker when `nudge_on_agent_poll` is enabled. This marker is not human evidence and does not change task state. The GUI may use it to ask an inactive human whether they are still working.
 
-Lists recent durable task summaries for a storage root.
+## Result authority
 
-### `close_task`
-
-Explicitly closes an unfinished task. This is deliberate cancellation, not timeout cleanup. Completed tasks cannot be retroactively closed through this tool.
-
-## Current protocol era
-
-TaskTrack recognizes `2026-07-28` through request `_meta` and advertises the `io.modelcontextprotocol/tasks` extension during `server/discover`.
-
-The current protocol requires per-request protocol/capability metadata. TaskTrack rejects a supplied unsupported current-style protocol revision instead of silently falling back to legacy semantics.
-
-When a modern client declares `io.modelcontextprotocol/tasks`, `create_task` may return a formal task handle:
-
-```json
-{
-  "resultType": "task",
-  "taskId": "task-...",
-  "status": "working",
-  "pollIntervalMs": 30000
-}
-```
-
-TaskTrack deliberately supplies no application expiry/TTL for the human task. A person may resume the task a day later.
-
-### `tasks/get`
-
-Maps TaskTrack states onto the MCP task lifecycle:
-
-- awaiting/in progress/paused -> `working`
-- completed -> `completed`, with the original tool-style result attached
-- closed -> `cancelled`
-
-### `tasks/cancel`
-
-Explicitly closes a non-completed TaskTrack task.
-
-### `tasks/update`
-
-TaskTrack V0.1 has no protocol-side input requests to answer. Human input belongs to the durable GUI task, so the method returns an explanatory error.
-
-## Legacy host compatibility
-
-TaskTrack also supports older practical hosts using:
-
-- `initialize`
-- `notifications/initialized`
-- `ping`
-- `tools/list`
-- `tools/call`
-
-Legacy replies intentionally do not leak current-only `resultType` or cache fields.
-
-This compatibility layer exists so TaskTrack can be useful with Codex, OpenCode, Hermes and similar hosts while they transition protocol eras.
-
-## Development utilities
-
-```powershell
-TaskTrackMcp.exe --selftest
-TaskTrackMcp.exe --oneshot request.json
-```
-
-`--selftest` verifies modern discovery, legacy envelope separation, tool discovery, durable creation-before-return, task polling, completion result retrieval and unsupported-protocol rejection.
+On completion, use `items[].answer.data` as structured evidence. `answer.value` is a compact display/log representation and Markdown is a derived export.

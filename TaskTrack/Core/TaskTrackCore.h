@@ -5,8 +5,8 @@
     TaskTrack Core
     ==============
 
-    Durable human-in-the-loop verification model shared by the TaskTrack GUI,
-    MCP bridge, examples, and tests.
+    Durable, GUI-independent human-in-the-loop task model shared by the
+    TaskTrack desktop application, MCP bridge, examples, and tests.
 
     Copyright (c) 2026 Curtis Edwards
     Licensed under the Apache License, Version 2.0. See LICENSE.
@@ -24,23 +24,47 @@ enum class TaskTrackState : byte {
     Closed,
 };
 
+// Canonical agent-facing semantic question vocabulary.
+// U++ control names deliberately do not appear in the wire contract.
 enum class TaskTrackItemType : byte {
-    Check = 0,
-    PassFail,
-    Choice,
+    Confirm = 0,
+    SingleChoice,
+    MultiChoice,
+    Select,
+    ListSelect,
     Text,
-    Multiline,
+    Notes,
     Number,
+    Amount,
+    Range,
+    Rating,
     Color,
-    File,
-    Interaction,
-    VisualCompare,
+    Gradient,
+    Position,
+    Direction,
+    RankOrder,
+    HierarchySelect,
+    Curve,
+};
+
+struct TaskTrackGradientOption : Moveable<TaskTrackGradientOption> {
+    String id;
+    String label;
+    String from_color;
+    String to_color;
+};
+
+struct TaskTrackHierarchyNode : Moveable<TaskTrackHierarchyNode> {
+    String id;
+    String parent_id;
+    String label;
 };
 
 struct TaskTrackAnswer : Moveable<TaskTrackAnswer> {
     bool   answered = false;
     String status;
-    String value;
+    String value;       // Compact human-readable representation.
+    Value  data;        // Canonical structured response returned to the agent.
     String note;
     String answered_at;
 };
@@ -48,18 +72,40 @@ struct TaskTrackAnswer : Moveable<TaskTrackAnswer> {
 struct TaskTrackItem : Moveable<TaskTrackItem> {
     String id;
     String category = "General";
-    TaskTrackItemType type = TaskTrackItemType::Check;
+    TaskTrackItemType type = TaskTrackItemType::Confirm;
     String title;
     String instruction;
     bool required = true;
+
+    // Discrete response metadata.
     Vector<String> choices;
+    bool allow_multiple = false;
+    String recommended;
+
+    // Numeric response metadata.
+    bool has_min = false;
+    bool has_max = false;
+    double min_value = 0.0;
+    double max_value = 100.0;
+    double step_value = 1.0;
+    String unit;
+
+    // Visual response metadata.
+    Vector<String> colors;
+    Vector<TaskTrackGradientOption> gradients;
+    Vector<TaskTrackHierarchyNode> hierarchy;
+    Value default_value;
+
+    // V0.1 compatibility fields. They remain readable so previously-created
+    // tasks migrate cleanly; new agents should prefer the semantic fields.
     String expected_color;
     String expected_value;
+
     TaskTrackAnswer answer;
 };
 
 struct TaskTrackDocument : Moveable<TaskTrackDocument> {
-    int schema_version = 1;
+    int schema_version = 2;
     String task_id;
     String project;
     String title;

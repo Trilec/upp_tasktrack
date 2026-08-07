@@ -5,12 +5,17 @@ uses
     CtrlLib,
     Animation,
     Ui,
-    TaskTrack/Core;
+    TaskTrack/Core,
+    TaskTrack/Widgets;
 
 file
     TaskTrackApp.h,
     TaskTrackApp.cpp,
-    main.cpp;
+    main.cpp,
+    TaskTrackApp.01.part.inc,
+    TaskTrackApp.02.part.inc,
+    TaskTrackApp.03.part.inc,
+    TaskTrackApp.04.part.inc;
 
 mainconfig
     "" = "GUI";
