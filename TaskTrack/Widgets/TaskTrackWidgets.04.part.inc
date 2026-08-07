@@ -130,7 +130,7 @@ Color TaskTrackQuestionCtrl::ParseColor(const String& text, Color fallback) cons
 
 String TaskTrackQuestionCtrl::ColorToText(Color color) const
 {
-    return Format("#%02X%02X%02X", GetR(color), GetG(color), GetB(color));
+    return Format("#%02X%02X%02X", color.GetR(), color.GetG(), color.GetB());
 }
 
 void TaskTrackQuestionCtrl::BuildColor()
