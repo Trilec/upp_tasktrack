@@ -67,7 +67,9 @@ void TaskTrackQuestionCtrl::CommitCurrent()
         if(!radios_.IsEmpty()) {
             for(int i = 0; i < radios_.GetCount(); ++i) {
                 if(radios_[i].IsChecked()) {
-                    String value = item.type == TaskTrackItemType::Confirm ? (i == 0 ? "yes" : "no") : item.choices[i];
+                    String value = item.type == TaskTrackItemType::Confirm
+                                 ? (i == 0 ? String("yes") : String("no"))
+                                 : item.choices[i];
                     Value data = item.type == TaskTrackItemType::Confirm ? Value(i == 0) : Value(value);
                     CommitSimpleValue("selected", value, data);
                     return;
