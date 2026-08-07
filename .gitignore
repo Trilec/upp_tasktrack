@@ -23,11 +23,6 @@
 *.dll
 *.so.*
 
-
-# Fortran module files
-*.mod
-*.smod
-
 # Compiled Static libraries
 *.lai
 *.la
@@ -39,8 +34,9 @@
 *.out
 *.app
 
-# Build directories
+# TaskTrack build / object output
 build/
+out/
 Build/
 build-*/
 
@@ -67,3 +63,11 @@ vcpkg_installed/
 # test output & cache
 Testing/
 .cache/
+_tasktrack_tests/
+
+# Runtime task state (default local build location)
+tasktrack_data/
+*.tasktrack.json
+*.tasktrack.json.bak
+*.tasktrack.json.tmp
+*.tasktrack.json.poll

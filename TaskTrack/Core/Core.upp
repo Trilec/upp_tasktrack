@@ -1,0 +1,6 @@
+uses
+    Core;
+
+file
+    TaskTrackCore.h,
+    TaskTrackCore.cpp;

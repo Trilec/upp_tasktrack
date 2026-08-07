@@ -1,0 +1,36 @@
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "tools/call",
+  "params": {
+    "name": "create_task",
+    "arguments": {
+      "project": "Ui",
+      "title": "Verify responsive button sizing",
+      "subtitle": "Human visual acceptance after automated tests pass",
+      "actor": "agent",
+      "reminder_minutes": 60,
+      "remind_while_paused": false,
+      "nudge_on_agent_poll": true,
+      "launch": true,
+      "items": [
+        {
+          "id": "desktop",
+          "category": "Responsive",
+          "type": "pass_fail",
+          "title": "Desktop button sizing",
+          "instruction": "Confirm Large, Medium, and Small are visibly distinct on desktop.",
+          "required": true
+        },
+        {
+          "id": "mobile",
+          "category": "Responsive",
+          "type": "visual_compare",
+          "title": "Mobile proportions",
+          "instruction": "Confirm the controls reduce proportionally rather than staying desktop-sized.",
+          "required": true
+        }
+      ]
+    }
+  }
+}

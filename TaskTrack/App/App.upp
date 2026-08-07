@@ -1,0 +1,16 @@
+uses
+    Core,
+    Draw,
+    CtrlCore,
+    CtrlLib,
+    Animation,
+    Ui,
+    TaskTrack/Core;
+
+file
+    TaskTrackApp.h,
+    TaskTrackApp.cpp,
+    main.cpp;
+
+mainconfig
+    "" = "GUI";

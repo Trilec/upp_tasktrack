@@ -1,0 +1,9 @@
+uses
+    Core,
+    TaskTrack/Core;
+
+file
+    main.cpp;
+
+mainconfig
+    "" = "CONSOLE";
