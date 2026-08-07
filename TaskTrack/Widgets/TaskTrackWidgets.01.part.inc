@@ -78,7 +78,7 @@ String DisplayNumber(double value)
 
 bool IsDarkColor(Color c)
 {
-    return (GetR(c) * 299 + GetG(c) * 587 + GetB(c) * 114) < 128000;
+    return (c.GetR() * 299 + c.GetG() * 587 + c.GetB() * 114) < 128000;
 }
 
 } // namespace
@@ -217,4 +217,3 @@ TaskTrackRangeSelector::TaskTrackRangeSelector()
 {
     WantFocus();
 }
-
