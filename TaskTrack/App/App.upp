@@ -11,11 +11,7 @@ uses
 file
     TaskTrackApp.h,
     TaskTrackApp.cpp,
-    main.cpp,
-    TaskTrackApp.01.part.inc,
-    TaskTrackApp.02.part.inc,
-    TaskTrackApp.03.part.inc,
-    TaskTrackApp.04.part.inc;
+    main.cpp;
 
 mainconfig
     "" = "GUI";

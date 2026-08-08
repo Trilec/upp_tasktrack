@@ -184,7 +184,7 @@ CONSOLE_APP_MAIN
     args.Add("subtitle", "One compact example of every TaskTrack semantic question type");
     args.Add("actor", "TaskTrackExample");
     args.Add("store_root", AppendFileName(GetFileFolder(GetExeFilePath()), "tasktrack_data"));
-    args.Add("reminder_minutes", 60);
+    args.Add("reminder_minutes", 10);
     args.Add("nudge_on_agent_poll", true);
     args.Add("items", items);
 

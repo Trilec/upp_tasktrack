@@ -8,7 +8,7 @@
       "project": "Ui",
       "title": "Choose responsive panel behaviour",
       "subtitle": "Three human decisions are needed before implementation continues",
-      "reminder_minutes": 60,
+      "reminder_minutes": 10,
       "nudge_on_agent_poll": true,
       "launch": true,
       "items": [

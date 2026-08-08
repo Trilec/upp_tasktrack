@@ -116,7 +116,7 @@ struct TaskTrackDocument : Moveable<TaskTrackDocument> {
     String last_human_activity_at;
     int64  last_human_activity_epoch = 0;
     TaskTrackState state = TaskTrackState::AwaitingHuman;
-    int reminder_minutes = 60;
+    int reminder_minutes = 10;
     bool remind_while_paused = false;
     bool nudge_on_agent_poll = false;
     int reminder_count = 0;

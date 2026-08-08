@@ -33,6 +33,13 @@ private:
         REMINDER_CONTINUE = 1,
         REMINDER_PAUSE,
         REMINDER_CLOSE,
+        REMINDER_ACCEPT,
+    };
+
+    enum ExitResult {
+        EXIT_KEEP_WORKING = 0,
+        EXIT_ACCEPT,
+        EXIT_LEAVE,
     };
 
     void BuildUi();
@@ -63,6 +70,9 @@ private:
     void CheckReminder();
     int  RunReminderPrompt(bool agent_poll_triggered);
     void TouchHumanActivity();
+    bool ApplyRecommendation(TaskTrackItem& item);
+    int  TaskTrackExitPrompt();
+    void RequestExit();
 
     UiTitleCard::Style MakeTitleStyle(Font title_font, Font subtitle_font, UiRole role = UiRole::Standard) const;
     UiButton::Style MakeCategoryButtonStyle(bool selected) const;
@@ -74,6 +84,8 @@ private:
     String selected_category_ = "All";
     bool loaded_ = false;
     bool rebuilding_ = false;
+    bool reminder_showing_ = false;
+    bool closing_ = false;
     int64 last_seen_agent_poll_epoch_ = 0;
 
     UiBoxLayout main_box_ { UiDirection::V };

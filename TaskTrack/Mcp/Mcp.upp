@@ -3,13 +3,7 @@ uses
     TaskTrack/Core;
 
 file
-    main.cpp,
-    main.01.part.inc,
-    main.02a.part.inc,
-    main.02b.part.inc,
-    main.03a.part.inc,
-    main.03b.part.inc,
-    main.04.part.inc;
+    main.cpp;
 
 mainconfig
     "" = "CONSOLE";
