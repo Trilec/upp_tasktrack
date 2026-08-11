@@ -104,7 +104,7 @@ private:
     UiTitleCard objective_card_;
     UiLabel objective_progress_;
 
-    UiGroupPanel categories_group_;
+    TaskTrackCategoryPanel categories_group_;
     UiBoxLayout::ItemRef categories_item_;
     TaskTrackCategoryFlow categories_flow_ { UiDirection::H };
     Array<UiButton> category_buttons_;
