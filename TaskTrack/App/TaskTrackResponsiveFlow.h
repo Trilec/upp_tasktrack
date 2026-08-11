@@ -85,9 +85,11 @@ private:
 };
 
 // Keep the normal UiGroupPanel chrome, but size the category body from the
-// actual current shell width. The category flow uses a 30px row because the
-// themed button's natural height is taller than the old 26px estimate; the
-// earlier estimate was the remaining cause of lower-edge clipping.
+// actual current shell width. During RebuildCategories() the flow is briefly
+// empty while the old buttons are removed and the new set is being assembled.
+// Preserve the last settled non-empty body height across that transient phase
+// so the parent never remeasures the GroupPanel against an artificial zero-row
+// state and then keeps the too-small height after the buttons return.
 class TaskTrackCategoryPanel : public UiGroupPanel {
 public:
     TaskTrackCategoryPanel& SetContent(Ctrl& ctrl)
@@ -106,7 +108,16 @@ public:
 
         const UiGroupPanel::Style& style = GetStyle();
         int flow_width = max(1, width - style.inset.left - style.inset.right);
-        int body_height = flow_ ? flow_->DesiredHeightForWidth(flow_width) : DPI(30);
+        int body_height = DPI(30);
+        if(flow_) {
+            int measured = flow_->DesiredHeightForWidth(flow_width);
+            if(measured > 0) {
+                settled_body_height_ = measured;
+                body_height = measured;
+            }
+            else if(settled_body_height_ > 0)
+                body_height = settled_body_height_;
+        }
         int title_height = GetTextSize("Categories", style.title_font).cy;
         int header_height = style.header_inset.top + title_height + style.header_inset.bottom;
         int content_height = header_height + style.header_gap
@@ -119,6 +130,7 @@ public:
 
 private:
     TaskTrackCategoryFlow *flow_ = nullptr;
+    mutable int settled_body_height_ = DPI(30);
 };
 
 // Responsive question workspace. Every row is an ordered grid-like flow with
