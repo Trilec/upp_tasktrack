@@ -9,7 +9,6 @@ TASK: TT-007 semantic human-decision visual states
 STATUS:
 
 - TT-006-R1-W1 is accepted: Release and Debug/BLITZ builds PASS, TaskTrackTests 73/73, MCP selftest PASS, fresh `in_progress` question controls interactive, category switching/resizing stable, closed-task read-only behavior correct, 60-second soak clean, durable get/list recovery PASS, and TaskTrack MCP installed/connected in OpenCode.
-- The remaining product finding is visual/state communication after recommendation acceptance. A user who chooses `Accept suggestions` must immediately see what TaskTrack accepted and what still genuinely requires human input.
 - TT-007 keeps the existing persistence/schema/MCP semantics and adds a TaskTrack-local visual state layer rather than changing global `UiRole::Standard` semantics.
 - Visual language is deterministic: suggested/unanswered = Accent/blue; answered by the human (manual or accepted suggestion) = light green face with a 2px green frame; required unanswered after a bulk-accept/submit review = Alert/red; optional unresolved = neutral.
 - Answered cards expose a compact green `Answered` / `Done` status in the GroupPanel header-content lane. Recommended unanswered cards retain `Suggested: ...` + `Accept`. Required review cards show `Needs input` in Alert styling.
@@ -31,17 +30,23 @@ TOUCHED TASKTRACK PATHS:
 - `TaskTrack/App/TaskTrackApp.h`
 - `TaskTrack/App/TaskTrackApp.cpp`
 - `docs/STATUS.md`
+- `CHANGELOG.md`
+
+PUBLISHED:
+
+- TT-007 implementation checkpoint: `3b134306389919e0d4e01c3ae12f05750d6ee3e1` on `main`.
+- Publication was verified by re-reading the remote `main` ref and comparing against the accepted TT-006-R1 base. Net production scope is limited to the five paths listed above; no staging/temp files remain in the resulting tree.
 
 VALIDATION:
 
 - TT-006-R1-W1 baseline: PASS.
-- TT-007 source/API review: IN PROGRESS.
+- TT-007 source/API/diff review: PASS for intended state precedence, current Ui style/palette APIs, recommendation/default evidence separation, category routing and unchanged schema/dependency direction.
 - TT-007 Windows Release/Debug/runtime/visual acceptance: PENDING Gary.
 
 NEXT:
 
-1. Complete the TT-007 full diff/API review and publish one coherent checkpoint to `main`.
-2. Gary pulls the published checkpoint and current `upp_Ui/main`, runs Release + Debug/BLITZ + 73-test/MCP selftest regression.
+1. Gary pulls current TaskTrack `main`, confirms `3b134306389919e0d4e01c3ae12f05750d6ee3e1` is an ancestor, and validates against current `upp_Ui/main`.
+2. Run Release + Debug/BLITZ + 73-test/MCP selftest regression.
 3. On a fresh task, confirm blue suggestions are not answers; accepting one turns the card green; `Accept suggestions` fills available recommendations, turns accepted cards green, routes to the first unresolved required category, and marks only those required gaps red.
 4. Confirm optional unresolved questions stay neutral, resolving required gaps clears red review state, and Submit remains explicit.
-5. Leave a fresh demo open for Curt visual acceptance.
+5. Leave a review-state demo open for Curt visual acceptance.
