@@ -4,8 +4,8 @@ namespace Upp {
 
 namespace {
 
-static const int TASKTRACK_REMINDER_TIMER_ID = 7011;
-static const int TASKTRACK_AUTOSAVE_TIMER_ID = 7012;
+static const int TASKTRACK_REMINDER_TIMER_ID = 1;
+static const int TASKTRACK_AUTOSAVE_TIMER_ID = 2;
 
 UiTitleCard::Style CompactTitleStyle(UiRole role, Font title_font, Font subtitle_font)
 {

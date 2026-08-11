@@ -1,18 +1,19 @@
 uses
-    Core,
-    Draw,
-    CtrlCore,
-    CtrlLib,
-    Animation,
-    Ui,
-    TaskTrack/Core,
-    TaskTrack/Widgets;
+	Core,
+	Draw,
+	CtrlCore,
+	CtrlLib,
+	Animation,
+	Ui,
+	TaskTrack/Core,
+	TaskTrack/Widgets;
 
 file
-    TaskTrackResponsiveFlow.h,
-    TaskTrackApp.h,
-    TaskTrackApp.cpp,
-    main.cpp;
+	TaskTrackResponsiveFlow.h,
+	TaskTrackApp.h,
+	TaskTrackApp.cpp,
+	main.cpp;
 
 mainconfig
-    "" = "GUI";
+	"" = "GUI";
+

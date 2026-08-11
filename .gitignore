@@ -71,3 +71,4 @@ tasktrack_data/
 *.tasktrack.json.bak
 *.tasktrack.json.tmp
 *.tasktrack.json.poll
+/out-debug

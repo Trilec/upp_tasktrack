@@ -208,11 +208,15 @@ public:
 
     TaskTrackQuestionCtrl();
 
+    ~TaskTrackQuestionCtrl() override { destroying_ = true; }
+
     void Bind(TaskTrackDocument& document, int item_index);
     int GetItemIndex() const { return item_index_; }
 
     void Layout() override
     {
+        if(destroying_)
+            return;
         if(!workspace_typography_applied_) {
             workspace_typography_applied_ = true;
             UiGroupPanel::Style style = GetStyle();
@@ -358,7 +362,7 @@ private:
 
     void ApplyRecommendationPresentation()
     {
-        if(!document_ || item_index_ < 0 || item_index_ >= document_->items.GetCount())
+        if(destroying_ || !document_ || item_index_ < 0 || item_index_ >= document_->items.GetCount())
             return;
         TaskTrackItem& item = document_->items[item_index_];
         if(item.recommended.IsEmpty()) {
@@ -372,9 +376,13 @@ private:
         EnsureRecommendationHeader();
         recommendation_header_label_.SetText("Suggested: " + TaskTrackRecommendationSummary(item));
         if(!recommendation_header_attached_) {
+            // Mark attached before any layout-affecting setter: those trigger a
+            // synchronous re-layout, which re-enters ApplyRecommendationPresentation.
+            // Without this ordering the re-entrant pass sees attached==false and
+            // re-calls SetHeaderContentAlign -> RefreshLayout -> Layout forever.
+            recommendation_header_attached_ = true;
             SetHeaderContent(recommendation_header_);
             SetHeaderContentAlign(UiAlign::RIGHT, UiAlign::CENTER);
-            recommendation_header_attached_ = true;
         }
 
         // V0.2 placed `Agent suggests:` as a separate body row. Keep that
@@ -411,6 +419,7 @@ private:
     bool recommendation_header_attached_ = false;
     bool recommendation_body_collapsed_ = false;
     bool recommendation_styles_applied_ = false;
+    bool destroying_ = false;
 
     UiBoxLayout content_ { UiDirection::V };
     UiLabel recommendation_;
