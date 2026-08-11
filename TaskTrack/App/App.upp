@@ -9,6 +9,7 @@ uses
     TaskTrack/Widgets;
 
 file
+    TaskTrackResponsiveFlow.h,
     TaskTrackApp.h,
     TaskTrackApp.cpp,
     main.cpp;
