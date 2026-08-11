@@ -10,6 +10,10 @@
 - Replaced the question workspace's masonry-like natural-width flow with a deterministic responsive policy: at most three equal-width columns, minimum 10px gutters, row-equal card heights and stable partial final rows.
 - Hardened category reflow so wrapped category height propagates to the main shell instead of leaving first-open gaps or overlapping the question area after resize.
 - Increased question title hierarchy to 12pt bold with 9pt supporting text while preserving the existing semantic renderer and task contract.
+- TT-004-W1-R2 passed the authoritative BLITZ Release wrapper and visual/mechanical responsive checks after the UiDoc BLITZ-safety fixes; equal-column wide/medium layouts and repeated category reflow are accepted.
+- Folded task context and answered progress into the top wrapping header and removed the separate objective row, reclaiming vertical workspace without changing task semantics.
+- Replaced the active hand-painted TaskTrack range field with the current `UiRangeSliderEdit` composition, retaining the same `{low, high}` answer evidence while gaining themed range rendering and direct lower/upper numeric editing.
+- Corrected the remaining category lower-edge crop by deriving the category shell height from current `UiGroupPanel` style geometry rather than a fixed chrome estimate.
 
 ## 0.2.0 — 2026-08-07
 

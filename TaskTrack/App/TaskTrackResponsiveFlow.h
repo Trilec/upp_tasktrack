@@ -55,8 +55,6 @@ public:
 
             adapting_ = true;
             PauseLayout();
-            // BuildCategories() still carries the old V0.2 fixed-column hint.
-            // The responsive policy is authoritative now.
             UiBoxLayout::SetFixedColumn(0);
             for(int i = 0; i < GetItemCount(); ++i)
                 ItemAt(i).MinMaxMain(width, width).Fit().MinCross(DPI(26)).AlignSelf(UiCrossAlign::Center);
@@ -85,11 +83,9 @@ private:
     bool adapting_ = false;
 };
 
-// A normal UiGroupPanel is still used for category chrome, but its ordinary
-// minimum-size contract asks a wrapped child for the child's narrowest useful
-// width. For navigation this can reserve several rows before the real window
-// width is known. This specialization reports the category height for the
-// current shell width instead, so first-open and resize use the same geometry.
+// Keep the normal UiGroupPanel chrome, but size the category body from the
+// actual current shell width. The previous approximation under-counted the
+// header/body chrome by a few pixels and could clip the wrapped button row.
 class TaskTrackCategoryPanel : public UiGroupPanel {
 public:
     TaskTrackCategoryPanel& SetContent(Ctrl& ctrl)
@@ -106,13 +102,17 @@ public:
             width = GetParent()->GetSize().cx;
         width = max(DPI(160), width);
 
-        // Current TaskTrack category style uses 6px horizontal body insets and
-        // about 30px total vertical header/body chrome. Keep those shell values
-        // local to this presentation specialization rather than exposing them
-        // to agents or the task schema.
-        int flow_width = max(1, width - DPI(12));
+        const UiGroupPanel::Style& style = GetStyle();
+        int flow_width = max(1, width - style.inset.left - style.inset.right);
         int body_height = flow_ ? flow_->DesiredHeightForWidth(flow_width) : DPI(26);
-        return Size(DPI(160), max(DPI(50), body_height + DPI(30)));
+        int title_height = GetTextSize("Categories", style.title_font).cy;
+        int header_height = style.header_inset.top + title_height + style.header_inset.bottom;
+        int content_height = header_height + style.header_gap
+                           + style.inset.top + body_height + style.inset.bottom
+                           + DPI(2); // breathing room against rounded/frame edges
+        Size outer = UiStyledOuterSizeFromContent(Size(DPI(160), content_height),
+                                                  style.metrics, style.skin);
+        return Size(DPI(160), max(DPI(56), outer.cy));
     }
 
 private:
@@ -162,8 +162,6 @@ public:
 
             adapting_ = true;
             PauseLayout();
-            // BuildTaskArea() still carries the old V0.2 350px cap. Clear it
-            // so the resolved columns fill the available workspace.
             UiBoxLayout::SetFixedColumn(0);
             for(int i = 0; i < GetItemCount(); ++i)
                 ItemAt(i).MinMaxMain(width, width).Fit().MinCross(DPI(92)).AlignSelf(UiCrossAlign::Stretch);

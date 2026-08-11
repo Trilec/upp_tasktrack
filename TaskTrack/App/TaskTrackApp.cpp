@@ -218,9 +218,9 @@ UiGroupPanel::Style TaskTrackWindow::MakeCategoryGroupStyle() const
     style.subtitle_font = SansSerifZ(8);
     style.metrics.radius = DPI(6);
     style.metrics.frame_width = DPI(1);
-    style.inset = Rect(DPI(6), DPI(5), DPI(6), DPI(6));
+    style.inset = Rect(DPI(6), DPI(5), DPI(6), DPI(8));
     style.header_inset = Rect(DPI(6), DPI(3), DPI(6), DPI(2));
-    style.header_gap = DPI(1);
+    style.header_gap = DPI(2);
     style.title_subtitle_gap = 0;
     style.header_band_enabled = false;
     style.line_enabled = true;
@@ -233,15 +233,13 @@ void TaskTrackWindow::BuildUi()
     main_box_.SetDirection(UiDirection::V).SetGap(DPI(6)).SetInset(DPI(7));
 
     BuildHeader();
-    BuildObjective();
     BuildCategories();
     BuildTaskArea();
     BuildFooter();
 
-    main_box_.Add(header_layout_).Fit().MinCross(DPI(34)).AlignSelf(UiBoxLayout::Align::Stretch);
-    main_box_.Add(objective_layout_).Fit().MinCross(DPI(48)).AlignSelf(UiBoxLayout::Align::Stretch);
+    main_box_.Add(header_layout_).Fit().MinCross(DPI(44)).AlignSelf(UiBoxLayout::Align::Stretch);
     categories_item_ = main_box_.Add(categories_group_);
-    categories_item_.Fit().MinMain(DPI(50)).AlignSelf(UiBoxLayout::Align::Stretch);
+    categories_item_.Fit().MinMain(DPI(56)).AlignSelf(UiBoxLayout::Align::Stretch);
     main_box_.Add(task_scroll_).Expand(1).MinMain(DPI(300)).AlignSelf(UiBoxLayout::Align::Stretch);
     main_box_.Add(footer_layout_).Fit().MinCross(DPI(32)).AlignSelf(UiBoxLayout::Align::Stretch);
 
@@ -257,19 +255,29 @@ void TaskTrackWindow::BuildHeader()
         .SetWrapAutoResize(true)
         .SetAlignItems(UiCrossAlign::Center);
 
-    app_heading_.SetCustomStyle(MakeTitleStyle(SansSerifZ(11).Bold(), SansSerifZ(8), UiRole::Accent));
+    app_heading_.SetCustomStyle(MakeTitleStyle(SansSerifZ(12).Bold(), SansSerifZ(8), UiRole::Accent));
     app_heading_.SetTitle("TaskTrack")
         .SetSubTitle("Human input")
         .SetContentInset(0)
-        .SetMediaReserve(DPI(22))
-        .SetMediaMin(DPI(16))
+        .SetMediaReserve(DPI(24))
+        .SetMediaMin(DPI(18))
         .SetMediaGap(DPI(5))
         .SetMediaAutoFit(false)
         .SetMediaSide(UiAlign::LEFT);
-    app_heading_.SetMedia(ICON_DESIGN_CHECK_SMALL_48(), Size(DPI(16), DPI(16)));
+    app_heading_.SetMedia(ICON_DESIGN_CHECK_SMALL_48(), Size(DPI(18), DPI(18)));
+
+    objective_card_.SetCustomStyle(MakeTitleStyle(SansSerifZ(10).Bold(), SansSerifZ(8), UiRole::Standard));
+    objective_card_.SetTitle("No task loaded")
+        .SetSubTitle("")
+        .SetContentInset(0)
+        .ShowTitleLine(false)
+        .ShowCardLine(false);
 
     state_label_.SetCustomStyle(CompactLabelStyle(UiRole::Accent));
-    state_label_.SetText("No task");
+    state_label_.SetText("No task").SetAlign(UiAlign::CENTER, UiAlign::CENTER);
+
+    objective_progress_.SetCustomStyle(CompactLabelStyle(UiRole::Accent));
+    objective_progress_.SetText("0 / 0 answered").SetAlign(UiAlign::CENTER, UiAlign::CENTER);
 
     pause_button_.SetCustomStyle(CompactButtonStyle(UiRole::Subtle));
     pause_button_.SetText("Pause").SetContentInset(DPI(4));
@@ -295,13 +303,13 @@ void TaskTrackWindow::BuildHeader()
     agent_nudge_button_.SetCustomStyle(CompactButtonStyle(UiRole::Subtle));
     agent_nudge_button_.SetText("Agent nudge").SetContentInset(DPI(4));
 
-
     exit_button_.SetCustomStyle(CompactButtonStyle(UiRole::Subtle));
     exit_button_.SetText("Exit").SetContentInset(DPI(4));
 
-    header_layout_.Add(app_heading_).Fit().MinMain(DPI(176)).MinCross(DPI(32));
-    header_layout_.Add(state_label_).Fit().MinMain(DPI(102));
-    header_layout_.AddSpacer(1).Expand(1).MinMain(DPI(6));
+    header_layout_.Add(app_heading_).Fit().MinMain(DPI(150)).MinCross(DPI(40));
+    header_layout_.Add(objective_card_).Expand(1).MinMain(DPI(240)).MinCross(DPI(40));
+    header_layout_.Add(state_label_).Fit().MinMain(DPI(74)).MinCross(DPI(27));
+    header_layout_.Add(objective_progress_).Fit().MinMain(DPI(90)).MinCross(DPI(27));
     header_layout_.Add(pause_button_).Fixed(DPI(68)).MinCross(DPI(27));
     header_layout_.Add(reminder_dropdown_).Fit().MinMain(DPI(108)).MinCross(DPI(27));
     header_layout_.Add(paused_reminder_button_).Fit().MinMain(DPI(108)).MinCross(DPI(27));
@@ -334,25 +342,6 @@ void TaskTrackWindow::BuildHeader()
     exit_button_.WhenAction = [=] { RequestExit(); };
 }
 
-void TaskTrackWindow::BuildObjective()
-{
-    objective_layout_.SetDirection(UiDirection::H)
-        .SetGap(DPI(8))
-        .SetInset(0)
-        .SetWrap(UiBoxWrap::Flow)
-        .SetWrapAutoResize(true)
-        .SetAlignItems(UiCrossAlign::Center);
-
-    objective_card_.SetCustomStyle(MakeTitleStyle(SansSerifZ(11).Bold(), SansSerifZ(9), UiRole::Standard));
-    objective_card_.SetTitle("No task loaded").SetSubTitle("").SetContentInset(0).ShowTitleLine(false).ShowCardLine(false);
-
-    objective_progress_.SetCustomStyle(CompactLabelStyle(UiRole::Accent));
-    objective_progress_.SetText("0 / 0").SetAlign(UiAlign::RIGHT, UiAlign::CENTER);
-
-    objective_layout_.Add(objective_card_).Expand(1).MinMain(DPI(360)).MinCross(DPI(44));
-    objective_layout_.Add(objective_progress_).Fit().MinMain(DPI(104)).MinCross(DPI(26));
-}
-
 void TaskTrackWindow::BuildCategories()
 {
     categories_group_.SetCustomStyle(MakeCategoryGroupStyle());
@@ -360,7 +349,7 @@ void TaskTrackWindow::BuildCategories()
     categories_group_.SetContent(categories_flow_);
 
     categories_flow_.SetDirection(UiDirection::H)
-        .SetGap(DPI(4), DPI(4))
+        .SetGap(DPI(6), DPI(6))
         .SetInset(0)
         .SetWrap(UiBoxWrap::Flow)
         .SetWrapAutoResize(true)
@@ -374,7 +363,7 @@ void TaskTrackWindow::BuildTaskArea()
     task_scroll_.Content().Add(task_flow_.SizePos());
 
     task_flow_.SetDirection(UiDirection::H)
-        .SetGap(DPI(6), DPI(6))
+        .SetGap(DPI(10), DPI(10))
         .SetInset(DPI(1))
         .SetWrap(UiBoxWrap::Flow)
         .SetWrapAutoResize(true)
@@ -512,12 +501,11 @@ void TaskTrackWindow::RebuildCategories()
     categories_flow_.ClearItems();
     category_buttons_.Clear();
 
-
     Vector<String> categories = TaskTrackCategories(document_);
     bool show_categories = categories.GetCount() > 1;
     categories_group_.Show(show_categories);
     if(show_categories)
-        categories_item_.Fit().MinMain(DPI(50));
+        categories_item_.Fit().MinMain(DPI(56));
     else
         categories_item_.Fixed(0).MinMain(0);
 
@@ -898,7 +886,6 @@ void TaskTrackWindow::CheckReminder()
     int64 poll_epoch = TaskTrackReadAgentPollEpoch(task_path_);
     bool agent_due = document_.nudge_on_agent_poll &&
                      poll_epoch > last_seen_agent_poll_epoch_ &&
-
                      idle_seconds >= 60;
 
     if(!periodic_due && !agent_due)

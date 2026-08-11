@@ -45,7 +45,6 @@ private:
 
     void BuildUi();
     void BuildHeader();
-    void BuildObjective();
     void BuildCategories();
     void BuildTaskArea();
     void BuildFooter();
@@ -93,16 +92,14 @@ private:
 
     UiBoxLayout header_layout_ { UiDirection::H };
     UiTitleCard app_heading_;
+    UiTitleCard objective_card_;
     UiLabel state_label_;
+    UiLabel objective_progress_;
     UiButton pause_button_;
     UiDropdown reminder_dropdown_;
     UiButton paused_reminder_button_;
     UiButton agent_nudge_button_;
     UiButton exit_button_;
-
-    UiBoxLayout objective_layout_ { UiDirection::H };
-    UiTitleCard objective_card_;
-    UiLabel objective_progress_;
 
     TaskTrackCategoryPanel categories_group_;
     UiBoxLayout::ItemRef categories_item_;

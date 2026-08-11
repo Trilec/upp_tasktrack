@@ -60,6 +60,9 @@ private:
     String value_;
 };
 
+// Legacy implementation kept source-compatible for this checkpoint while the
+// active question renderer has moved to TaskTrackRangeField/UiRangeSliderEdit.
+// It is no longer instantiated by TaskTrackQuestionCtrl.
 class TaskTrackRangeSelector : public Ctrl {
 public:
     typedef TaskTrackRangeSelector CLASSNAME;
@@ -100,6 +103,43 @@ private:
     String unit_;
     int dragging_ = -1;
     int selected_ = 0;
+};
+
+// Semantic range adapter over the current Ui composition. It owns no duplicate
+// interval state: UiRangeSliderEdit remains authoritative and supplies the
+// anti-aliased themed slider plus direct lower/upper numeric fields.
+class TaskTrackRangeField : public UiRangeSliderEdit {
+public:
+    TaskTrackRangeField()
+    {
+        SetFieldWidth(DPI(64));
+        SetGap(DPI(6));
+        SetInset(0);
+        Slider().ShowEndpointMarkers(true);
+    }
+
+    TaskTrackRangeField& SetRange(double mn, double mx)
+    {
+        UiRangeSliderEdit::SetRange(mn, mx);
+        return *this;
+    }
+
+    TaskTrackRangeField& SetStep(double step)
+    {
+        UiRangeSliderEdit::SetStep(step);
+        SetPrecision(step >= 1.0 ? 0 : 2);
+        return *this;
+    }
+
+    TaskTrackRangeField& SetValues(double low, double high)
+    {
+        UiRangeSliderEdit::SetValues(low, high);
+        return *this;
+    }
+
+    TaskTrackRangeField& SetUnit(const String&) { return *this; }
+    double GetLow() const { return GetLowerValue(); }
+    double GetHigh() const { return GetUpperValue(); }
 };
 
 class TaskTrackGradientSelector : public Ctrl {
@@ -239,7 +279,7 @@ private:
     UiFloatEdit number_;
     UiSliderEdit amount_;
     UiLabel unit_label_;
-    TaskTrackRangeSelector range_;
+    TaskTrackRangeField range_;
     TaskTrackGradientSelector gradient_;
     TaskTrackPosition9 position_;
     TaskTrackDirection8 direction_;
