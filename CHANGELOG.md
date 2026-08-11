@@ -6,6 +6,10 @@
 - Hardened the agent guide around the real operating boundary: ask only for genuinely human-dependent facts, ask the minimum needed to continue, choose types by semantic meaning, avoid GUI/layout instructions, distinguish recommendations from neutral defaults, retain `task_id`, and consume structured `answer.data`.
 - Added `docs/STATUS.md` as a compact recovery/validation checkpoint before authoritative Windows compilation.
 - Kept the existing V0.2 18-type schema and durable MCP contract unchanged so Windows validation can establish a clean baseline before any further semantic expansion.
+- TT-003-W1 passed on Windows with 61/61 tests, MCP selftest, live create_task smoke, colour persistence and all 18 semantic controls.
+- Replaced the question workspace's masonry-like natural-width flow with a deterministic responsive policy: at most three equal-width columns, minimum 10px gutters, row-equal card heights and stable partial final rows.
+- Hardened category reflow so wrapped category height propagates to the main shell instead of leaving first-open gaps or overlapping the question area after resize.
+- Increased question title hierarchy to 12pt bold with 9pt supporting text while preserving the existing semantic renderer and task contract.
 
 ## 0.2.0 — 2026-08-07
 
