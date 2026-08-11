@@ -21,6 +21,8 @@
 - Expanded the 18-type demo with representative recommendations across structured controls so the header-content/Accent/acceptance workflow is directly visible; open-ended text and notes remain recommendation-free when no responsible preference exists.
 - Tightened the native range presentation with a compact internal inset, smaller lower/upper fields, suppressed crowded endpoint markers, and sane numeric precision so ordinary values do not collapse into scientific notation.
 - Corrected the remaining category fit estimate by using the themed button's 30px row authority plus explicit lower breathing room.
+- Added TaskTrack-local human-decision state colours without changing global Ui roles: blue/Accent means an unanswered agent suggestion, light green with a 2px green frame means human-resolved, red/Alert means a required human decision still missing after review, and optional unresolved questions remain neutral.
+- After `Accept suggestions` or a blocked submit/finish attempt, TaskTrack now routes directly to the first category with unresolved required input, marks affected category buttons/cards red with remaining counts, and changes the footer action to `Review N required`; resolved cards and the exhausted suggestion action turn green.
 
 ## 0.2.0 — 2026-08-07
 

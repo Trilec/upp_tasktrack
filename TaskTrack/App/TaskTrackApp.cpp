@@ -28,6 +28,21 @@ UiButton::Style CompactButtonStyle(UiRole role)
     return style;
 }
 
+UiButton::Style TaskTrackAnsweredButtonStyle()
+{
+    UiButton::Style style = CompactButtonStyle(UiRole::Standard);
+    Color green = Color(45, 142, 77);
+    style.metrics.face_enabled = true;
+    style.metrics.frame_enabled = true;
+    style.metrics.frame_width = DPI(2);
+    for(int st = 0; st < 4; ++st) {
+        style.palette.face[st] = UiFill::Solid(Blend(SColorPaper(), green, st == ST_DISABLED ? 16 : 28));
+        style.palette.frame[st] = st == ST_DISABLED ? Blend(green, SColorDisabled(), 100) : green;
+        style.palette.ink[st] = st == ST_DISABLED ? Blend(green, SColorDisabled(), 120) : green;
+    }
+    return style;
+}
+
 UiLabel::Style CompactLabelStyle(UiRole role, int px = 9)
 {
     UiLabel::Style style = UiTheme::ResolveLabel(role);
@@ -201,13 +216,14 @@ UiTitleCard::Style TaskTrackWindow::MakeTitleStyle(Font title_font, Font subtitl
     return CompactTitleStyle(role, title_font, subtitle_font);
 }
 
-UiButton::Style TaskTrackWindow::MakeCategoryButtonStyle(bool selected) const
+UiButton::Style TaskTrackWindow::MakeCategoryButtonStyle(bool selected, bool needs_attention) const
 {
-    UiButton::Style style = UiTheme::ResolveButton(selected ? UiRole::Accent : UiRole::Subtle);
+    UiRole role = needs_attention ? UiRole::Alert : (selected ? UiRole::Accent : UiRole::Subtle);
+    UiButton::Style style = UiTheme::ResolveButton(role);
     style.font = SansSerifZ(9);
     style.metrics.use_text_font = false;
     style.metrics.radius = DPI(5);
-    style.metrics.frame_width = DPI(1);
+    style.metrics.frame_width = needs_attention ? DPI(2) : DPI(1);
     return style;
 }
 
@@ -396,7 +412,7 @@ void TaskTrackWindow::BuildFooter()
         .Add("Export JSON", "json")
         .Add("Save Copy...", "copy");
 
-    accept_recommendations_button_.SetCustomStyle(CompactButtonStyle(UiRole::Standard));
+    accept_recommendations_button_.SetCustomStyle(CompactButtonStyle(UiRole::Accent));
     accept_recommendations_button_.SetText("Accept suggestions").SetContentInset(DPI(4));
 
     complete_button_.SetCustomStyle(CompactButtonStyle(UiRole::Accent));
@@ -404,7 +420,7 @@ void TaskTrackWindow::BuildFooter()
 
     footer_layout_.Add(progress_label_).Expand(1).MinMain(DPI(260));
     footer_layout_.Add(save_button_).Fixed(DPI(88)).MinCross(DPI(28));
-    footer_layout_.Add(accept_recommendations_button_).Fixed(DPI(128)).MinCross(DPI(28));
+    footer_layout_.Add(accept_recommendations_button_).Fixed(DPI(150)).MinCross(DPI(28));
     footer_layout_.Add(complete_button_).Fixed(DPI(122)).MinCross(DPI(28));
 
     save_button_.WhenAction = [=] { if(loaded_) SaveProgress(true); };
@@ -428,6 +444,7 @@ bool TaskTrackWindow::LoadTask(const String& path, String& error)
     task_path_ = NormalizePath(path);
     loaded_ = true;
     selected_category_ = "All";
+    review_required_ = false;
     last_seen_agent_poll_epoch_ = TaskTrackReadAgentPollEpoch(task_path_);
 
     if(document_.state == TaskTrackState::AwaitingHuman) {
@@ -474,13 +491,56 @@ void TaskTrackWindow::RefreshHeaderState()
     bool terminal = document_.state == TaskTrackState::Completed || document_.state == TaskTrackState::Closed;
     pause_button_.Enable(!terminal);
     pause_button_.SetText(document_.state == TaskTrackState::Paused ? "Resume" : "Pause");
-    accept_recommendations_button_.Enable(!terminal);
     complete_button_.SetText(document_.state == TaskTrackState::Completed ? "Submitted" : "Submit answers");
     complete_button_.Enable(!terminal);
     save_button_.Enable(true);
     reminder_dropdown_.Enable(!terminal);
     paused_reminder_button_.Enable(!terminal);
     agent_nudge_button_.Enable(!terminal);
+}
+
+int TaskTrackWindow::CountMissingRequired(const String& category) const
+{
+    int count = 0;
+    for(const TaskTrackItem& item : document_.items) {
+        String item_category = item.category.IsEmpty() ? String("General") : item.category;
+        if(!category.IsEmpty() && category != "All" && item_category != category)
+            continue;
+        if(item.required && !item.answer.answered)
+            ++count;
+    }
+    return count;
+}
+
+String TaskTrackWindow::FirstMissingRequiredCategory() const
+{
+    for(const TaskTrackItem& item : document_.items) {
+        if(item.required && !item.answer.answered)
+            return item.category.IsEmpty() ? String("General") : item.category;
+    }
+    return String();
+}
+
+void TaskTrackWindow::ActivateRequiredReview()
+{
+    review_required_ = CountMissingRequired() > 0;
+    if(review_required_) {
+        String category = FirstMissingRequiredCategory();
+        if(!category.IsEmpty())
+            selected_category_ = category;
+    }
+}
+
+void TaskTrackWindow::RefreshQuestionVisualStates()
+{
+    for(TaskTrackQuestionCtrl& ctrl : question_controls_) {
+        int index = ctrl.GetItemIndex();
+        if(index < 0 || index >= document_.items.GetCount())
+            continue;
+        const TaskTrackItem& item = document_.items[index];
+        ctrl.SetNeedsAttention(review_required_ && item.required && !item.answer.answered);
+        ctrl.RefreshVisualState();
+    }
 }
 
 void TaskTrackWindow::RefreshProgress()
@@ -492,13 +552,46 @@ void TaskTrackWindow::RefreshProgress()
     int total = document_.items.GetCount();
     int req_answered = TaskTrackRequiredAnsweredCount(document_);
     int req_total = TaskTrackRequiredCount(document_);
+    int missing_required = req_total - req_answered;
+
+    bool has_any_recommendation = false;
+    bool has_unanswered_recommendation = false;
+    for(const TaskTrackItem& item : document_.items) {
+        if(item.recommended.IsEmpty())
+            continue;
+        has_any_recommendation = true;
+        if(!item.answer.answered)
+            has_unanswered_recommendation = true;
+    }
 
     objective_progress_.SetText(Format("%d / %d answered", answered, total));
     progress_label_.SetText(Format("%d/%d questions · %d/%d required · %s",
                                    answered, total, req_answered, req_total,
                                    TaskTrackStateName(document_.state)));
-    complete_button_.Enable(document_.state != TaskTrackState::Completed &&
-                            document_.state != TaskTrackState::Closed);
+
+    bool terminal = document_.state == TaskTrackState::Completed || document_.state == TaskTrackState::Closed;
+    complete_button_.Enable(!terminal);
+
+    if(terminal) {
+        accept_recommendations_button_.SetCustomStyle(CompactButtonStyle(UiRole::Subtle));
+        accept_recommendations_button_.SetText("Suggestions closed").Disable();
+    }
+    else if(review_required_ && missing_required > 0) {
+        accept_recommendations_button_.SetCustomStyle(CompactButtonStyle(UiRole::Alert));
+        accept_recommendations_button_.SetText(Format("Review %d required", missing_required)).Enable();
+    }
+    else if(has_unanswered_recommendation) {
+        accept_recommendations_button_.SetCustomStyle(CompactButtonStyle(UiRole::Accent));
+        accept_recommendations_button_.SetText("Accept suggestions").Enable();
+    }
+    else if(has_any_recommendation) {
+        accept_recommendations_button_.SetCustomStyle(TaskTrackAnsweredButtonStyle());
+        accept_recommendations_button_.SetText("Suggestions applied").Disable();
+    }
+    else {
+        accept_recommendations_button_.SetCustomStyle(CompactButtonStyle(UiRole::Subtle));
+        accept_recommendations_button_.SetText("No suggestions").Disable();
+    }
 }
 
 void TaskTrackWindow::RebuildCategories()
@@ -518,17 +611,25 @@ void TaskTrackWindow::RebuildCategories()
     auto add_button = [&](const String& category) {
         int total = 0;
         int answered = 0;
+        int missing_required = 0;
         for(const TaskTrackItem& item : document_.items) {
-            if(category != "All" && item.category != category)
+            String item_category = item.category.IsEmpty() ? String("General") : item.category;
+            if(category != "All" && item_category != category)
                 continue;
             ++total;
             if(item.answer.answered)
                 ++answered;
+            else if(item.required)
+                ++missing_required;
         }
 
+        bool needs_attention = review_required_ && missing_required > 0;
         UiButton& button = category_buttons_.Add();
-        button.SetCustomStyle(MakeCategoryButtonStyle(category == selected_category_));
-        button.SetText(Format("%s  %d/%d", category, answered, total));
+        button.SetCustomStyle(MakeCategoryButtonStyle(category == selected_category_, needs_attention));
+        String text = Format("%s  %d/%d", category, answered, total);
+        if(needs_attention)
+            text << Format(" · %d needed", missing_required);
+        button.SetText(text);
         button.SetContentInset(DPI(3));
         String selected = category;
         button.WhenAction = [=] { SelectCategory(selected); };
@@ -553,11 +654,13 @@ void TaskTrackWindow::RebuildItems()
     int shown = 0;
     for(int i = 0; i < document_.items.GetCount(); ++i) {
         const TaskTrackItem& item = document_.items[i];
-        if(selected_category_ != "All" && item.category != selected_category_)
+        String item_category = item.category.IsEmpty() ? String("General") : item.category;
+        if(selected_category_ != "All" && item_category != selected_category_)
             continue;
 
         TaskTrackQuestionCtrl& ctrl = question_controls_.Add();
         ctrl.Bind(document_, i);
+        ctrl.SetNeedsAttention(review_required_ && item.required && !item.answer.answered);
         ctrl.WhenChanged = [=] { OnItemChanged(); };
         bool terminal = document_.state == TaskTrackState::Completed || document_.state == TaskTrackState::Closed;
         ctrl.Enable(!terminal);
@@ -615,7 +718,10 @@ void TaskTrackWindow::OnItemChanged()
         return;
     if(document_.state == TaskTrackState::Paused)
         document_.state = TaskTrackState::InProgress;
+    if(review_required_ && CountMissingRequired() == 0)
+        review_required_ = false;
     TouchHumanActivity();
+    RefreshQuestionVisualStates();
     RefreshHeaderState();
     RefreshProgress();
     RebuildCategories();
@@ -642,7 +748,10 @@ void TaskTrackWindow::AcceptRecommendations()
         if(TaskTrackApplyRecommendation(item))
             ++applied;
 
-    if(applied == 0) {
+    ActivateRequiredReview();
+
+    if(applied == 0 && !review_required_) {
+        RefreshProgress();
         PromptOK("No unanswered agent suggestions are available.");
         return;
     }
@@ -655,6 +764,7 @@ void TaskTrackWindow::AcceptRecommendations()
     RebuildCategories();
     RebuildItems();
     RefreshHeaderState();
+    RefreshProgress();
 }
 
 void TaskTrackWindow::CompleteTask()
@@ -663,15 +773,22 @@ void TaskTrackWindow::CompleteTask()
         return;
     Vector<String> missing;
     if(!TaskTrackCanComplete(document_, &missing)) {
-        Exclamation("Required questions are still unanswered:\n\n" + Join(missing, "\n"));
+        ActivateRequiredReview();
+        RebuildCategories();
+        RebuildItems();
+        RefreshProgress();
+        Exclamation(Format("%d required question%s still need your input. They are highlighted in red.",
+                           missing.GetCount(), missing.GetCount() == 1 ? "" : "s"));
         return;
     }
+    review_required_ = false;
     document_.state = TaskTrackState::Completed;
     TouchHumanActivity();
     if(!SaveProgress(false))
         return;
     RebuildItems();
     RefreshHeaderState();
+    RefreshProgress();
     PromptOK("TaskTrack answers saved. The agent can retrieve the completed task.");
 }
 
@@ -685,6 +802,7 @@ void TaskTrackWindow::CloseTask()
         return;
     RebuildItems();
     RefreshHeaderState();
+    RefreshProgress();
 }
 
 void TaskTrackWindow::ExportMarkdown()
@@ -770,20 +888,28 @@ void TaskTrackWindow::RequestExit()
     if(result == EXIT_ACCEPT) {
         for(TaskTrackItem& item : document_.items)
             ApplyRecommendation(item);
+        ActivateRequiredReview();
         Vector<String> missing;
         if(TaskTrackCanComplete(document_, &missing)) {
+            review_required_ = false;
             document_.state = TaskTrackState::Completed;
             TouchHumanActivity();
             if(SaveProgress(false)) {
                 RebuildItems();
                 RefreshHeaderState();
+                RefreshProgress();
                 closing_ = true;
                 Close();
             }
         }
         else {
             SaveProgress(false);
-            Exclamation("Some required questions still need your input:\n\n" + Join(missing, "\n"));
+            RebuildCategories();
+            RebuildItems();
+            RefreshHeaderState();
+            RefreshProgress();
+            Exclamation(Format("%d required question%s still need your input. They are highlighted in red.",
+                               missing.GetCount(), missing.GetCount() == 1 ? "" : "s"));
         }
     }
     else if(result == EXIT_LEAVE) {
@@ -791,6 +917,7 @@ void TaskTrackWindow::RequestExit()
             return;
         RebuildItems();
         RefreshHeaderState();
+        RefreshProgress();
         closing_ = true;
         Close();
     }
@@ -831,19 +958,25 @@ void TaskTrackWindow::CheckReminder()
     else if(result == REMINDER_ACCEPT) {
         for(TaskTrackItem& item : document_.items)
             ApplyRecommendation(item);
+        ActivateRequiredReview();
         Vector<String> missing;
         if(TaskTrackCanComplete(document_, &missing)) {
+            review_required_ = false;
             document_.state = TaskTrackState::Completed;
             PromptOK("All available agent suggestions accepted. The task is now completed.");
         }
         else
-            Exclamation("Some required questions still need your input:\n\n" + Join(missing, "\n"));
+            Exclamation(Format("%d required question%s still need your input. They are highlighted in red.",
+                               missing.GetCount(), missing.GetCount() == 1 ? "" : "s"));
     }
 
     SaveProgress(false);
-    if(result == REMINDER_CLOSE)
+    if(result == REMINDER_CLOSE || result == REMINDER_ACCEPT) {
+        RebuildCategories();
         RebuildItems();
+    }
     RefreshHeaderState();
+    RefreshProgress();
 }
 
 } // namespace Upp

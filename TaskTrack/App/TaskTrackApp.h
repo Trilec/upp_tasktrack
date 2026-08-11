@@ -54,7 +54,12 @@ private:
     void RebuildItems();
     void RefreshHeaderState();
     void RefreshProgress();
+    void RefreshQuestionVisualStates();
     void SelectCategory(const String& category);
+
+    int CountMissingRequired(const String& category = String()) const;
+    String FirstMissingRequiredCategory() const;
+    void ActivateRequiredReview();
 
     bool SaveProgress(bool touch_human = true);
     void ScheduleAutosave();
@@ -76,7 +81,7 @@ private:
     void RequestExit();
 
     UiTitleCard::Style MakeTitleStyle(Font title_font, Font subtitle_font, UiRole role = UiRole::Standard) const;
-    UiButton::Style MakeCategoryButtonStyle(bool selected) const;
+    UiButton::Style MakeCategoryButtonStyle(bool selected, bool needs_attention = false) const;
     UiGroupPanel::Style MakeCategoryGroupStyle() const;
 
 private:
@@ -87,6 +92,7 @@ private:
     bool rebuilding_ = false;
     bool reminder_showing_ = false;
     bool closing_ = false;
+    bool review_required_ = false;
     int64 last_seen_agent_poll_epoch_ = 0;
 
     UiBoxLayout main_box_ { UiDirection::V };
