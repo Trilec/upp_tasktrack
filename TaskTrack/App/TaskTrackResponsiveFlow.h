@@ -48,6 +48,10 @@ public:
 
             adapting_ = true;
             PauseLayout();
+            // BuildCategories() still carries the old V0.2 fixed-column hint.
+            // The responsive policy is authoritative now, so clear that cap
+            // before applying the resolved equal width.
+            UiBoxLayout::SetFixedColumn(0);
             for(int i = 0; i < GetItemCount(); ++i)
                 ItemAt(i).MinMaxMain(width, width).Fit().MinCross(DPI(26)).AlignSelf(UiCrossAlign::Center);
             ResumeLayout(false);
@@ -122,6 +126,10 @@ public:
 
             adapting_ = true;
             PauseLayout();
+            // BuildTaskArea() still carries the V0.2 350px column cap. Clear
+            // it so medium/two-column layouts can expand to the true resolved
+            // width instead of leaving a dead band on the right.
+            UiBoxLayout::SetFixedColumn(0);
             for(int i = 0; i < GetItemCount(); ++i)
                 ItemAt(i).MinMaxMain(width, width).Fit().MinCross(DPI(92)).AlignSelf(UiCrossAlign::Stretch);
             ResumeLayout(false);
