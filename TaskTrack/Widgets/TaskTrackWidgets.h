@@ -167,6 +167,19 @@ public:
     void Bind(TaskTrackDocument& document, int item_index);
     int GetItemIndex() const { return item_index_; }
 
+    void Layout() override
+    {
+        if(!workspace_typography_applied_) {
+            workspace_typography_applied_ = true;
+            UiGroupPanel::Style style = GetStyle();
+            style.title_font = SansSerifZ(12).Bold();
+            style.subtitle_font = SansSerifZ(9);
+            style.title_subtitle_gap = DPI(2);
+            SetCustomStyle(style);
+        }
+        UiGroupPanel::Layout();
+    }
+
     Event<> WhenChanged;
 
 private:
@@ -208,6 +221,7 @@ private:
     TaskTrackDocument* document_ = nullptr;
     int item_index_ = -1;
     bool syncing_ = false;
+    bool workspace_typography_applied_ = false;
 
     UiBoxLayout content_ { UiDirection::V };
     UiLabel recommendation_;
