@@ -16,6 +16,7 @@
 #include <Ui/Ui.h>
 #include <TaskTrack/Core/TaskTrackCore.h>
 #include <TaskTrack/Widgets/TaskTrackWidgets.h>
+#include "TaskTrackResponsiveFlow.h"
 
 namespace Upp {
 
@@ -105,11 +106,11 @@ private:
 
     UiGroupPanel categories_group_;
     UiBoxLayout::ItemRef categories_item_;
-    UiBoxLayout categories_flow_ { UiDirection::H };
+    TaskTrackCategoryFlow categories_flow_ { UiDirection::H };
     Array<UiButton> category_buttons_;
 
     UiScrollPanel task_scroll_;
-    UiBoxLayout task_flow_ { UiDirection::H };
+    TaskTrackQuestionFlow task_flow_ { UiDirection::H };
     Array<TaskTrackQuestionCtrl> question_controls_;
     UiLabel empty_label_;
 
