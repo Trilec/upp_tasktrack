@@ -60,6 +60,7 @@ private:
     void ScheduleAutosave();
     void OnItemChanged();
     void TogglePause();
+    void AcceptRecommendations();
     void CompleteTask();
     void CloseTask();
     void ExportMarkdown();
@@ -114,6 +115,7 @@ private:
     UiBoxLayout footer_layout_ { UiDirection::H };
     UiLabel progress_label_;
     UiSplitButton save_button_;
+    UiButton accept_recommendations_button_;
     UiButton complete_button_;
 };
 

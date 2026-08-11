@@ -83,7 +83,7 @@ public:
         continue_.SetCustomStyle(CompactButtonStyle(UiRole::Accent));
         continue_.SetText(paused ? "Resume" : "Keep working").SetContentInset(DPI(4));
         accept_.SetCustomStyle(CompactButtonStyle(UiRole::Standard));
-        accept_.SetText("Accept all").SetContentInset(DPI(4));
+        accept_.SetText("Accept suggestions").SetContentInset(DPI(4));
         pause_.SetCustomStyle(CompactButtonStyle(UiRole::Subtle));
         pause_.SetText(paused ? "Keep paused" : "Pause for now").SetContentInset(DPI(4));
         close_.SetCustomStyle(CompactButtonStyle(UiRole::Alert));
@@ -96,7 +96,7 @@ public:
         box_.Add(buttons_).Fit().MinCross(DPI(32)).AlignSelf(UiBoxLayout::Align::Stretch);
         buttons_.AddSpacer(1).Expand(1).MinMain(DPI(8));
         buttons_.Add(continue_).Fixed(DPI(100)).MinCross(DPI(28));
-        buttons_.Add(accept_).Fixed(DPI(96)).MinCross(DPI(28));
+        buttons_.Add(accept_).Fixed(DPI(118)).MinCross(DPI(28));
         buttons_.Add(pause_).Fixed(DPI(104)).MinCross(DPI(28));
         buttons_.Add(close_).Fixed(DPI(96)).MinCross(DPI(28));
 
@@ -125,8 +125,8 @@ public:
     TaskTrackExitDialog(const String& task_title)
     {
         Title("Exit TaskTrack");
-        SetRect(0, 0, DPI(500), DPI(196));
-        SetMinSize(Size(DPI(440), DPI(180)));
+        SetRect(0, 0, DPI(520), DPI(196));
+        SetMinSize(Size(DPI(460), DPI(180)));
 
         Add(box_.SizePos());
         box_.SetDirection(UiDirection::V).SetGap(DPI(8)).SetInset(DPI(11));
@@ -143,7 +143,7 @@ public:
         buttons_.SetDirection(UiDirection::H).SetGap(DPI(7)).SetInset(0).SetAlignItems(UiCrossAlign::Center);
 
         accept_.SetCustomStyle(CompactButtonStyle(UiRole::Accent));
-        accept_.SetText("Accept all & finish").SetContentInset(DPI(4));
+        accept_.SetText("Accept suggestions & finish").SetContentInset(DPI(4));
         leave_.SetCustomStyle(CompactButtonStyle(UiRole::Subtle));
         leave_.SetText("Exit without accepting").SetContentInset(DPI(4));
         keep_.SetCustomStyle(CompactButtonStyle(UiRole::Subtle));
@@ -154,7 +154,7 @@ public:
         box_.AddSpacer(1).Expand(1).MinMain(DPI(6));
         box_.Add(buttons_).Fit().MinCross(DPI(32)).AlignSelf(UiBoxLayout::Align::Stretch);
         buttons_.AddSpacer(1).Expand(1).MinMain(DPI(8));
-        buttons_.Add(accept_).Fixed(DPI(130)).MinCross(DPI(28));
+        buttons_.Add(accept_).Fixed(DPI(158)).MinCross(DPI(28));
         buttons_.Add(leave_).Fixed(DPI(150)).MinCross(DPI(28));
         buttons_.Add(keep_).Fixed(DPI(96)).MinCross(DPI(28));
 
@@ -218,7 +218,7 @@ UiGroupPanel::Style TaskTrackWindow::MakeCategoryGroupStyle() const
     style.subtitle_font = SansSerifZ(8);
     style.metrics.radius = DPI(6);
     style.metrics.frame_width = DPI(1);
-    style.inset = Rect(DPI(6), DPI(5), DPI(6), DPI(8));
+    style.inset = Rect(DPI(6), DPI(5), DPI(6), DPI(10));
     style.header_inset = Rect(DPI(6), DPI(3), DPI(6), DPI(2));
     style.header_gap = DPI(2);
     style.title_subtitle_gap = 0;
@@ -239,7 +239,7 @@ void TaskTrackWindow::BuildUi()
 
     main_box_.Add(header_layout_).Fit().MinCross(DPI(44)).AlignSelf(UiBoxLayout::Align::Stretch);
     categories_item_ = main_box_.Add(categories_group_);
-    categories_item_.Fit().MinMain(DPI(56)).AlignSelf(UiBoxLayout::Align::Stretch);
+    categories_item_.Fit().MinMain(DPI(64)).AlignSelf(UiBoxLayout::Align::Stretch);
     main_box_.Add(task_scroll_).Expand(1).MinMain(DPI(300)).AlignSelf(UiBoxLayout::Align::Stretch);
     main_box_.Add(footer_layout_).Fit().MinCross(DPI(32)).AlignSelf(UiBoxLayout::Align::Stretch);
 
@@ -396,11 +396,15 @@ void TaskTrackWindow::BuildFooter()
         .Add("Export JSON", "json")
         .Add("Save Copy...", "copy");
 
+    accept_recommendations_button_.SetCustomStyle(CompactButtonStyle(UiRole::Standard));
+    accept_recommendations_button_.SetText("Accept suggestions").SetContentInset(DPI(4));
+
     complete_button_.SetCustomStyle(CompactButtonStyle(UiRole::Accent));
     complete_button_.SetText("Submit answers").SetContentInset(DPI(4));
 
-    footer_layout_.Add(progress_label_).Expand(1).MinMain(DPI(300));
+    footer_layout_.Add(progress_label_).Expand(1).MinMain(DPI(260));
     footer_layout_.Add(save_button_).Fixed(DPI(88)).MinCross(DPI(28));
+    footer_layout_.Add(accept_recommendations_button_).Fixed(DPI(128)).MinCross(DPI(28));
     footer_layout_.Add(complete_button_).Fixed(DPI(122)).MinCross(DPI(28));
 
     save_button_.WhenAction = [=] { if(loaded_) SaveProgress(true); };
@@ -410,6 +414,7 @@ void TaskTrackWindow::BuildFooter()
         else if(action == "json") ExportJson();
         else if(action == "copy") SaveCopy();
     };
+    accept_recommendations_button_.WhenAction = [=] { AcceptRecommendations(); };
     complete_button_.WhenAction = [=] { CompleteTask(); };
 }
 
@@ -469,6 +474,7 @@ void TaskTrackWindow::RefreshHeaderState()
     bool terminal = document_.state == TaskTrackState::Completed || document_.state == TaskTrackState::Closed;
     pause_button_.Enable(!terminal);
     pause_button_.SetText(document_.state == TaskTrackState::Paused ? "Resume" : "Pause");
+    accept_recommendations_button_.Enable(!terminal);
     complete_button_.SetText(document_.state == TaskTrackState::Completed ? "Submitted" : "Submit answers");
     complete_button_.Enable(!terminal);
     save_button_.Enable(true);
@@ -505,7 +511,7 @@ void TaskTrackWindow::RebuildCategories()
     bool show_categories = categories.GetCount() > 1;
     categories_group_.Show(show_categories);
     if(show_categories)
-        categories_item_.Fit().MinMain(DPI(56));
+        categories_item_.Fit().MinMain(DPI(64));
     else
         categories_item_.Fixed(0).MinMain(0);
 
@@ -526,7 +532,7 @@ void TaskTrackWindow::RebuildCategories()
         button.SetContentInset(DPI(3));
         String selected = category;
         button.WhenAction = [=] { SelectCategory(selected); };
-        categories_flow_.Add(button).Fit().MinMain(DPI(148)).MinCross(DPI(26));
+        categories_flow_.Add(button).Fit().MinMain(DPI(148)).MinCross(DPI(30));
     };
 
     add_button("All");
@@ -626,6 +632,31 @@ void TaskTrackWindow::TogglePause()
     RefreshHeaderState();
 }
 
+void TaskTrackWindow::AcceptRecommendations()
+{
+    if(!loaded_ || document_.state == TaskTrackState::Completed || document_.state == TaskTrackState::Closed)
+        return;
+
+    int applied = 0;
+    for(TaskTrackItem& item : document_.items)
+        if(TaskTrackApplyRecommendation(item))
+            ++applied;
+
+    if(applied == 0) {
+        PromptOK("No unanswered agent suggestions are available.");
+        return;
+    }
+
+    if(document_.state == TaskTrackState::Paused)
+        document_.state = TaskTrackState::InProgress;
+    TouchHumanActivity();
+    if(!SaveProgress(false))
+        return;
+    RebuildCategories();
+    RebuildItems();
+    RefreshHeaderState();
+}
+
 void TaskTrackWindow::CompleteTask()
 {
     if(!loaded_)
@@ -714,114 +745,7 @@ int TaskTrackWindow::RunReminderPrompt(bool agent_poll_triggered)
 
 bool TaskTrackWindow::ApplyRecommendation(TaskTrackItem& item)
 {
-    String rec = TrimBoth(item.recommended);
-    if(rec.IsEmpty() && !IsNull(item.default_value))
-        rec = AsString(item.default_value);
-    if(rec.IsEmpty())
-        return false;
-
-    TaskTrackAnswer& answer = item.answer;
-    answer.answered = true;
-    answer.answered_at = TaskTrackNowIso();
-    answer.status = "accepted";
-
-    switch(item.type) {
-    case TaskTrackItemType::Confirm: {
-        bool yes = ToLower(rec) != "no" && ToLower(rec) != "false";
-        answer.data = Value(yes);
-        answer.value = yes ? "yes" : "no";
-        break;
-    }
-    case TaskTrackItemType::SingleChoice:
-    case TaskTrackItemType::Select: {
-        answer.data = Value(rec);
-        answer.value = rec;
-        break;
-    }
-    case TaskTrackItemType::MultiChoice:
-    case TaskTrackItemType::ListSelect: {
-        ValueArray arr;
-        if(rec.StartsWith("[")) {
-            Value parsed = ParseJSON(~rec);
-            if(parsed.Is<ValueArray>())
-                arr = parsed;
-        }
-        if(arr.IsEmpty()) {
-            Vector<String> parts = Split(rec, ",", false);
-            for(const String& part : parts)
-                arr.Add(TrimBoth(part));
-        }
-        answer.data = arr;
-        answer.value = AsJSON(arr, false);
-        break;
-    }
-    case TaskTrackItemType::Text:
-    case TaskTrackItemType::Notes: {
-        answer.data = Value(rec);
-        answer.value = rec;
-        break;
-    }
-    case TaskTrackItemType::Number:
-    case TaskTrackItemType::Amount:
-    case TaskTrackItemType::Rating: {
-        double value = ScanDouble(rec);
-        answer.data = Value(value);
-        answer.value = AsString(value);
-        break;
-    }
-    case TaskTrackItemType::Range: {
-        ValueMap data;
-        data.Add("low", item.min_value);
-        data.Add("high", item.max_value);
-        Vector<String> parts = Split(rec, ",", false);
-        if(parts.GetCount() == 2) {
-            data.Set("low", ScanDouble(TrimBoth(parts[0])));
-            data.Set("high", ScanDouble(TrimBoth(parts[1])));
-        }
-        answer.data = Value(data);
-        answer.value = AsString((double)data["low"]) + "-" + AsString((double)data["high"]) + item.unit;
-        break;
-    }
-    case TaskTrackItemType::Color:
-    case TaskTrackItemType::Gradient:
-    case TaskTrackItemType::Position:
-    case TaskTrackItemType::Direction: {
-        answer.data = Value(rec);
-        answer.value = rec;
-        break;
-    }
-    case TaskTrackItemType::RankOrder: {
-        ValueArray arr;
-        if(rec.StartsWith("[")) {
-            Value parsed = ParseJSON(~rec);
-            if(parsed.Is<ValueArray>())
-                arr = parsed;
-        }
-        if(arr.IsEmpty())
-            for(const String& choice : item.choices)
-                arr.Add(choice);
-        answer.data = arr;
-        answer.value = AsJSON(arr, false);
-        break;
-    }
-    case TaskTrackItemType::HierarchySelect: {
-        answer.data = Value(rec);
-        answer.value = rec;
-        break;
-    }
-    case TaskTrackItemType::Curve: {
-        ValueArray arr;
-        Value parsed = ParseJSON(rec);
-        if(parsed.Is<ValueArray>() && ((ValueArray)parsed).GetCount() == 4)
-            arr = parsed;
-        else if(item.default_value.Is<ValueArray>())
-            arr = item.default_value;
-        answer.data = arr;
-        answer.value = AsJSON(arr, false);
-        break;
-    }
-    }
-    return true;
+    return TaskTrackApplyRecommendation(item);
 }
 
 int TaskTrackWindow::TaskTrackExitPrompt()
@@ -910,7 +834,7 @@ void TaskTrackWindow::CheckReminder()
         Vector<String> missing;
         if(TaskTrackCanComplete(document_, &missing)) {
             document_.state = TaskTrackState::Completed;
-            PromptOK("All agent recommendations accepted. The task is now completed.");
+            PromptOK("All available agent suggestions accepted. The task is now completed.");
         }
         else
             Exclamation("Some required questions still need your input:\n\n" + Join(missing, "\n"));

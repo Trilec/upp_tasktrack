@@ -107,15 +107,17 @@ private:
 
 // Semantic range adapter over the current Ui composition. It owns no duplicate
 // interval state: UiRangeSliderEdit remains authoritative and supplies the
-// anti-aliased themed slider plus direct lower/upper numeric fields.
+// themed anti-aliased slider plus direct lower/upper numeric fields.
 class TaskTrackRangeField : public UiRangeSliderEdit {
 public:
     TaskTrackRangeField()
     {
-        SetFieldWidth(DPI(64));
-        SetGap(DPI(6));
-        SetInset(0);
-        Slider().ShowEndpointMarkers(true);
+        SetFieldWidth(DPI(52));
+        SetGap(DPI(5));
+        SetInset(DPI(5));
+        // Endpoint markers compete with the two direct numeric fields in this
+        // compact card composition. The handles themselves remain visible.
+        Slider().ShowEndpointMarkers(false);
     }
 
     TaskTrackRangeField& SetRange(double mn, double mx)
@@ -127,7 +129,9 @@ public:
     TaskTrackRangeField& SetStep(double step)
     {
         UiRangeSliderEdit::SetStep(step);
-        SetPrecision(step >= 1.0 ? 0 : 2);
+        // UiFloatEdit::Precision feeds FormatDouble significant precision;
+        // zero turns ordinary values such as 375 into scientific 4e2 display.
+        SetPrecision(12);
         return *this;
     }
 
@@ -217,6 +221,7 @@ public:
             style.title_subtitle_gap = DPI(2);
             SetCustomStyle(style);
         }
+        ApplyRecommendationPresentation();
         UiGroupPanel::Layout();
     }
 
@@ -258,13 +263,160 @@ private:
     Color ParseColor(const String& text, Color fallback = Black()) const;
     String ColorToText(Color color) const;
 
+    void EnsureRecommendationHeader()
+    {
+        if(recommendation_header_ready_)
+            return;
+        recommendation_header_ready_ = true;
+
+        recommendation_header_.SetDirection(UiDirection::H)
+            .SetGap(DPI(4))
+            .SetInset(0)
+            .SetAlignItems(UiCrossAlign::Center);
+
+        UiLabel::Style label_style = UiTheme::ResolveLabel(UiTheme::GetContext(), UiRole::Accent, UiTextSize::Body);
+        label_style.font = SansSerifZ(8);
+        recommendation_header_label_.SetCustomStyle(label_style);
+        recommendation_header_label_.SetAlign(UiAlign::RIGHT, UiAlign::CENTER);
+
+        UiButton::Style accept_style = UiTheme::ResolveButton(UiTheme::GetContext(), UiRole::Accent);
+        accept_style.font = SansSerifZ(8).Bold();
+        accept_style.metrics.content_margin = Rect(DPI(6), DPI(3), DPI(6), DPI(3));
+        recommendation_accept_.SetCustomStyle(accept_style);
+        recommendation_accept_.SetText("Accept").SetContentInset(DPI(2));
+
+        recommendation_header_.Add(recommendation_header_label_).Fit().MinMain(DPI(58)).MinCross(DPI(23));
+        recommendation_header_.Add(recommendation_accept_).Fixed(DPI(50)).MinCross(DPI(23));
+        recommendation_accept_.WhenAction = [=] { AcceptRecommendation(); };
+    }
+
+    void ApplyRecommendedChoiceStyles(const TaskTrackItem& item)
+    {
+        if(item.recommended.IsEmpty())
+            return;
+
+        if(item.type == TaskTrackItemType::Confirm && radios_.GetCount() >= 2) {
+            String labels[2] = { "Yes", "No" };
+            if(item.choices.GetCount() == 2) {
+                labels[0] = item.choices[0];
+                labels[1] = item.choices[1];
+            }
+            String lower = ToLower(TrimBoth(item.recommended));
+            for(int i = 0; i < 2; ++i) {
+                bool recommended = item.recommended == labels[i] ||
+                                   (i == 0 && (lower == "yes" || lower == "true" || lower == "1")) ||
+                                   (i == 1 && (lower == "no" || lower == "false" || lower == "0"));
+                UiRadioButton::Style style = UiTheme::ResolveRadioButton(UiTheme::GetContext(),
+                    recommended ? UiRole::Accent : UiRole::Standard, UIRADIOVIS_PILLS);
+                style.font = SansSerifZ(9);
+                radios_[i].SetCustomStyle(style);
+            }
+        }
+        else if(item.type == TaskTrackItemType::SingleChoice && !radios_.IsEmpty()) {
+            for(int i = 0; i < radios_.GetCount() && i < item.choices.GetCount(); ++i) {
+                bool recommended = TaskTrackRecommendationContains(item, item.choices[i]);
+                UiRadioButton::Style style = UiTheme::ResolveRadioButton(UiTheme::GetContext(),
+                    recommended ? UiRole::Accent : UiRole::Standard, UIRADIOVIS_PILLS);
+                style.font = SansSerifZ(9);
+                radios_[i].SetCustomStyle(style);
+            }
+        }
+        else if(item.type == TaskTrackItemType::MultiChoice) {
+            for(int i = 0; i < checks_.GetCount() && i < item.choices.GetCount(); ++i) {
+                bool recommended = TaskTrackRecommendationContains(item, item.choices[i]);
+                UiCheckBox::Style style = UiTheme::ResolveCheckBox(UiTheme::GetContext(),
+                    recommended ? UiRole::Accent : UiRole::Standard, UICHECKVIS_CLASSIC);
+                style.font = SansSerifZ(9);
+                checks_[i].SetCustomStyle(style);
+            }
+        }
+        else if(item.type == TaskTrackItemType::Rating) {
+            int first = (int)floor(item.min_value + 0.5);
+            for(int i = 0; i < choice_buttons_.GetCount(); ++i) {
+                String value = AsString(first + i);
+                UiButton::Style style = UiTheme::ResolveButton(UiTheme::GetContext(),
+                    TrimBoth(item.recommended) == value ? UiRole::Accent : UiRole::Subtle);
+                style.font = SansSerifZ(9);
+                style.metrics.use_text_font = false;
+                choice_buttons_[i].SetCustomStyle(style);
+            }
+        }
+        else if(item.type == TaskTrackItemType::Color) {
+            UiButton::Style accent = UiTheme::ResolveButton(UiTheme::GetContext(), UiRole::Accent);
+            for(int i = 0; i < color_buttons_.GetCount() && i < item.colors.GetCount(); ++i) {
+                if(ToUpper(item.colors[i]) != ToUpper(TrimBoth(item.recommended)))
+                    continue;
+                UiButton::Style style = color_buttons_[i].GetStyle();
+                for(int st = 0; st < 4; ++st)
+                    style.palette.frame[st] = accent.palette.frame[st];
+                style.metrics.frame_enabled = true;
+                style.metrics.frame_width = DPI(2);
+                color_buttons_[i].SetCustomStyle(style);
+            }
+        }
+    }
+
+    void ApplyRecommendationPresentation()
+    {
+        if(!document_ || item_index_ < 0 || item_index_ >= document_->items.GetCount())
+            return;
+        TaskTrackItem& item = document_->items[item_index_];
+        if(item.recommended.IsEmpty()) {
+            if(recommendation_header_attached_) {
+                ClearHeaderContent();
+                recommendation_header_attached_ = false;
+            }
+            return;
+        }
+
+        EnsureRecommendationHeader();
+        recommendation_header_label_.SetText("Suggested: " + TaskTrackRecommendationSummary(item));
+        if(!recommendation_header_attached_) {
+            SetHeaderContent(recommendation_header_);
+            SetHeaderContentAlign(UiAlign::RIGHT, UiAlign::CENTER);
+            recommendation_header_attached_ = true;
+        }
+
+        // V0.2 placed `Agent suggests:` as a separate body row. Keep that
+        // source-compatible label alive, but collapse its layout item now that
+        // the GroupPanel header-content slot owns the recommendation UI.
+        if(!recommendation_body_collapsed_ && content_.GetItemCount() > 0) {
+            recommendation_.Hide();
+            content_.ItemAt(0).Fixed(0).MinMain(0).MinCross(0);
+            recommendation_body_collapsed_ = true;
+        }
+
+        if(!recommendation_styles_applied_) {
+            ApplyRecommendedChoiceStyles(item);
+            recommendation_styles_applied_ = true;
+        }
+    }
+
+    void AcceptRecommendation()
+    {
+        if(!document_ || item_index_ < 0 || item_index_ >= document_->items.GetCount())
+            return;
+        TaskTrackItem& item = document_->items[item_index_];
+        if(!TaskTrackApplyRecommendation(item))
+            return;
+        SyncFromModel();
+        WhenChanged();
+    }
+
     TaskTrackDocument* document_ = nullptr;
     int item_index_ = -1;
     bool syncing_ = false;
     bool workspace_typography_applied_ = false;
+    bool recommendation_header_ready_ = false;
+    bool recommendation_header_attached_ = false;
+    bool recommendation_body_collapsed_ = false;
+    bool recommendation_styles_applied_ = false;
 
     UiBoxLayout content_ { UiDirection::V };
     UiLabel recommendation_;
+    UiBoxLayout recommendation_header_ { UiDirection::H };
+    UiLabel recommendation_header_label_;
+    UiButton recommendation_accept_;
     UiBoxLayout response_ { UiDirection::H };
 
     Array<UiRadioButton> radios_;

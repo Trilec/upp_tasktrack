@@ -126,6 +126,62 @@ CONSOLE_APP_MAIN
     t.Check(FileExists(path), "task was not persisted before create returned");
     t.Check(!TaskTrackCanComplete(doc), "required confirm should initially block completion");
 
+    // Recommendations are advisory until the human explicitly accepts them.
+    TaskTrackItem& rec_single = doc.items[1];
+    rec_single.recommended = "B";
+    t.Check(!rec_single.answer.answered, "single-choice recommendation pre-answered the item");
+    t.Check(TaskTrackApplyRecommendation(rec_single), "single-choice recommendation could not be accepted");
+    t.Check(rec_single.answer.answered && rec_single.answer.data.Is<String>() && AsString(rec_single.answer.data) == "B",
+            "single-choice recommendation did not produce canonical structured evidence");
+    rec_single.answer = TaskTrackAnswer();
+    rec_single.recommended.Clear();
+
+    // Bulk acceptance must never overwrite a human answer.
+    rec_single.recommended = "B";
+    rec_single.answer.answered = true;
+    rec_single.answer.status = "selected";
+    rec_single.answer.value = "C";
+    rec_single.answer.data = "C";
+    rec_single.answer.answered_at = TaskTrackNowIso();
+    t.Check(!TaskTrackApplyRecommendation(rec_single), "recommendation overwrote an existing human answer");
+    t.Check(rec_single.answer.value == "C" && AsString(rec_single.answer.data) == "C",
+            "existing human evidence changed during recommendation acceptance");
+    rec_single.answer = TaskTrackAnswer();
+    rec_single.recommended.Clear();
+
+    // A neutral default is presentation state, not a recommendation or evidence.
+    TaskTrackItem& default_only = doc.items[8];
+    default_only.default_value = 25;
+    default_only.recommended.Clear();
+    t.Check(!TaskTrackApplyRecommendation(default_only), "neutral default was promoted to human evidence");
+    t.Check(!default_only.answer.answered, "neutral default marked an item answered");
+    default_only.default_value = Value();
+
+    // Multi-selection recommendations preserve an array rather than collapsing to display text.
+    TaskTrackItem& rec_multi = doc.items[2];
+    rec_multi.recommended = "A,C";
+    t.Check(TaskTrackApplyRecommendation(rec_multi), "multi-choice recommendation could not be accepted");
+    t.Check(rec_multi.answer.data.Is<ValueArray>() && ((ValueArray)rec_multi.answer.data).GetCount() == 2 &&
+            AsString(((ValueArray)rec_multi.answer.data)[0]) == "A" &&
+            AsString(((ValueArray)rec_multi.answer.data)[1]) == "C",
+            "multi-choice recommendation lost structured array evidence");
+    rec_multi.answer = TaskTrackAnswer();
+    rec_multi.recommended.Clear();
+
+    // Range recommendations retain the same {low,high} evidence shape used by manual range editing.
+    TaskTrackItem& rec_range = doc.items[9];
+    rec_range.recommended = "20,80";
+    t.Check(TaskTrackApplyRecommendation(rec_range), "range recommendation could not be accepted");
+    t.Check(rec_range.answer.data.Is<ValueMap>(), "range recommendation did not produce a map");
+    if(rec_range.answer.data.Is<ValueMap>()) {
+        ValueMap range_data = rec_range.answer.data;
+        t.Check(IsNumber(range_data["low"]) && IsNumber(range_data["high"]) &&
+                (double)range_data["low"] == 20.0 && (double)range_data["high"] == 80.0,
+                "range recommendation changed low/high evidence");
+    }
+    rec_range.answer = TaskTrackAnswer();
+    rec_range.recommended.Clear();
+
     // Gary W1 regression: AsJSON -> ParseJSON represents JSON numbers as generic numeric Values.
     // Saving must accept schema_version/reminder/history fields after that round trip.
     String serialized = TaskTrackToJson(doc, true);

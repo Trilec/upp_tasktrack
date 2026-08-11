@@ -13,7 +13,14 @@
 - TT-004-W1-R2 passed the authoritative BLITZ Release wrapper and visual/mechanical responsive checks after the UiDoc BLITZ-safety fixes; equal-column wide/medium layouts and repeated category reflow are accepted.
 - Folded task context and answered progress into the top wrapping header and removed the separate objective row, reclaiming vertical workspace without changing task semantics.
 - Replaced the active hand-painted TaskTrack range field with the current `UiRangeSliderEdit` composition, retaining the same `{low, high}` answer evidence while gaining themed range rendering and direct lower/upper numeric editing.
-- Corrected the remaining category lower-edge crop by deriving the category shell height from current `UiGroupPanel` style geometry rather than a fixed chrome estimate.
+- TT-005-W1 passed the complete build/test/MCP matrix and native range persistence; Curt retained only small category/range presentation issues plus the need for a visible recommendation fast path.
+- Made agent recommendations actionable: each recommended question now uses `UiGroupPanel` header content for a compact `Suggested: ...` + `Accept` action, while recommended discrete controls receive Accent treatment without being selected or counted as human evidence.
+- Added a workspace `Accept suggestions` action and routed reminder/exit acceptance through one Core recommendation path that applies only unanswered recommendations, never falls back to neutral defaults, and does not overwrite an existing human answer.
+- Hardened shared recommendation acceptance across all 18 current question types so malformed, out-of-range, unknown or structurally invalid values are refused before they can become human evidence; deterministic tests cover non-pre-answering, non-overwrite, default/evidence separation, structured multi-choice and structured range acceptance.
+- Strengthened MCP discovery, `create_task` schema/tool descriptions, and the agent guide so agents exhaust machine evidence first, ask the minimum human-dependent decisions, and normally supply a defensible preferred answer rather than presenting blank choices.
+- Expanded the 18-type demo with representative recommendations across structured controls so the header-content/Accent/acceptance workflow is directly visible; open-ended text and notes remain recommendation-free when no responsible preference exists.
+- Tightened the native range presentation with a compact internal inset, smaller lower/upper fields, suppressed crowded endpoint markers, and sane numeric precision so ordinary values do not collapse into scientific notation.
+- Corrected the remaining category fit estimate by using the themed button's 30px row authority plus explicit lower breathing room.
 
 ## 0.2.0 — 2026-08-07
 

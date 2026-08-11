@@ -218,7 +218,6 @@ Value EmptyObjectSchema()
 }
 
 Value TaskLocatorSchema(bool include_items = false)
-
 {
     ValueMap props;
     props.Add("task_id", StringSchema("Stable TaskTrack task id returned by create_task."));
@@ -280,7 +279,8 @@ Value CreateTaskSchema()
     item_props.Add("required", BoolSchema("True only when the agent cannot continue without an answer."));
     item_props.Add("choices", StringArraySchema("Discrete options for single_choice, multi_choice, select, list_select, rank_order; optionally two labels for confirm."));
     item_props.Add("allow_multiple", BoolSchema("Allow multiple selections for list_select or hierarchy_select."));
-    item_props.Add("recommended", StringSchema("Optional agent recommendation shown separately; it never pre-answers the question."));
+    item_props.Add("recommended", StringSchema(
+        "Agent's preferred answer and one-click human approval path. Provide it whenever source/tests/constraints give you a defensible preference; omit it only when genuinely neutral or uncertain. Use the canonical semantic value (for example an exact choice, east, #RRGGBB, numeric text, low,high for a range, or JSON-array text for an ordered/compound value). It is Accent-highlighted but never pre-answers the question. default is neutral presentation state and is not a substitute for recommended."));
     item_props.Add("min", NumberSchema("Lower bound for number/amount/range/rating."));
     item_props.Add("max", NumberSchema("Upper bound for number/amount/range/rating."));
     item_props.Add("step", NumberSchema("Positive numeric increment."));
@@ -296,7 +296,7 @@ Value CreateTaskSchema()
 
     ValueMap items;
     items.Add("type", "array"); items.Add("minItems", 1); items.Add("items", item_schema);
-    items.Add("description", "Questions to present. Prefer structured semantic types over asking for prose.");
+    items.Add("description", "Ask only the minimum genuinely human-dependent decisions needed to continue. Keep related decisions in one task, one independent decision per item, and prefer structured semantic types over prose. Before sending, add recommended wherever you can responsibly propose the answer.");
 
     ValueMap props;
     props.Add("task_id", StringSchema("Optional caller-supplied id beginning task-. Normally omit."));
@@ -324,7 +324,7 @@ Value BuildToolsList(bool modern)
     ValueArray tools;
     tools.Add(ToolSpec("version", "Return the TaskTrack application/protocol version.", EmptyObjectSchema(), true, false, true));
     tools.Add(ToolSpec("create_task",
-        "Ask a human for structured input that automation cannot reliably infer or verify. Use the 18 semantic question types; do not encode U++ widget names. The task is durably saved before its id is returned, so the human may answer minutes, hours, or days later.",
+        "Ask a human only for structured decisions, observations, visual judgements, preferences, or interactive checks that repository evidence/tests/tools cannot establish. Ask the minimum needed to continue, keep related decisions in one task, and use one semantic question per independent decision; never encode U++ widget names or layout geometry. When you have a defensible preferred answer, provide recommended so the human gets an Accent-highlighted one-click approval path; omit it only when genuinely neutral or uncertain. Recommendations and defaults never become human evidence until explicit human action. The task is durably saved before its id is returned, so the human may answer minutes, hours, or days later.",
         CreateTaskSchema(), false, false, false));
     tools.Add(ToolSpec("get_task", "Return durable TaskTrack state and structured human answers. Polling may emit a reminder signal but never changes evidence or closes the task.", TaskLocatorSchema(true), true, false, true));
     tools.Add(ToolSpec("open_task", "Launch the TaskTrack GUI for an existing task_id.", TaskLocatorSchema(false), false, false, false));
@@ -352,7 +352,8 @@ Value BuildDiscoverResult()
     result.Add("resultType", "complete");
     result.Add("supportedVersions", versions);
     result.Add("capabilities", capabilities);
-    result.Add("instructions", "Use create_task when a human decision, observation, visual judgement, or interactive check is required. Choose semantic response types; poll by task_id. TaskTrack never auto-closes human work.");
+    result.Add("instructions",
+        "Use create_task only when a fact genuinely depends on human judgement, preference, observation, visual comparison, or interaction after repository/tests/tools have been used. Ask the minimum needed, keep related decisions together, choose semantic response types rather than UI widgets, and provide recommended for each decision where you have a defensible preferred answer. A recommendation is advisory and one-click acceptable; a default is neutral; neither is human evidence until explicit action. Retain task_id and poll later. TaskTrack never auto-closes human work.");
     result.Add("ttlMs", 300000);
     result.Add("cacheScope", "public");
     AddModernMeta(result);
@@ -370,7 +371,7 @@ Value BuildLegacyInitialize(const Value& params)
     result.Add("protocolVersion", requested);
     result.Add("capabilities", caps);
     result.Add("serverInfo", ServerInfoValue());
-    result.Add("instructions", "TaskTrack creates durable structured human-input tasks. Use get_task to poll without holding a request open.");
+    result.Add("instructions", "TaskTrack creates durable structured human-input tasks. Ask only for genuinely human-dependent decisions; provide a recommendation when you can defensibly propose the answer, then use get_task to poll without holding a request open.");
     return Value(result);
 }
 
@@ -440,7 +441,6 @@ Value ExecuteTool(const String& name, const Value& args, bool modern, bool task_
         return BuildCallToolResult(v, false, modern);
     }
     if(name == "create_task") {
-
         bool launch = true; String error;
         if(!ReadBool(args, "launch", true, launch, error)) return BuildCallToolResult(BuildFailure("BAD_REQUEST", error), true, modern);
         TaskTrackDocument doc; String path;
@@ -544,7 +544,6 @@ Value HandleRequest(const Value& request, bool& has_response)
     }
     if(method == "ping") {
         if(has_id) { ValueMap result; if(IsModern(request)) { result.Add("resultType", "complete"); AddModernMeta(result); } has_response = true; return JsonRpcResult(id, result); }
-
         return Value();
     }
     if(method == "tools/list") { if(has_id) { has_response = true; return JsonRpcResult(id, BuildToolsList(IsModern(request))); } return Value(); }
@@ -637,6 +636,8 @@ int RunSelfTest()
     st.Check(has && discover_json.Find(CURRENT_PROTOCOL) >= 0, "modern discovery failed");
     st.Check(discover_json.Find(TASKS_EXTENSION) >= 0, "discovery missing Tasks extension");
     st.Check(discover_json.Find("\"resultType\":\"complete\"") >= 0, "discovery missing modern resultType");
+    st.Check(discover_json.Find("defensible preferred answer") >= 0 && discover_json.Find("default is neutral") >= 0,
+             "modern discovery missing recommendation assembly guidance");
 
     Value legacy = ParseJSON("{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-11-25\"}}");
     String legacy_json = AsJSON(HandleRequest(legacy, has), false);
@@ -650,6 +651,8 @@ int RunSelfTest()
     for(const char *type : semantic_types)
         st.Check(list_json.Find(type) >= 0, String("tools/list missing semantic type ") + type);
     st.Check(list_json.Find("pass_fail") < 0, "canonical MCP schema still advertises legacy pass_fail");
+    st.Check(list_json.Find("defensible preference") >= 0 && list_json.Find("one-click") >= 0,
+             "create_task schema missing recommendation fast-path guidance");
     st.Check(list_json.Find("cacheScope") >= 0 && list_json.Find("ttlMs") >= 0, "modern tools/list is not cacheable");
 
     String root = AppendFileName(GetFileFolder(GetExeFilePath()), "_tasktrack_mcp_selftest"); RealizeDirectory(root);

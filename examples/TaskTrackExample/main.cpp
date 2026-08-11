@@ -74,17 +74,20 @@ CONSOLE_APP_MAIN
     ValueMap multi = BaseItem("multi-choice", "Decision", "multi_choice",
         "What should this change include?", "Select every independent area that should be included.");
     AddChoices(multi, { "Layout", "Style", "Behaviour", "Tests" });
+    multi.Add("recommended", "Layout, Tests");
     items.Add(multi);
 
     ValueMap select = BaseItem("select", "Decision", "select",
         "Which source should I use?", "Choose the authoritative source for the next operation.");
     AddChoices(select, { "Current selection", "Parent container", "Theme defaults", "Project settings" });
+    select.Add("recommended", "Current selection");
     items.Add(select);
 
     ValueMap list = BaseItem("list-select", "Decision", "list_select",
         "Which outputs should be reviewed?", "Select one or more outputs from the larger visible list.");
     AddChoices(list, { "Desktop preview", "Tablet preview", "Mobile preview", "Published output", "Saved project" });
     list.Add("allow_multiple", true);
+    list.Add("recommended", "Desktop preview");
     items.Add(list);
 
     items.Add(BaseItem("text", "Input", "text",
@@ -99,6 +102,7 @@ CONSOLE_APP_MAIN
     number.Add("max", 12);
     number.Add("step", 1);
     number.Add("unit", " variants");
+    number.Add("recommended", "3");
     items.Add(number);
 
     ValueMap amount = BaseItem("amount", "Input", "amount",
@@ -108,6 +112,7 @@ CONSOLE_APP_MAIN
     amount.Add("step", 4);
     amount.Add("unit", " px");
     amount.Add("default", 24);
+    amount.Add("recommended", "24");
     items.Add(amount);
 
     ValueMap range = BaseItem("range", "Input", "range",
@@ -120,12 +125,14 @@ CONSOLE_APP_MAIN
     range_default.Add("low", 320);
     range_default.Add("high", 900);
     range.Add("default", range_default);
+    range.Add("recommended", "320,900");
     items.Add(range);
 
     ValueMap rating = BaseItem("rating", "Input", "rating",
         "Rate this result", "Use a compact score for quality, confidence, fit, or urgency.");
     rating.Add("min", 1);
     rating.Add("max", 5);
+    rating.Add("recommended", "4");
     items.Add(rating);
 
     ValueMap color = BaseItem("color", "Visual", "color",
@@ -147,16 +154,19 @@ CONSOLE_APP_MAIN
     ValueMap position = BaseItem("position", "Visual", "position",
         "Where should the element sit?", "Choose one of the nine spatial positions.");
     position.Add("default", "center");
+    position.Add("recommended", "center");
     items.Add(position);
 
     ValueMap direction = BaseItem("direction", "Visual", "direction",
         "Where should this panel open?", "Choose the preferred opening direction.");
     direction.Add("default", "east");
+    direction.Add("recommended", "east");
     items.Add(direction);
 
     ValueMap rank = BaseItem("rank-order", "Structure", "rank_order",
         "Rank the implementation priorities", "Drag the rows into priority order, then accept the order.");
     AddChoices(rank, { "Correctness", "Usability", "Compactness", "Novelty" });
+    rank.Add("recommended", "[\"Correctness\",\"Usability\",\"Compactness\",\"Novelty\"]");
     items.Add(rank);
 
     ValueMap hierarchy = BaseItem("hierarchy", "Structure", "hierarchy_select",
@@ -169,6 +179,7 @@ CONSOLE_APP_MAIN
     AddNode(nodes, "inspector", "workspace", "Inspector");
     AddNode(nodes, "footer", "app", "Footer");
     hierarchy.Add("hierarchy", nodes);
+    hierarchy.Add("recommended", "workspace");
     items.Add(hierarchy);
 
     ValueMap curve = BaseItem("curve", "Structure", "curve",
@@ -176,12 +187,13 @@ CONSOLE_APP_MAIN
     ValueArray bezier;
     bezier.Add(0.25); bezier.Add(0.10); bezier.Add(0.25); bezier.Add(1.00);
     curve.Add("default", bezier);
+    curve.Add("recommended", "[0.25,0.10,0.25,1.00]");
     items.Add(curve);
 
     ValueMap args;
     args.Add("project", "TaskTrack");
     args.Add("title", "Agent needs your input");
-    args.Add("subtitle", "One compact example of every TaskTrack semantic question type");
+    args.Add("subtitle", "Recommended choices are highlighted. Accept a suggestion or choose another answer.");
     args.Add("actor", "TaskTrackExample");
     args.Add("store_root", AppendFileName(GetFileFolder(GetExeFilePath()), "tasktrack_data"));
     args.Add("reminder_minutes", 10);

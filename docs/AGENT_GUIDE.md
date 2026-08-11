@@ -18,8 +18,8 @@ When work reaches a genuinely human-dependent boundary:
 6. **Write the item `title` as the actual question.** Use `instruction` for one concrete criterion/action rather than repeating the title.
 7. **Use few categories.** Add a category only when it materially improves scanning; do not create one category per item.
 8. **Set `required=true` only when the work really cannot continue without that answer.** Optional qualification should remain optional.
-9. **Use `recommended` only when you have a defensible preference.** It is advisory display text, never human evidence and never a pre-answer.
-10. **Use `default` only as a neutral initial value.** A default is not a recommendation and does not make an item answered.
+9. **Give a recommendation whenever you have a defensible preferred answer.** Derive it from the source, tests, constraints, project rules, or analysis you already performed. For most blocking decision questions the human should receive a useful starting recommendation rather than a blank choice. Omit `recommended` only when you are genuinely neutral or do not have enough evidence to prefer an answer.
+10. **Keep recommendation and default semantics separate.** `recommended` is the agent's proposed answer and the one-click approval path. `default` is only a neutral initial control value. Neither becomes human evidence until the person explicitly acts.
 11. **Create durably, then continue asynchronously.** Keep the returned `task_id`; call `get_task` / `tasks/get` later rather than holding the original tool call open.
 12. **Consume `answer.data` as authority.** `answer.value` is compact display/log text; Markdown is a derived export.
 
@@ -84,9 +84,11 @@ Use categories only when they improve navigation. Prefer a few short nouns such 
 
 A single-category task does not need category navigation. Do not create one category per question.
 
-## Recommendations and defaults are different
+## Recommendations are the fast path
 
-`recommended` means the agent has a preference but the human remains the authority. It is shown separately and does not mark the item answered.
+A recommendation means: **the agent has done enough analysis to prefer this answer, but the human remains the authority.**
+
+TaskTrack shows recommended choices with Accent treatment and exposes an explicit **Accept** action in the question header. The recommendation itself is not checked, selected, answered, or persisted as human evidence. Only the human's explicit acceptance creates `answer.data`.
 
 ```json
 {
@@ -97,7 +99,34 @@ A single-category task does not need category navigation. Do not create one cate
 }
 ```
 
-`default` is only a neutral initial control value, useful for semantics such as `amount`, `range`, `position`, `direction`, and `curve`. A default is not evidence and is not a substitute for an answer.
+If you know which option you think is best, send it. Do not force the human to reverse-engineer your preferred answer from the instruction text.
+
+Use the canonical semantic value in `recommended`:
+
+- `confirm` → `Yes` / `No` (or the corresponding custom display label)
+- `single_choice`, `select` → one exact choice
+- `multi_choice` → comma-separated values such as `Layout, Tests`, or JSON-array text such as `["Layout","Tests"]`
+- `list_select` → one exact listed choice in the current V2 contract
+- `text`, `notes` → the proposed text when a concrete wording is actually useful
+- `number`, `amount`, `rating` → numeric text such as `24` or `4`
+- `range` → `low,high`, for example `320,900`; JSON `[320,900]` or `{"low":320,"high":900}` is also accepted by the human-acceptance path
+- `color` → canonical colour text such as `#2F6FED`
+- `gradient` → gradient option id
+- `position` → position token such as `center`
+- `direction` → direction token such as `east`
+- `rank_order` → full ordered JSON-array text, for example `["Correctness","Usability","Compactness"]`
+- `hierarchy_select` → node id; use comma/array form only when the item allows several selections
+- `curve` → four-number JSON-array text `[x1,y1,x2,y2]`
+
+A recommendation must come from evidence or a reasoned preference, not from guessing merely to populate the field.
+
+## Defaults are neutral presentation state
+
+`default` is only an initial control value. It is useful for semantics such as `amount`, `range`, `position`, `direction`, and `curve`, but it is **not** a recommendation and does not make an item answered.
+
+If you want the human to be able to approve your preferred answer quickly, use `recommended`. Do not use `default` as a substitute for a recommendation.
+
+It is valid for a default and recommendation to be the same value when both meanings apply—for example a slider may open at `24` while the agent also recommends `24`. They remain semantically separate until the human accepts.
 
 ## Use structured questions instead of prose
 
@@ -107,7 +136,8 @@ Prefer:
 {
   "type": "multi_choice",
   "title": "What should this correction include?",
-  "choices": ["Layout", "Styling", "Behaviour", "Tests"]
+  "choices": ["Layout", "Styling", "Behaviour", "Tests"],
+  "recommended": "Layout, Tests"
 }
 ```
 
@@ -134,13 +164,15 @@ Before creating a task, remove any item whose answer can be obtained by:
 
 If only one human decision remains, create one item. If several related decisions remain, group them in one task with a small number of categories.
 
+Before sending the task, make one final recommendation pass: for each remaining human decision, ask **“Given what I already know, can I responsibly propose the answer?”** If yes, populate `recommended`. If no, leave it absent rather than inventing one.
+
 ## Compact request example
 
 ```json
 {
   "project": "UiControls",
   "title": "Resolve panel behaviour before implementation continues",
-  "subtitle": "Three decisions are still genuinely subjective",
+  "subtitle": "Recommended choices are highlighted; accept them or choose another answer.",
   "reminder_minutes": 60,
   "nudge_on_agent_poll": true,
   "items": [
@@ -160,6 +192,7 @@ If only one human decision remains, create one item. If several related decision
       "title": "What should this correction include?",
       "instruction": "Select every independent area that should change.",
       "choices": ["Layout", "Styling", "Behaviour", "Tests"],
+      "recommended": "Layout, Tests",
       "required": true
     },
     {
@@ -200,4 +233,4 @@ items[].answer.data
 
 as the authoritative response. `answer.value` is compact human-readable text for logs/export. Do not scrape Markdown when structured MCP/JSON result data is available.
 
-For required items, treat TaskTrack completion as the durable signal that the human supplied the blocking evidence; do not silently substitute the agent's earlier recommendation or a neutral default.
+For required items, treat TaskTrack completion as the durable signal that the human supplied the blocking evidence. Never silently substitute the agent's earlier recommendation or a neutral default.
