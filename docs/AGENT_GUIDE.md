@@ -2,54 +2,63 @@
 
 ## What TaskTrack is for
 
-Use TaskTrack when the next useful fact requires a human decision, observation, visual judgement, or interactive action. Do not use it for facts that normal code/tests/tools can establish reliably.
+TaskTrack is the hand-off point for facts that genuinely require a person: judgement, preference, visual comparison, interactive behaviour, wording, placement, colour, prioritisation, hierarchy, numeric bounds, or another decision normal code/tests/tools cannot establish reliably.
 
-Good examples:
+Do **not** use TaskTrack merely because asking a person is easier. First inspect the repository, run the relevant test/tool, and use machine-readable evidence where it exists.
 
-- “Which of these three layout directions should I implement?”
-- “Which components should be preserved?”
-- “Choose the intended accent colour.”
-- “Where should this panel open?”
-- “Rank these implementation priorities.”
-- “Which node in this hierarchy is the intended target?”
-- “Shape the easing curve you want.”
+## The agent assembly algorithm
 
-## Agent decision rule
+When work reaches a genuinely human-dependent boundary:
 
-Ask one question per independent human decision. Choose the type by **meaning**, not by the control you imagine on screen.
+1. **State what is blocked.** Give the task one short objective in `title`; use `subtitle` only for one-line context.
+2. **Ask the minimum needed to continue.** Do not turn a small decision into a survey.
+3. **Keep related decisions together.** Prefer one coherent TaskTrack task over a series of modal-style interruptions.
+4. **Use one independent human decision per item.** Split unrelated decisions; do not split one decision into several near-duplicates.
+5. **Choose the semantic type by answer meaning, not by the control you imagine.** The agent never names U++ classes or specifies layout geometry.
+6. **Write the item `title` as the actual question.** Use `instruction` for one concrete criterion/action rather than repeating the title.
+7. **Use few categories.** Add a category only when it materially improves scanning; do not create one category per item.
+8. **Set `required=true` only when the work really cannot continue without that answer.** Optional qualification should remain optional.
+9. **Use `recommended` only when you have a defensible preference.** It is advisory display text, never human evidence and never a pre-answer.
+10. **Use `default` only as a neutral initial value.** A default is not a recommendation and does not make an item answered.
+11. **Create durably, then continue asynchronously.** Keep the returned `task_id`; call `get_task` / `tasks/get` later rather than holding the original tool call open.
+12. **Consume `answer.data` as authority.** `answer.value` is compact display/log text; Markdown is a derived export.
 
-- proposition with two outcomes → `confirm`
+## Choosing the semantic type
+
+- yes/no proposition → `confirm`
 - exactly one named alternative → `single_choice`
 - several independent alternatives → `multi_choice`
 - compact populated lookup → `select`
 - larger visible lookup → `list_select`
 - short exact wording → `text`
-- explanation/exception → `notes`
+- explanation, exception, constraint, or qualification → `notes`
 - exact numeric engineering value → `number`
 - subjective magnitude on a numeric scale → `amount`
-- acceptable low/high bounds → `range`
+- acceptable lower/upper bounds → `range`
 - small ordinal score → `rating`
-- visual colour → `color`
+- one colour → `color`
 - visual gradient treatment → `gradient`
-- spatial alignment/placement → `position`
-- travel/opening/orientation direction → `direction`
-- priority/sequence → `rank_order`
-- component/location in a tree → `hierarchy_select`
+- 3×3 spatial placement/alignment → `position`
+- 8-way opening/travel/orientation → `direction`
+- priority or sequence → `rank_order`
+- component/location in a hierarchy → `hierarchy_select`
 - easing/falloff/response shape → `curve`
 
-Do not send `widget`, `UiRadioButton`, `UiSliderEdit`, or other toolkit names.
+If a precise structured type exists, prefer it over `text` or `notes`.
 
-## Writing a good question
-
-`title` should be the actual decision, normally one short line. `instruction` should add a concrete criterion or action rather than restating the title.
+## Good question construction
 
 Good:
 
 ```json
 {
+  "id": "panel-direction",
+  "category": "Behaviour",
   "type": "direction",
   "title": "Where should this panel open?",
-  "instruction": "Choose the preferred opening direction."
+  "instruction": "Choose the direction that best preserves access to the canvas.",
+  "required": true,
+  "recommended": "east"
 }
 ```
 
@@ -59,41 +68,79 @@ Avoid:
 {
   "type": "direction",
   "title": "Direction",
-  "instruction": "Pick a direction."
+  "instruction": "Pick a direction.",
+  "widget": "UiMatrixSelector",
+  "width": 280
 }
 ```
 
+The second request makes the agent a GUI author. TaskTrack deliberately owns presentation.
+
 ## Categories
 
-Use a small number of category labels only when they improve scanning. The GUI automatically shows a category strip for multi-category tasks and hides it for single-category work.
+Use categories only when they improve navigation. Prefer a few short nouns such as:
 
-Useful categories are short nouns such as `Decision`, `Input`, `Visual`, `Structure`, `Responsive`, or `Persistence`.
+`Decision`, `Layout`, `Behaviour`, `Visual`, `Content`, `Validation`.
 
-Do not create a category for every question.
+A single-category task does not need category navigation. Do not create one category per question.
 
-## Recommendations
+## Recommendations and defaults are different
 
-Use `recommended` when the agent has a preference but wants the human to decide. It is displayed separately as “Agent suggests: …” and does not pre-answer the question.
+`recommended` means the agent has a preference but the human remains the authority. It is shown separately and does not mark the item answered.
 
-## Defaults
+```json
+{
+  "type": "single_choice",
+  "title": "Which implementation direction?",
+  "choices": ["Minimal", "Balanced", "Advanced"],
+  "recommended": "Balanced"
+}
+```
 
-`default` is an initial value for controls that require a starting state, especially `amount`, `range`, `position`, `direction`, and `curve`. A default is not evidence and does not make the question answered.
+`default` is only a neutral initial control value, useful for semantics such as `amount`, `range`, `position`, `direction`, and `curve`. A default is not evidence and is not a substitute for an answer.
 
-## Long human waits
+## Use structured questions instead of prose
 
-`create_task` returns only after the task has been saved durably. Do not hold the calling workflow open waiting for the human. Keep the returned `task_id`, then call `get_task`/`tasks/get` later.
+Prefer:
 
-A human may pause the task for minutes, hours, or a day. `paused` is active work, not failure or abandonment.
+```json
+{
+  "type": "multi_choice",
+  "title": "What should this correction include?",
+  "choices": ["Layout", "Styling", "Behaviour", "Tests"]
+}
+```
 
-Never infer that an old task should be cancelled. TaskTrack closes work only through an explicit human/agent close action.
+over:
+
+```json
+{
+  "type": "notes",
+  "title": "Tell me what should change"
+}
+```
+
+when the alternatives are already known. Free text is for information that cannot be represented cleanly by a structured type.
+
+## Do not over-ask
+
+Before creating a task, remove any item whose answer can be obtained by:
+
+- reading source/configuration;
+- running a deterministic test;
+- inspecting machine-readable output;
+- calling an available tool;
+- applying an already-established project rule.
+
+If only one human decision remains, create one item. If several related decisions remain, group them in one task with a small number of categories.
 
 ## Compact request example
 
 ```json
 {
-  "project": "UiDesigner",
-  "title": "Choose the panel behaviour",
-  "subtitle": "Three decisions needed before implementation continues",
+  "project": "UiControls",
+  "title": "Resolve panel behaviour before implementation continues",
+  "subtitle": "Three decisions are still genuinely subjective",
   "reminder_minutes": 60,
   "nudge_on_agent_poll": true,
   "items": [
@@ -101,26 +148,26 @@ Never infer that an old task should be cancelled. TaskTrack closes work only thr
       "id": "direction",
       "category": "Behaviour",
       "type": "direction",
-      "title": "Where should this panel open?",
-      "instruction": "Choose the preferred opening direction.",
+      "title": "Where should the panel open?",
+      "instruction": "Choose the direction that preserves the most canvas space.",
       "required": true,
-      "default": "east"
+      "recommended": "east"
     },
     {
       "id": "scope",
       "category": "Behaviour",
       "type": "multi_choice",
-      "title": "What should change?",
-      "instruction": "Select every area the implementation should include.",
-      "choices": ["Layout", "Style", "Behaviour", "Tests"],
+      "title": "What should this correction include?",
+      "instruction": "Select every independent area that should change.",
+      "choices": ["Layout", "Styling", "Behaviour", "Tests"],
       "required": true
     },
     {
       "id": "accent",
       "category": "Visual",
       "type": "color",
-      "title": "Choose the accent colour",
-      "colors": ["#2F6FED", "#7C4DFF", "#00A878", "#E26D2F"],
+      "title": "Which accent colour should be used?",
+      "colors": ["#2F6FED", "#7C4DFF", "#00A878"],
       "recommended": "#2F6FED",
       "required": true
     }
@@ -128,8 +175,29 @@ Never infer that an old task should be cancelled. TaskTrack closes work only thr
 }
 ```
 
+## Long human waits
+
+TaskTrack persists the request before `create_task` returns. A person may answer immediately, pause for hours, or return the next day. `paused` is active durable work, not failure or abandonment.
+
+Never infer that an old task should be cancelled. TaskTrack closes work only through an explicit human/agent close action.
+
+A typical agent flow is:
+
+1. call `create_task`;
+2. retain `task_id`;
+3. continue other safe work or yield;
+4. later call `get_task` / `tasks/get`;
+5. if still unfinished, do not fabricate an answer;
+6. when complete, consume the structured results and continue the blocked work.
+
 ## Result handling
 
-Treat `answer.data` as authoritative structured evidence. `answer.value` exists as a compact human-readable representation for logs/export.
+Use:
 
-Do not scrape the Markdown export when structured MCP/JSON result data is available.
+```text
+items[].answer.data
+```
+
+as the authoritative response. `answer.value` is compact human-readable text for logs/export. Do not scrape Markdown when structured MCP/JSON result data is available.
+
+For required items, treat TaskTrack completion as the durable signal that the human supplied the blocking evidence; do not silently substitute the agent's earlier recommendation or a neutral default.

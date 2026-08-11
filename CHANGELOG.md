@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased — 2026-08-11
+
+- Refreshed TaskTrack against current `upp_Ui/main` and removed the retired `UiCompositeColor` dependency from the question renderer; the custom-colour field now delegates to first-class `UiColorMatrix`.
+- Hardened the agent guide around the real operating boundary: ask only for genuinely human-dependent facts, ask the minimum needed to continue, choose types by semantic meaning, avoid GUI/layout instructions, distinguish recommendations from neutral defaults, retain `task_id`, and consume structured `answer.data`.
+- Added `docs/STATUS.md` as a compact recovery/validation checkpoint before authoritative Windows compilation.
+- Kept the existing V0.2 18-type schema and durable MCP contract unchanged so Windows validation can establish a clean baseline before any further semantic expansion.
+
 ## 0.2.0 — 2026-08-07
 
 - Integrated the TT-001-W1 Windows findings: U++ task-id formatting now uses the escaped literal `T` and `int64` formatter arguments, and JSON numeric Values are accepted correctly during save/load validation.

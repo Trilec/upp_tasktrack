@@ -6,8 +6,8 @@
     =================
 
     Data-driven U++ renderer for TaskTrack's semantic human questions plus the
-    four small specialist selectors that are not already represented directly
-    by the Ui package.
+    small specialist selectors that are not already represented directly by
+    the Ui package.
 
     Copyright (c) 2026 Curtis Edwards
     Licensed under the Apache License, Version 2.0. See LICENSE.
@@ -128,6 +128,36 @@ private:
     String value_;
 };
 
+// UiCompositeColor was retired from upp_Ui. TaskTrack keeps no replacement
+// colour state or picker: this narrow renderer adapter delegates both entirely
+// to the current first-class UiColorMatrix. The V0.2 renderer's obsolete
+// label/value layout hints are intentionally absorbed because UiColorMatrix now
+// owns that presentation.
+class TaskTrackColorField : public UiColorMatrix {
+public:
+    TaskTrackColorField& SetLabelStyle(const UiLabel::Style&) { return *this; }
+    TaskTrackColorField& SetValueStyle(const UiLabel::Style&) { return *this; }
+    TaskTrackColorField& SetLabel(const String& text)
+    {
+        SetColorLabel(0, text);
+        return *this;
+    }
+    TaskTrackColorField& SetColorCount(int count)
+    {
+        UiColorMatrix::SetColorCount(count);
+        return *this;
+    }
+    TaskTrackColorField& ShowValue(bool = true) { return *this; }
+    TaskTrackColorField& SetLabelWidth(int) { return *this; }
+    TaskTrackColorField& SetValueWidth(int) { return *this; }
+    TaskTrackColorField& SetColor(int index, Color color, bool fire = false)
+    {
+        UiColorMatrix::SetColor(index, color, fire);
+        return *this;
+    }
+    TaskTrackColorField& SetValueText(const String&) { return *this; }
+};
+
 class TaskTrackQuestionCtrl : public UiGroupPanel {
 public:
     typedef TaskTrackQuestionCtrl CLASSNAME;
@@ -204,7 +234,7 @@ private:
     UiTree tree_;
     UiBezierCurveField curve_;
     UiButton curve_confirm_;
-    UiCompositeColor custom_color_;
+    TaskTrackColorField custom_color_;
 };
 
 } // namespace Upp
