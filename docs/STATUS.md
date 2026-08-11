@@ -41,16 +41,22 @@ TOUCHED TASKTRACK PATHS:
 - `docs/STATUS.md`
 - `CHANGELOG.md`
 
+PUBLISHED:
+
+- TT-006 implementation commit: `aa0a45ae0ea3e58b68e9712460f46e903277d9f6` on TaskTrack `main`.
+- The implementation commit is one squashed descendant of the accepted TT-005 base; the accepted `TaskTrack/Core/TaskTrackCore.cpp` blob was deliberately preserved byte-for-byte to avoid carrying a broad staging rewrite.
+- `upp_Ui/main` dependency correction: `3ea8bed64aa5a3ef6d98caf108890296e6245eb5`.
+
 VALIDATION:
 
 - TT-005-W1 automated/runtime baseline: PASS.
-- TT-006 source/API review: in final publication review.
+- TT-006 source/API/diff review: PASS for intended scope, current Ui theme resolver APIs, `UiGroupPanel` header-content contract, current `UiRangeSliderEdit`, package membership and unchanged task schema.
 - TT-006 Windows compile/runtime: PENDING Gary.
 - TT-006 recommendation/header-content/category/range visual acceptance: PENDING Curt after Gary launches the fresh demo.
 
 NEXT:
 
-1. Publish TT-006 as one squashed TaskTrack `main` commit after final diff review.
-2. Gary validates TaskTrack against current `upp_Ui/main`, stopping at the first useful compiler/runtime failure without source edits.
+1. Gary validates current TaskTrack `main` and confirms `aa0a45ae0ea3e58b68e9712460f46e903277d9f6` is an ancestor of HEAD.
+2. Validate against current `upp_Ui/main` with `3ea8bed64aa5a3ef6d98caf108890296e6245eb5` as an ancestor, stopping at the first useful compiler/runtime failure without source edits.
 3. Mechanically verify recommendation highlighting/acceptance, non-overwrite/default separation, exact category bottom clearance and range display/persistence.
 4. Leave a fresh recommendation-rich 18-question demo open for Curt's visual acceptance.
