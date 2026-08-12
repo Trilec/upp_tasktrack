@@ -21,7 +21,8 @@ STATUS:
   - `propose_answer` → `recommended` required;
   - `clarify`, `mode=simplify` → `clarification` required; `recommended` optional.
 - MCP `get_task` exposes `agent_action_required` + `pending_requests`; `respond_to_request` resolves the compact request and validates any recommendation against the referenced semantic item. Agent replies never write `TaskTrackAnswer`.
-- Required/no-proposal cards expose `Suggest`; unanswered cards expose `?` for simplification. The relevant open card polls the durable sidecar while assistance is pending. A returned proposal becomes an advisory grey proposal and still requires explicit human acceptance before green/resolved evidence exists.
+- Required/no-proposal cards expose `Suggest`; unanswered cards expose `?` for simplification. The relevant open card polls the durable sidecar while assistance is pending. A returned proposal becomes advisory and still requires explicit human acceptance before green/resolved evidence exists.
+- If a red/escalated item receives a proposal, it remains visibly escalated until the human resolves it, but the header changes to `Suggested: ...` + `Accept` rather than incorrectly offering another `Suggest` action.
 - Clarification keeps the original question/instruction and adds the latest plain-language explanation; this remains a decision workspace, not a free-form chat surface.
 - Pending requests and responses survive MCP/client restarts. `task_id` remains the durable handle.
 
@@ -30,7 +31,8 @@ PUBLISHED IMPLEMENTATION CHECKPOINTS:
 - `4a78a171602719816dba4a504717a423cf386fd8` — durable agent request sidecar.
 - `38af2e832ef70cf5c4362e88d9633ed4cbb83efa` — compact MCP request/response contract.
 - `c55cf1de6d8ff2fcae417b4d5177c40c48bcac93` — four-state question assistance UI.
-- `a95d1b97bd12713d165c7c842692d1fe33a07824` — documentation/changelog boundary before final handoff status.
+- `3598a1aedcded91783134157a4f17e6d13c90fba` — keep proposals actionable after red/escalated review.
+- later documentation/status commits on `main` do not change the runtime contract.
 
 CURRENT DEPENDENCY CONTEXT:
 
