@@ -269,7 +269,7 @@ Value CreateTaskSchema()
     type_schema.Add("type", "string");
     type_schema.Add("enum", type_enum);
     type_schema.Add("description",
-        "Semantic human response type. Choose by meaning, never by GUI widget: confirm=yes/no; single_choice=one of choices; multi_choice=several choices; select=compact populated selection; list_select=larger visible list; text=short exact text; notes=qualification/free text; number=exact numeric value; amount=magnitude on a scale; range=low/high bounds; rating=small ordinal score; color=colour choice; gradient=visual gradient choice; position=3x3 placement; direction=8-way direction; rank_order=dragged priority order; hierarchy_select=tree node; curve=easing/falloff curve." );
+        "Semantic human response type. Choose by meaning, never by GUI widget: confirm=binary verification (ordinary human verification prefers choices=[\"Pass\",\"Fail\"]); single_choice=one of choices; multi_choice=several choices; select=compact populated selection; list_select=larger visible list; text=short exact text; notes=qualification/free text; number=exact numeric value; amount=magnitude on a scale; range=low/high bounds; rating=small ordinal score; color=colour choice; gradient=visual gradient choice; position=3x3 placement; direction=8-way direction; rank_order=dragged priority order; hierarchy_select=tree node; curve=easing/falloff curve." );
 
     ValueMap item_props;
     item_props.Add("id", StringSchema("Stable item id used in results and missing-required reports."));
@@ -297,7 +297,7 @@ Value CreateTaskSchema()
 
     ValueMap items;
     items.Add("type", "array"); items.Add("minItems", 1); items.Add("items", item_schema);
-    items.Add("description", "Ask only the minimum genuinely human-dependent decisions needed to continue. Keep related decisions in one task, one independent decision per item, prefer structured types, and provide recommended unless no responsible proposal is possible.");
+    items.Add("description", "Ask only the minimum genuinely human-dependent decisions needed to continue. Keep related decisions in one task, one independent decision per item, prefer structured types, and provide recommended unless no responsible proposal is possible. For ordinary human verification prefer type=confirm with choices=[\"Pass\",\"Fail\"]; use richer semantic types only when the requested evidence genuinely requires them.");
 
     ValueMap props;
     props.Add("task_id", StringSchema("Optional caller-supplied id beginning task-. Normally omit."));
@@ -324,7 +324,7 @@ Value BuildToolsList(bool modern)
     ValueArray tools;
     tools.Add(ToolSpec("version", "Return the TaskTrack application/protocol version.", EmptyObjectSchema(), true, false, true));
     tools.Add(ToolSpec("create_task",
-        "Create durable structured human decisions only when repository/tests/tools cannot establish the answer. Ask the minimum related decisions. Provide recommended for every item unless no responsible proposal is possible; required+missing recommendation means human decision required. Recommendations/defaults are not human evidence. Retain task_id; poll get_task.",
+        "Create durable structured human decisions only when repository/tests/tools cannot establish the answer. Ask the minimum related decisions. For ordinary human verification prefer type=confirm with choices=[\"Pass\",\"Fail\"] (boolean evidence, optional human note). Provide recommended for every item unless no responsible proposal is possible; required+missing recommendation means human decision required. Recommendations/defaults are not human evidence. Retain task_id; poll get_task.",
         CreateTaskSchema(), false, false, false));
     tools.Add(ToolSpec("get_task",
         "Return durable task state, human evidence, and pending human->agent requests. If agent_action_required=true, resolve pending_requests with respond_to_request before waiting again.",
@@ -358,7 +358,7 @@ Value BuildDiscoverResult()
     result.Add("supportedVersions", versions);
     result.Add("capabilities", capabilities);
     result.Add("instructions",
-        "TaskTrack: human-dependent decisions only after machine evidence. Ask minimum related items. Provide recommended unless no responsible proposal exists; required+missing recommendation means human decision. Retain task_id; poll get_task. If agent_action_required, process pending_requests: propose_answer=>recommended; clarify=>clarification, recommended optional; continue_with_judgement=>no response payload (human delegated judgement). Agent replies remain advisory until human action.");
+        "TaskTrack: human-dependent decisions only after machine evidence. For ordinary human verification prefer type=confirm with choices=[\"Pass\",\"Fail\"]. Ask minimum related items. Provide recommended unless no responsible proposal exists; required+missing recommendation means human decision. Retain task_id; poll get_task. If agent_action_required, process pending_requests: propose_answer=>recommended; clarify=>clarification, recommended optional; continue_with_judgement=>no response payload (human delegated judgement). Agent replies remain advisory until human action.");
     result.Add("ttlMs", 300000);
     result.Add("cacheScope", "public");
     AddModernMeta(result);
@@ -376,7 +376,7 @@ Value BuildLegacyInitialize(const Value& params)
     result.Add("protocolVersion", requested);
     result.Add("capabilities", caps);
     result.Add("serverInfo", ServerInfoValue());
-    result.Add("instructions", "TaskTrack: human-dependent decisions only. Provide recommended unless no responsible proposal exists. Poll get_task; resolve pending human requests with respond_to_request (propose_answer=>recommended; clarify=>clarification, recommended optional; continue_with_judgement=>no payload).");
+    result.Add("instructions", "TaskTrack: human-dependent decisions only. For ordinary verification prefer type=confirm with choices=[\"Pass\",\"Fail\"]. Provide recommended unless no responsible proposal exists. Poll get_task; resolve pending human requests with respond_to_request (propose_answer=>recommended; clarify=>clarification, recommended optional; continue_with_judgement=>no payload).");
     return Value(result);
 }
 

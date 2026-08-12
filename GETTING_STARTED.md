@@ -48,12 +48,29 @@ The task contains exactly one canonical V0.2 question of each type and is the pr
 
 ## MCP
 
-Register `build\TaskTrackMcp.exe` as an argument-free stdio MCP server. The main workflow is:
+`build\TaskTrackMcp.exe` is an **argument-free local stdio MCP server**. The main workflow is:
 
 1. agent calls `create_task`;
 2. TaskTrack persists it and optionally launches the GUI;
 3. agent retains `task_id` rather than waiting for the person;
 4. agent calls `get_task` later;
-5. completed results expose structured `answer.data`.
+5. `respond_to_request` resolves any pending human→agent assistance (`propose_answer`, `clarify`, `continue_with_judgement`);
+6. completed results expose structured `answer.data` (and optional `answer.note`).
 
 Read `docs/AGENT_GUIDE.md` before authoring real requests.
+
+## Host registration
+
+The executable is a stdio MCP server with no required command-line arguments:
+
+```text
+E:\apps\github\upp_tasktrack\build\TaskTrackMcp.exe
+```
+
+Host configuration is **not** modified by the repository. Final host acceptance will:
+
+1. install/register the published binary into **OpenCode** first;
+2. verify `opencode mcp list` shows the TaskTrack server connected;
+3. then install/register it into **Codex** second.
+
+Before documenting exact per-host commands, the validator inspects the actually installed CLI (`opencode --version` / `opencode mcp --help`, `codex --version` / `codex mcp --help`) and records the real command names rather than assuming syntax. No wrapper is added unless a host genuinely requires one.

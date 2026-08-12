@@ -240,6 +240,8 @@ private:
 
     void SyncFromModel();
     void CommitSimpleValue(const String& status, const String& value, const Value& data);
+    void CommitNote();
+    void BuildVerdictNote();
     void CommitCurrent();
     void CommitRankOrder(bool confirmed);
     void CommitHierarchy();
@@ -300,6 +302,9 @@ private:
     UiButton recommendation_accept_;
     UiButton recommendation_help_;
     UiButton recommendation_judgement_;
+    UiBoxLayout verdict_note_row_ { UiDirection::H };
+    UiLabel verdict_note_label_;
+    UiLineEdit verdict_note_;
     UiBoxLayout response_ { UiDirection::H };
 
     Array<UiRadioButton> radios_;

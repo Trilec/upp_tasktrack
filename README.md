@@ -6,17 +6,28 @@ An agent uses TaskTrack when automation has reached a fact or choice that genuin
 
 ## Agent semantics, not GUI widgets
 
-TaskTrack V0.2 exposes 18 semantic question types:
+TaskTrack exposes 18 semantic question types:
 
 `confirm`, `single_choice`, `multi_choice`, `select`, `list_select`, `text`, `notes`, `number`, `amount`, `range`, `rating`, `color`, `gradient`, `position`, `direction`, `rank_order`, `hierarchy_select`, `curve`.
 
 Agents never select `UiRadioButton`, `UiSliderEdit`, or another U++ class. They describe the human decision; TaskTrack chooses a compact renderer.
 
+## Verification fast path
+
+For ordinary human verification the preferred form is a `confirm` item with the semantic pair:
+
+```json
+"type": "confirm",
+"choices": ["Pass", "Fail"]
+```
+
+TaskTrack renders Pass/Fail specially: **Pass** is green, **Fail** is red, with accessible text labels and a compact optional verdict **Note** editor. `answer.data` is the boolean verdict authority (`true` for Pass, `false` for Fail); `answer.note` is optional supporting human evidence. This is presentation sugar over the canonical `confirm` type — it is not a new semantic type. Richer types remain available when the requested evidence genuinely needs them.
+
 ## Compact native UI
 
 Each question is a restrained `UiGroupPanel` using its title and subtitle support, with only the required response control in the content area. Questions live in a horizontal wrapping `UiBoxLayout` fixed-column grid, naturally moving from roughly three columns to two to one as space narrows.
 
-A multi-category request gets a small wrapped category strip. A single-category request does not waste space on it. The old extra “Verification” heading is gone, and generic per-card note editors are intentionally absent; free text is requested explicitly with `notes`.
+A multi-category request gets a small wrapped category strip. A single-category request does not waste space on it. The old extra “Verification” heading is gone, and generic per-card note editors are intentionally absent; free text is requested explicitly with `notes`. The only exception is the narrow optional verdict note attached to a Pass/Fail verification.
 
 ## Package layout
 
@@ -38,9 +49,13 @@ Task states are:
 
 Pause is indefinite. Optional inactivity reminders and agent-poll nudges may ask the operator what to do; TaskTrack never closes a task just because time passed.
 
+## Human / agent assistance
+
+TaskTrack uses four local workflow states: **grey** = a recommendation is available, **orange** = required item with no recommendation, **green** = human-resolved, **red** = required item still blocking after an attempted continuation. Human→agent assistance (`propose_answer`, `clarify`, `continue_with_judgement`) is stored in a separate durable `<task>.agent.json` sidecar with request lifecycle `pending → answered → (cancelled)`. An answered request is not a resolved human question; only explicit human action creates `answer.data`.
+
 ## Compatibility
 
-V0.2 writes schema version 2 and structured `answer.data`. V0.1 task files remain readable and are normalized to the new semantic vocabulary on load.
+TaskTrack writes schema version 2 and structured `answer.data`. V0.1 task files remain readable and are normalized to the current semantic vocabulary on load; legacy `pass_fail` remains a loader compatibility alias only.
 
 ## Build
 

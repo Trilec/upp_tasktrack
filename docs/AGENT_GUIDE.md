@@ -6,6 +6,22 @@ TaskTrack is for facts that genuinely require a person: judgement, preference, v
 
 Do not use TaskTrack merely because asking a person is easier. Use machine evidence first.
 
+## Simple verification is the fast path
+
+For ordinary human verification, prefer the most direct form:
+
+```json
+{
+  "type": "confirm",
+  "choices": ["Pass", "Fail"],
+  "title": "Does the result match the approved reference?"
+}
+```
+
+TaskTrack shows Pass (green) / Fail (red) and a compact optional **verdict note**. `answer.data` is the boolean verdict; `answer.note` is optional supporting human evidence and never answers the question by itself. This is the canonical `confirm` type — it is not a separate question type.
+
+Use a richer semantic type (`text`, `notes`, `single_choice`, `color`, `range`, …) only when the requested human evidence genuinely requires it. Do not create a separate `notes` item "just in case".
+
 ## Assembly algorithm
 
 When work reaches a human-dependent boundary:
@@ -25,7 +41,7 @@ When work reaches a human-dependent boundary:
 
 ## Semantic types
 
-- yes/no proposition → `confirm`
+- yes/no proposition → `confirm` (use `choices = ["Pass", "Fail"]` for ordinary verification)
 - exactly one named alternative → `single_choice`
 - several independent alternatives → `multi_choice`
 - compact populated lookup → `select`
@@ -195,4 +211,4 @@ If the client disconnects, reconnect with the same `task_id`. If task context is
 
 ## Result handling
 
-Use `items[].answer.data` as the authoritative human response. `answer.value` is compact display/log text. Never silently substitute an agent recommendation or neutral default for human evidence.
+Use `items[].answer.data` as the authoritative human response. `answer.value` is compact display/log text. `answer.note` is optional supporting human evidence (e.g. a Pass/Fail verdict note) and is never a substitute for `answer.data`. Never silently substitute an agent recommendation or neutral default for human evidence.

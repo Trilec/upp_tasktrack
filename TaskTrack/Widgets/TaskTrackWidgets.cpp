@@ -612,20 +612,70 @@ void TaskTrackQuestionCtrl::BuildConfirm()
         labels[1] = item.choices[1];
     }
     const char *values[] = { "yes", "no" };
+    bool pass_fail = TaskTrackIsPassFailConfirm(item);
     for(int i = 0; i < 2; ++i) {
         UiRadioButton& radio = radios_.Add();
         radio.SetText(labels[i]).SetGroup(group).SetVisual(UIRADIOVIS_PILLS).SetIndicatorSide(UiAlign::LEFT);
-        UiRadioButton::Style style = radio.GetStyle();
-        style.font = SansSerifZ(9);
-        radio.SetCustomStyle(style);
+        if(pass_fail) {
+            bool pass = TaskTrackConfirmLabelIsPass(labels[i]);
+            Color c = pass ? AnsweredGreen() : EscalatedRed();
+            UiRadioButton::Style st = radio.GetStyle();
+            st.font = SansSerifZ(9);
+            st.metrics.frame_enabled = true;
+            st.metrics.frame_width = DPI(1);
+            for(int k = 0; k < 4; ++k) {
+                st.palette.frame[k] = c;
+                st.palette.face[k] = UiFill::Solid(Blend(SColorPaper(), c, 8));
+                st.palette.ink[k] = c;
+            }
+            radio.SetCustomStyle(st);
+        }
+        else {
+            UiRadioButton::Style style = radio.GetStyle();
+            style.font = SansSerifZ(9);
+            radio.SetCustomStyle(style);
+        }
         String label = labels[i];
-        String value = values[i];
-        bool affirmative = i == 0;
-        radio.WhenAction = [=] { CommitSimpleValue(label, value, affirmative); };
-        response_.Add(radio).Fit().MinMain(DPI(84)).MinCross(DPI(26));
+        String value = pass_fail ? labels[i] : String(values[i]);
+        Value data = pass_fail ? Value(TaskTrackConfirmLabelIsPass(labels[i])) : Value(i == 0);
+        radio.WhenAction = [=] { CommitSimpleValue(label, value, data); };
+        response_.Add(radio).Fit().MinMain(DPI(pass_fail ? 74 : 84)).MinCross(DPI(26));
     }
     content_.Add(response_).Fit().MinCross(DPI(29)).AlignSelf(UiBoxLayout::Align::Stretch);
+    if(pass_fail)
+        BuildVerdictNote();
     (void)item;
+}
+
+void TaskTrackQuestionCtrl::BuildVerdictNote()
+{
+    verdict_note_label_.SetText("Note (optional)");
+    UiLabel::Style ls = UiTheme::ResolveLabel(UiTheme::GetContext(), UiRole::Subtle, UiTextSize::Body);
+    ls.font = SansSerifZ(8);
+    verdict_note_label_.SetCustomStyle(ls);
+    verdict_note_label_.SetAlign(UiAlign::LEFT, UiAlign::CENTER);
+
+    UiBaseEdit::Style es = UiTheme::ResolveEdit(UiTheme::GetContext(), UiRole::Standard);
+    es.font = SansSerifZ(9);
+    verdict_note_.SetCustomStyle(es);
+
+    verdict_note_.WhenChange = [=] { CommitNote(); };
+    verdict_note_row_.SetDirection(UiDirection::H).SetGap(DPI(4)).SetAlignItems(UiCrossAlign::Center);
+    verdict_note_row_.Add(verdict_note_label_).Fit().MinCross(DPI(20));
+    verdict_note_row_.Add(verdict_note_).Expand(1).MinCross(DPI(22)).MinMain(DPI(90));
+    content_.Add(verdict_note_row_).Fit().MinCross(DPI(28)).AlignSelf(UiBoxLayout::Align::Stretch);
+}
+
+void TaskTrackQuestionCtrl::CommitNote()
+{
+    if(syncing_ || !document_ || item_index_ < 0 || item_index_ >= document_->items.GetCount())
+        return;
+    String text = verdict_note_.GetTextUtf8();
+    TaskTrackAnswer& answer = document_->items[item_index_].answer;
+    if(answer.note != text) {
+        answer.note = text;
+        WhenChanged();
+    }
 }
 
 void TaskTrackQuestionCtrl::BuildSingleChoice()
@@ -1136,6 +1186,8 @@ void TaskTrackQuestionCtrl::SyncFromModel()
             radios_[0].SetChecked(yes);
             radios_[1].SetChecked(no);
         }
+        if(verdict_note_.GetParent())
+            verdict_note_.SetTextUtf8(answer.note);
     }
     else if(item.type == TaskTrackItemType::SingleChoice) {
         if(!radios_.IsEmpty()) {

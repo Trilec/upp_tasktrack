@@ -61,8 +61,9 @@ CONSOLE_APP_MAIN
     ValueArray items;
 
     ValueMap confirm = BaseItem("confirm", "Decision", "confirm",
-        "Apply this change?", "Confirm whether the agent should continue with this direction.");
-    confirm.Add("recommended", "Yes");
+        "Does the mobile layout match the approved reference?", "Confirm the visual result. Pass/Fail is the common verification fast path; use the optional note to record a condition or exception.");
+    AddChoices(confirm, { "Pass", "Fail" });
+    confirm.Add("recommended", "Pass");
     items.Add(confirm);
 
     ValueMap single = BaseItem("single-choice", "Decision", "single_choice",

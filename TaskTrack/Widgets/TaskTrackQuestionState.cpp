@@ -211,14 +211,31 @@ void TaskTrackQuestionCtrl::ApplyRecommendedChoiceStyles(const TaskTrackItem& it
         String labels[2] = { "Yes", "No" };
         if(item.choices.GetCount() == 2) { labels[0] = item.choices[0]; labels[1] = item.choices[1]; }
         String lower = ToLower(TrimBoth(item.recommended));
+        bool pass_fail = TaskTrackIsPassFailConfirm(item);
         for(int i = 0; i < 2; ++i) {
             bool recommended = show && (item.recommended == labels[i] ||
-                (i == 0 && (lower == "yes" || lower == "true" || lower == "1")) ||
-                (i == 1 && (lower == "no" || lower == "false" || lower == "0")));
-            UiRadioButton::Style style = UiTheme::ResolveRadioButton(UiTheme::GetContext(),
-                recommended ? UiRole::Subtle : UiRole::Standard, UIRADIOVIS_PILLS);
-            style.font = SansSerifZ(9);
-            radios_[i].SetCustomStyle(style);
+                (!pass_fail && i == 0 && (lower == "yes" || lower == "true" || lower == "1")) ||
+                (!pass_fail && i == 1 && (lower == "no" || lower == "false" || lower == "0")));
+            if(pass_fail) {
+                bool pass = TaskTrackConfirmLabelIsPass(labels[i]);
+                Color c = pass ? AnsweredGreen() : EscalatedRed();
+                UiRadioButton::Style style = UiTheme::ResolveRadioButton(UiTheme::GetContext(), UiRole::Standard, UIRADIOVIS_PILLS);
+                style.font = SansSerifZ(9);
+                style.metrics.frame_enabled = true;
+                style.metrics.frame_width = recommended ? DPI(2) : DPI(1);
+                for(int k = 0; k < 4; ++k) {
+                    style.palette.frame[k] = c;
+                    style.palette.face[k] = UiFill::Solid(Blend(SColorPaper(), c, recommended ? 16 : 8));
+                    style.palette.ink[k] = c;
+                }
+                radios_[i].SetCustomStyle(style);
+            }
+            else {
+                UiRadioButton::Style style = UiTheme::ResolveRadioButton(UiTheme::GetContext(),
+                    recommended ? UiRole::Subtle : UiRole::Standard, UIRADIOVIS_PILLS);
+                style.font = SansSerifZ(9);
+                radios_[i].SetCustomStyle(style);
+            }
         }
     }
     else if(item.type == TaskTrackItemType::SingleChoice && !radios_.IsEmpty()) {

@@ -1,35 +1,37 @@
 # TaskTrack Development Plan
 
-## Current baseline — V0.2 semantic question workflow
+## Current phase — agent-ready verification fast path (TT-010)
 
-The immediate goal is a stable Windows baseline where agents can request one of 18 semantic human response types and TaskTrack renders them compactly with current U++ Ui controls.
+TaskTrack's source/product/documentation work is complete for its first genuinely usable agent-testing state. The 18 semantic types remain canonical; ordinary human verification is represented as a `confirm` item with `choices = ["Pass", "Fail"]` (boolean `answer.data`, optional `answer.note`). The human→agent assistance loop is unified: `propose_answer`, `clarify`, `continue_with_judgement`, request lifecycle `pending → answered → (cancelled)`.
 
-### V0.2 deliverables
+## Completed milestones
 
-- [x] Preserve V0.1 task/MCP durability model.
-- [x] Integrate TT-001-W1 Windows fixes for U++ task-id formatting and JSON numeric Values.
-- [x] Replace the old verification-specific 10-type vocabulary with 18 semantic question types.
-- [x] Add schema V2 structured `answer.data` while retaining display text and V1 migration.
-- [x] Add `TaskTrack/Widgets` renderer package.
-- [x] Render each question as a restrained `UiGroupPanel` title/subtitle/content card.
-- [x] Use wrapped `UiBoxLayout` fixed-column composition for responsive 3/2/1-column behaviour.
-- [x] Add specialist Position9, Direction8, Range and Gradient controls only where existing Ui controls do not provide the semantic interaction directly.
-- [x] Remove generic notes rows from every card; keep `notes` as explicit semantic escape hatch.
-- [x] Update MCP tool schema and descriptions so agents choose semantic types, never U++ class names.
-- [x] Add a demo with exactly one question of each canonical type.
-- [x] Add agent/schema/question documentation and deterministic migration/regression tests.
-- [ ] Complete authoritative Windows Release + Debug matrix for the published V0.2 commit.
-- [ ] Complete Curt visual acceptance of compact shell/card proportions and all 18 controls.
-- [ ] Complete live GUI autosave and reminder acceptance that was not manually exercised in TT-001-W1.
+- **V0.1** — durable task model, GUI, MCP, pause/reminders, exports, tests, acceptance materials.
+- **TT-001-W1** — Windows fixes (U++ task-id formatting, JSON numeric Values).
+- **V0.2** — 18 semantic question types, schema V2 structured `answer.data`, `TaskTrack/Widgets` renderer, responsive equal-width card grid, semantic MCP vocabulary.
+- **TT-003/004/005/006** — deterministic equal-width columns, category clipping fixes, compact header, native `UiRangeSliderEdit`, timer-id and teardown crash fixes.
+- **TT-007** — local workflow states (grey/orange/green/red), actionable recommendations.
+- **TT-008-W1** — 8px question-body inset, native range, accepted.
+- **TT-009** — durable two-way human→agent assistance (sidecar) + four-state workflow.
+- **TT-009-R1** — unified assistance protocol (`pending/answered/cancelled`, added `continue_with_judgement`), legacy `resolved` migration.
+- **TT-010** — Pass/Fail verification fast path, optional verdict note, agent-facing MCP/documentation finalized. Source + deterministic tests complete.
 
-## After V0.2 acceptance
+## Remaining blocking phase
 
-Keep the next work driven by real agent/human use rather than adding form-builder features pre-emptively. Likely candidates:
+The remaining work is authoritative platform/host acceptance, not new feature work:
 
-- richer visual option/reference images if actual workflows need them;
-- optional evidence attachment/capture;
-- recent-task/recovery inbox if concurrent agent use demonstrates the need;
-- tighter TaskTrack/AgentFlow integration through the same Core schema rather than a direct dependency;
+1. Freeze the code and run authoritative **Windows Release + Debug/BLITZ** validation.
+2. Install/register the MCP binary into **OpenCode first**, run unnamed-agent discovery + real TaskTrack dogfood.
+3. Install/register into **Codex second**, run unnamed-agent discovery + dogfood.
+4. **Curt visual acceptance** of the compact shell, Pass/Fail + note, four states, and assistance controls.
+
+## Deferred / speculative (explicitly not in scope until real use demands them)
+
+- visual option/reference images in questions;
+- evidence attachment/capture;
+- recent-task/recovery inbox;
+- accept-all and agent timeout/"accept my proposal and continue" affordances;
+- TaskTrack/AgentFlow integration through the same Core schema;
 - accessibility/keyboard passes for specialist selectors;
 - formal MCP Tasks-extension conformance coverage as host adoption matures.
 
@@ -38,6 +40,7 @@ Keep the next work driven by real agent/human use rather than adding form-builde
 - arbitrary agent-authored GUI JSON;
 - exposing U++ control names over MCP;
 - embedding TaskTrack into PatchTrack;
-- requiring StateMachine or AgentFlow dependencies for the V0.2 core;
+- requiring StateMachine or AgentFlow dependencies in the core;
 - automatic task expiry/closure;
-- uncontrolled accumulation of completed history.
+- uncontrolled accumulation of completed history;
+- adding a 19th semantic question type.

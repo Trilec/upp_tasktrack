@@ -6,7 +6,7 @@ TaskTrack exposes human **decision semantics**, not GUI widget names. An agent d
 
 | Type | Use when the human needs to… | Main request fields | Structured `answer.data` |
 | --- | --- | --- | --- |
-| `confirm` | confirm or refuse one proposition | optional two `choices` labels | boolean |
+| `confirm` | confirm or refuse one proposition / binary verification | optional two `choices` labels (`["Pass","Fail"]` for ordinary verification) | boolean |
 | `single_choice` | choose exactly one named alternative | `choices`, optional `recommended` | string |
 | `multi_choice` | choose several independent alternatives | `choices` | array of strings |
 | `select` | pick one item from a populated compact set | `choices` | string |
@@ -24,6 +24,18 @@ TaskTrack exposes human **decision semantics**, not GUI widget names. An agent d
 | `rank_order` | put named items into priority/order | `choices` | ordered array of strings |
 | `hierarchy_select` | choose one or more nodes in a hierarchy | `hierarchy`, `allow_multiple` | node id or array |
 | `curve` | choose/edit easing, transition or falloff behaviour | optional four-number `default` | `[x1,y1,x2,y2]` |
+
+## Pass/Fail verification fast path
+
+For ordinary human verification prefer a `confirm` item with exactly `choices = ["Pass", "Fail"]`. TaskTrack recognizes this pair and gives it a dedicated local presentation:
+
+- Pass renders green, Fail renders red (with accessible text labels; colour is never the only cue);
+- a compact optional **verdict note** editor is available under the verdict;
+- `answer.data` is the boolean authority (`true` Pass / `false` Fail);
+- `answer.value` is the compact display label (`Pass` / `Fail`);
+- `answer.note` is optional supporting human evidence and never answers the question by itself.
+
+This is presentation sugar over the canonical `confirm` type; it is **not** a new semantic type. Ordinary Yes/No and unrelated custom two-choice confirms remain unchanged.
 
 ## Renderer policy
 
@@ -48,7 +60,7 @@ Set `required=true` only when the calling workflow genuinely cannot continue wit
 
 ## Free text is the escape hatch
 
-Prefer a structured type whenever the answer can be represented precisely. Use `notes` when the useful response is inherently explanatory or exceptional. TaskTrack intentionally does not place a generic notes field under every question because that would consume space and encourage unstructured answers.
+Prefer a structured type whenever the answer can be represented precisely. Use `notes` when the useful response is inherently explanatory or exceptional. TaskTrack intentionally does not place a generic notes field under every question because that would consume space and encourage unstructured answers. The narrow optional verdict note on a Pass/Fail verification is a verification affordance, not a general notes row.
 
 ## Compatibility aliases
 

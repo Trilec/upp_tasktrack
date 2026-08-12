@@ -1,4 +1,4 @@
-# Windows convenience wrapper for TaskTrack V0.1.
+# Windows convenience wrapper for TaskTrack.
 # The normal U++ package build remains authoritative; this script repeats the
 # release builds and runs the deterministic core/MCP checks in one command.
 param(

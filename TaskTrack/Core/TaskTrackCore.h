@@ -352,11 +352,42 @@ inline String TaskTrackRecommendationSummary(const TaskTrackItem& item)
     return rec.GetCount() > 32 ? rec.Left(29) + "..." : rec;
 }
 
+// Pass/Fail verification fast path -------------------------------------
+// Ordinary human verification is represented as a confirm item with exactly
+// the semantic pair "Pass"/"Fail". This is presentation/authoring sugar over
+// the canonical confirm type; it is not a new semantic type. The verdict
+// remains boolean evidence (answer.data = true/false) with answer.value as a
+// compact display label. Ordinary Yes/No and unrelated custom confirms are
+// left unchanged.
+inline bool TaskTrackConfirmLabelIsPass(const String& label)
+{
+    String u = ToUpper(TrimBoth(label));
+    return u == "PASS" || u == "PASSED";
+}
+
+inline bool TaskTrackConfirmLabelIsFail(const String& label)
+{
+    String u = ToUpper(TrimBoth(label));
+    return u == "FAIL" || u == "FAILED";
+}
+
+inline bool TaskTrackIsPassFailConfirm(const TaskTrackItem& item)
+{
+    if(item.type != TaskTrackItemType::Confirm || item.choices.GetCount() != 2)
+        return false;
+    return (TaskTrackConfirmLabelIsPass(item.choices[0]) && TaskTrackConfirmLabelIsFail(item.choices[1])) ||
+           (TaskTrackConfirmLabelIsFail(item.choices[0]) && TaskTrackConfirmLabelIsPass(item.choices[1]));
+}
+
 inline bool TaskTrackApplyRecommendation(TaskTrackItem& item, bool overwrite_answer = false)
 {
     String rec = TrimBoth(item.recommended);
     if(rec.IsEmpty() || (item.answer.answered && !overwrite_answer))
         return false;
+
+    // Preserve any human-supplied verdict note; a recommendation must never
+    // silently erase supporting human evidence.
+    String preserved_note = item.answer.note;
 
     TaskTrackAnswer answer;
     answer.answered = true;
@@ -375,7 +406,11 @@ inline bool TaskTrackApplyRecommendation(TaskTrackItem& item, bool overwrite_ans
         if(!yes && !no)
             return false;
         answer.data = Value(yes);
-        answer.value = yes ? "yes" : "no";
+        if(TaskTrackIsPassFailConfirm(item))
+            answer.value = yes ? (TaskTrackConfirmLabelIsPass(item.choices[0]) ? item.choices[0] : item.choices[1])
+                               : (TaskTrackConfirmLabelIsFail(item.choices[0]) ? item.choices[0] : item.choices[1]);
+        else
+            answer.value = yes ? "yes" : "no";
         break;
     }
     case TaskTrackItemType::SingleChoice:
@@ -537,6 +572,7 @@ inline bool TaskTrackApplyRecommendation(TaskTrackItem& item, bool overwrite_ans
     }
 
     item.answer = pick(answer);
+    item.answer.note = preserved_note;
     return true;
 }
 

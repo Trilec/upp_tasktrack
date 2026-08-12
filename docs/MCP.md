@@ -1,15 +1,16 @@
 # TaskTrack MCP Contract
 
-TaskTrack MCP is a thin stdio bridge over the durable Core model.
+TaskTrack MCP is a thin stdio bridge over the durable Core model. `TaskTrackMcp.exe` is an argument-free local stdio server.
 
 ## Tools
 
 - `version` — version/schema/protocol information.
 - `create_task` — durably create structured human input; optionally launch GUI.
-- `get_task` — retrieve state and structured answers; also writes the optional poll-reminder marker.
+- `get_task` — retrieve state, structured answers, and pending human→agent requests.
 - `open_task` — launch GUI for an existing task.
 - `list_tasks` — recent tasks from a store.
 - `close_task` — explicitly close unfinished work.
+- `respond_to_request` — resolve one pending human→agent assistance request.
 
 ## Question vocabulary
 
@@ -17,7 +18,7 @@ TaskTrack MCP is a thin stdio bridge over the durable Core model.
 
 `confirm`, `single_choice`, `multi_choice`, `select`, `list_select`, `text`, `notes`, `number`, `amount`, `range`, `rating`, `color`, `gradient`, `position`, `direction`, `rank_order`, `hierarchy_select`, `curve`.
 
-The public MCP schema deliberately does **not** advertise V0.1 aliases even though the persistence loader accepts them for recovery/compatibility.
+For ordinary human verification prefer `confirm` with `choices = ["Pass", "Fail"]` (boolean `answer.data`, optional `answer.note`). The public MCP schema deliberately does **not** advertise V0.1 aliases (e.g. `pass_fail`) even though the persistence loader accepts them for recovery/compatibility.
 
 ## Durable asynchronous-by-design workflow
 
@@ -39,6 +40,24 @@ Modern task-capable clients receive a task handle from `create_task` and can cal
 
 `get_task` and `tasks/get` may update a separate poll marker when `nudge_on_agent_poll` is enabled. This marker is not human evidence and does not change task state. The GUI may use it to ask an inactive human whether they are still working.
 
+## Human → agent assistance
+
+`get_task` exposes `agent_action_required` plus compact `pending_requests[]` (`id`, `item_id`, `action`, and `mode` where applicable). Resolve them with `respond_to_request`.
+
+Canonical actions:
+
+- `propose_answer` → `recommended` required.
+- `clarify` (`mode=simplify`) → `clarification` required; `recommended` optional.
+- `continue_with_judgement` → no response payload (the human delegates the blocked judgement back to the agent).
+
+Request lifecycle:
+
+```text
+pending -> answered -> (cancelled)
+```
+
+An answered request is not a resolved human question. Agent responses are advisory and never write `TaskTrackAnswer`; only explicit human action creates `answer.data`.
+
 ## Result authority
 
-On completion, use `items[].answer.data` as structured evidence. `answer.value` is a compact display/log representation and Markdown is a derived export.
+On completion, use `items[].answer.data` as structured evidence. `answer.value` is a compact display/log representation; `answer.note` is optional supporting human evidence; Markdown is a derived export.

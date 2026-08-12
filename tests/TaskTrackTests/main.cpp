@@ -307,6 +307,81 @@ CONSOLE_APP_MAIN
 
     String sidecar = TaskTrackAgentChannelPath(path);
 
+    // TT-010: Pass/Fail is presentation sugar over the canonical confirm type.
+    TaskTrackItem pf_yn; pf_yn.type = TaskTrackItemType::Confirm; pf_yn.choices = V("Yes", "No");
+    t.Check(!TaskTrackIsPassFailConfirm(pf_yn), "ordinary Yes/No confirm was incorrectly specialized");
+    TaskTrackItem pf_custom; pf_custom.type = TaskTrackItemType::Confirm; pf_custom.choices = V("Approve", "Deny");
+    t.Check(!TaskTrackIsPassFailConfirm(pf_custom), "custom two-choice confirm was incorrectly specialized");
+    TaskTrackItem pf_rev; pf_rev.type = TaskTrackItemType::Confirm; pf_rev.choices = V("Fail", "Pass");
+    t.Check(TaskTrackIsPassFailConfirm(pf_rev), "reversed Pass/Fail confirm not recognized");
+
+    ValueMap pf_args;
+    pf_args.Add("task_id", TaskTrackMakeTaskId());
+    pf_args.Add("title", "Pass/Fail verification");
+    pf_args.Add("store_root", root);
+    ValueArray pf_items;
+    ValueMap pf; pf.Add("id", "verify"); pf.Add("type", "confirm"); pf.Add("title", "Does it match?"); pf.Add("required", true);
+    pf.Add("choices", Strings(V("Pass", "Fail")));
+    pf_items.Add(pf);
+    pf_args.Add("items", pf_items);
+    TaskTrackDocument pfdoc; String pfpath, pferr;
+    t.Check(TaskTrackCreateFromArguments(pf_args, pfdoc, pfpath, pferr), "create pass/fail task failed: " + pferr);
+    t.Check(TaskTrackIsPassFailConfirm(pfdoc.items[0]), "created Pass/Fail confirm not recognized");
+
+    // Pass recommendation -> boolean true, compact value Pass; advisory, no pre-answer.
+    pfdoc.items[0].answer = TaskTrackAnswer();
+    pfdoc.items[0].recommended = "Pass";
+    t.Check(!pfdoc.items[0].answer.answered, "Pass recommendation pre-answered before acceptance");
+    t.Check(TaskTrackApplyRecommendation(pfdoc.items[0]), "Pass recommendation was not accepted");
+    t.Check(pfdoc.items[0].answer.data.Is<bool>() && (bool)pfdoc.items[0].answer.data,
+            "Pass did not produce boolean true evidence");
+    t.Check(pfdoc.items[0].answer.value == "Pass", "Pass evidence value is not the compact display form");
+
+    // Fail recommendation -> boolean false, compact value Fail.
+    pfdoc.items[0].answer = TaskTrackAnswer();
+    pfdoc.items[0].recommended = "Fail";
+    t.Check(!pfdoc.items[0].answer.answered, "Fail recommendation pre-answered before acceptance");
+    t.Check(TaskTrackApplyRecommendation(pfdoc.items[0]), "Fail recommendation was not accepted");
+    t.Check(pfdoc.items[0].answer.data.Is<bool>() && !(bool)pfdoc.items[0].answer.data,
+            "Fail did not produce boolean false evidence");
+    t.Check(pfdoc.items[0].answer.value == "Fail", "Fail evidence value is not the compact display form");
+
+    // Optional verdict note: note alone does not answer; persists; round-trips; returned in status.
+    pfdoc.items[0].answer = TaskTrackAnswer();
+    pfdoc.items[0].answer.note = "Narrow viewport only";
+    t.Check(!pfdoc.items[0].answer.answered, "note alone marked the question answered");
+    t.Check(!TaskTrackCanComplete(pfdoc), "note alone cleared the required completion gate");
+    t.Check(TaskTrackSave(pfpath, pfdoc, pferr), "note save failed: " + pferr);
+    TaskTrackDocument pfloaded;
+    t.Check(TaskTrackLoad(pfpath, pfloaded, pferr), "note reload failed: " + pferr);
+    t.Check(pfloaded.items[0].answer.note == "Narrow viewport only", "note did not round-trip through JSON");
+    Value pf_status = TaskTrackStatusValue(pfloaded, pfpath, true);
+    String pf_status_json = AsJSON(pf_status, false);
+    t.Check(pf_status_json.Find("Narrow viewport only") >= 0, "note was not returned in result/status evidence");
+
+    // Recommendation acceptance preserves an existing human note and still creates boolean evidence.
+    pfdoc.items[0].answer = TaskTrackAnswer();
+    pfdoc.items[0].answer.note = "Keep this note";
+    pfdoc.items[0].recommended = "Pass";
+    t.Check(TaskTrackApplyRecommendation(pfdoc.items[0]), "recommendation accept failed");
+    t.Check(pfdoc.items[0].answer.note == "Keep this note", "recommendation Accept erased the human note");
+    t.Check(pfdoc.items[0].answer.data.Is<bool>() && (bool)pfdoc.items[0].answer.data,
+            "recommendation Accept did not create boolean evidence");
+
+    // Verdict fields and note are independent; a verdict change preserves the note.
+    TaskTrackAnswer verdict_switch;
+    verdict_switch.answered = true; verdict_switch.value = "Fail"; verdict_switch.data = Value(false); verdict_switch.note = "still here";
+    t.Check(verdict_switch.note == "still here", "verdict change lost the note");
+
+    // Canonical confirm stays confirm; no new pass_fail wire type.
+    t.Check(TaskTrackItemTypeName(TaskTrackItemType::Confirm) == "confirm", "canonical confirm type name changed");
+    t.Check(TaskTrackItemTypeName(TaskTrackItemType::Confirm).Find("pass_fail") < 0, "pass_fail leaked into canonical type name");
+    TaskTrackItemType legacy_pf_type = TaskTrackItemType::Confirm;
+    t.Check(TaskTrackParseItemType("pass_fail", legacy_pf_type) && legacy_pf_type == TaskTrackItemType::SingleChoice,
+            "legacy pass_fail did not remain loader-compatibility (single_choice)");
+
+    RemoveTaskArtifacts(pfpath, AsString(pf_args["task_id"]));
+
     // TT-009-R1 protocol: propose_answer requires recommended; lifecycle pending -> answered.
     String req_id, req_err;
     t.Check(TaskTrackQueueAgentRequest(path, task_id, "single", "propose_answer", String(), req_id, req_err),
