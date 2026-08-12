@@ -2,23 +2,51 @@
 
 using namespace Upp;
 
+static String GuiHelpText()
+{
+    return
+        "TaskTrack GUI\n"
+        "Native human decision and verification interface.\n"
+        "\n"
+        "Usage:\n"
+        "  TaskTrackGui.exe\n"
+        "      Choose an existing TaskTrack task.\n"
+        "  TaskTrackGui.exe --task <path>\n"
+        "      Open the specified task.\n"
+        "  TaskTrackGui.exe --help\n"
+        "      Show this help.\n"
+        "  TaskTrackGui.exe --version\n"
+        "      Show version information.\n"
+        "\n"
+        "Normally launched automatically by TaskTrackMcp.exe.";
+}
+
 GUI_APP_MAIN
 {
-    String task_path;
     const Vector<String>& cmd = CommandLine();
+    String task_path;
 
-    if(cmd.GetCount() == 2 && cmd[0] == "--task")
-        task_path = cmd[1];
-    else if(!cmd.IsEmpty()) {
-        Exclamation("Usage: TaskTrack [--task <tasktrack.json>]");
-        return;
-    }
-    else {
+    switch(TaskTrackClassifyGuiCommand(cmd)) {
+    case TaskTrackGuiCommand::Run: {
         FileSel fs;
         fs.Type("TaskTrack task", "*.tasktrack.json");
         if(!fs.ExecuteOpen("Open TaskTrack Task"))
             return;
         task_path = ~fs;
+        break;
+    }
+    case TaskTrackGuiCommand::OpenTask:
+        task_path = cmd[1];
+        break;
+    case TaskTrackGuiCommand::Help:
+        PromptOK(GuiHelpText());
+        return;
+    case TaskTrackGuiCommand::Version:
+        PromptOK(String("TaskTrack GUI\nTaskTrack version ") + TaskTrackVersion());
+        return;
+    default:
+        PromptOK(String("Unknown arguments.\n\n") + GuiHelpText());
+        return;
     }
 
     TaskTrackWindow window;

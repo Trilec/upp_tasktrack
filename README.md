@@ -32,12 +32,14 @@ A multi-category request gets a small wrapped category strip. A single-category 
 ## Package layout
 
 - `TaskTrack/Core` — schema, validation, persistence, recovery, lookup, results/export.
-- `TaskTrack/Widgets` — semantic question renderer and four small specialist selectors.
-- `TaskTrack/App` — compact native shell, categories, autosave, pause/reminders, export.
-- `TaskTrack/Mcp` — stdio MCP transport.
+- `TaskTrack/Widgets` — semantic question renderer and small specialist selectors.
+- `TaskTrack/App` — compact native GUI (`TaskTrackGui.exe`).
+- `TaskTrack/Mcp` — stdio MCP server (`TaskTrackMcp.exe`).
 - `examples/TaskTrackExample` — exactly one example of each canonical question type.
 - `tests/TaskTrackTests` — deterministic model/persistence/migration regression coverage.
 - `docs` — architecture, agent guide, semantic types, schema, MCP and Windows acceptance.
+
+The two executables form a pair and should normally live in the same directory. `TaskTrackGui.exe --task <path>` opens a task; `TaskTrackMcp.exe` is the agent-facing stdio server and launches `TaskTrackGui.exe` beside itself. See `GETTING_STARTED.md` for the `--help` / `--version` surface.
 
 ## Durability
 

@@ -132,6 +132,50 @@ bool   TaskTrackParseState(const String& text, TaskTrackState& state);
 String TaskTrackItemTypeName(TaskTrackItemType type);
 bool   TaskTrackParseItemType(const String& text, TaskTrackItemType& type);
 
+// Command-line surface (pure string classification, shared by App, Mcp and
+// tests). Kept GUI-independent so both executables and deterministic tests can
+// rely on one authority for the two-executable package.
+enum class TaskTrackGuiCommand { Run, OpenTask, Help, Version, Invalid };
+enum class TaskTrackMcpCommand { Server, OneShot, SelfTest, Help, Version, Invalid };
+
+// Single authority for the distributable GUI executable name beside Mcp.
+inline String TaskTrackGuiExecutableName()
+{
+#ifdef PLATFORM_WIN32
+    return "TaskTrackGui.exe";
+#else
+    return "TaskTrackGui";
+#endif
+}
+
+inline TaskTrackGuiCommand TaskTrackClassifyGuiCommand(const Vector<String>& cmd)
+{
+    if(cmd.IsEmpty())
+        return TaskTrackGuiCommand::Run;
+    if(cmd.GetCount() == 2 && cmd[0] == "--task")
+        return TaskTrackGuiCommand::OpenTask;
+    if(cmd.GetCount() == 1 && (cmd[0] == "--help" || cmd[0] == "-h" || cmd[0] == "/?" || cmd[0] == "-?"))
+        return TaskTrackGuiCommand::Help;
+    if(cmd.GetCount() == 1 && cmd[0] == "--version")
+        return TaskTrackGuiCommand::Version;
+    return TaskTrackGuiCommand::Invalid;
+}
+
+inline TaskTrackMcpCommand TaskTrackClassifyMcpCommand(const Vector<String>& cmd)
+{
+    if(cmd.IsEmpty())
+        return TaskTrackMcpCommand::Server;
+    if(cmd.GetCount() == 2 && cmd[0] == "--oneshot")
+        return TaskTrackMcpCommand::OneShot;
+    if(cmd.GetCount() == 1 && cmd[0] == "--selftest")
+        return TaskTrackMcpCommand::SelfTest;
+    if(cmd.GetCount() == 1 && (cmd[0] == "--help" || cmd[0] == "-h" || cmd[0] == "/?" || cmd[0] == "-?"))
+        return TaskTrackMcpCommand::Help;
+    if(cmd.GetCount() == 1 && cmd[0] == "--version")
+        return TaskTrackMcpCommand::Version;
+    return TaskTrackMcpCommand::Invalid;
+}
+
 String TaskTrackMakeTaskId();
 String TaskTrackDefaultStoreRoot();
 String TaskTrackMakeTaskPath(const String& store_root, const String& task_id);

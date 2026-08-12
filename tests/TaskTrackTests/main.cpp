@@ -382,6 +382,39 @@ CONSOLE_APP_MAIN
 
     RemoveTaskArtifacts(pfpath, AsString(pf_args["task_id"]));
 
+    // TT-010-R1: shared CLI classification and the two-executable package names.
+    t.Check(TaskTrackClassifyGuiCommand(Vector<String>()) == TaskTrackGuiCommand::Run,
+            "GUI no-arg did not select the file-picker run path");
+    t.Check(TaskTrackClassifyGuiCommand(V("--task", "x")) == TaskTrackGuiCommand::OpenTask,
+            "GUI --task was not recognized");
+    t.Check(TaskTrackClassifyGuiCommand(V("--task")) == TaskTrackGuiCommand::Invalid,
+            "GUI --task without a path was accepted");
+    t.Check(TaskTrackClassifyGuiCommand(V("--task", "a", "b")) == TaskTrackGuiCommand::Invalid,
+            "GUI --task with extra args was accepted");
+    t.Check(TaskTrackClassifyGuiCommand(V("--help")) == TaskTrackGuiCommand::Help, "GUI --help not recognized");
+    t.Check(TaskTrackClassifyGuiCommand(V("-h")) == TaskTrackGuiCommand::Help, "GUI -h not recognized");
+    t.Check(TaskTrackClassifyGuiCommand(V("--version")) == TaskTrackGuiCommand::Version, "GUI --version not recognized");
+    t.Check(TaskTrackClassifyGuiCommand(V("bogus")) == TaskTrackGuiCommand::Invalid, "GUI unknown arg not rejected");
+
+    t.Check(TaskTrackClassifyMcpCommand(Vector<String>()) == TaskTrackMcpCommand::Server,
+            "MCP no-arg did not select stdio server mode");
+    t.Check(TaskTrackClassifyMcpCommand(V("--oneshot", "f.json")) == TaskTrackMcpCommand::OneShot,
+            "MCP --oneshot was not recognized");
+    t.Check(TaskTrackClassifyMcpCommand(V("--selftest")) == TaskTrackMcpCommand::SelfTest,
+            "MCP --selftest was not recognized");
+    t.Check(TaskTrackClassifyMcpCommand(V("--help")) == TaskTrackMcpCommand::Help, "MCP --help not recognized");
+    t.Check(TaskTrackClassifyMcpCommand(V("--version")) == TaskTrackMcpCommand::Version, "MCP --version not recognized");
+    t.Check(TaskTrackClassifyMcpCommand(V("bogus")) == TaskTrackMcpCommand::Invalid, "MCP unknown arg not rejected");
+    t.Check(TaskTrackClassifyMcpCommand(V("--help", "extra")) == TaskTrackMcpCommand::Invalid, "MCP --help with extra args accepted");
+
+    // The runtime GUI launch target must be TaskTrackGui, not the stale TaskTrack.exe.
+    String gui_name = TaskTrackGuiExecutableName();
+    t.Check(gui_name.Find("TaskTrackGui") >= 0, "GUI executable name is not TaskTrackGui");
+    t.Check(gui_name.Find("TaskTrack.exe") < 0, "stale TaskTrack.exe is the runtime GUI launch target");
+#ifdef PLATFORM_WIN32
+    t.Check(gui_name == "TaskTrackGui.exe", "Windows GUI executable name is not TaskTrackGui.exe");
+#endif
+
     // TT-009-R1 protocol: propose_answer requires recommended; lifecycle pending -> answered.
     String req_id, req_err;
     t.Check(TaskTrackQueueAgentRequest(path, task_id, "single", "propose_answer", String(), req_id, req_err),

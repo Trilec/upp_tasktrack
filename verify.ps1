@@ -59,7 +59,7 @@ New-Item -ItemType Directory -Force -Path $buildDir | Out-Null
 New-Item -ItemType Directory -Force -Path $outDir | Out-Null
 
 Run-Step "Build TaskTrack GUI" {
-    Build-UppPackage -Package "TaskTrack/App" -Target "TaskTrack" -Gui
+    Build-UppPackage -Package "TaskTrack/App" -Target "TaskTrackGui" -Gui
 }
 
 Run-Step "Build TaskTrack MCP" {
@@ -82,7 +82,7 @@ Run-Step "MCP selftest" {
     & (Join-Path $buildDir "TaskTrackMcp.exe") --selftest
 }
 
-foreach($exe in @("TaskTrack.exe", "TaskTrackMcp.exe", "TaskTrackTests.exe", "TaskTrackExample.exe")) {
+foreach($exe in @("TaskTrackGui.exe", "TaskTrackMcp.exe", "TaskTrackTests.exe", "TaskTrackExample.exe")) {
     $path = Join-Path $buildDir $exe
     if(!(Test-Path -LiteralPath $path)) {
         throw "Expected build output is missing: $path"

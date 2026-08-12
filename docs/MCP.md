@@ -1,6 +1,20 @@
 # TaskTrack MCP Contract
 
-TaskTrack MCP is a thin stdio bridge over the durable Core model. `TaskTrackMcp.exe` is an argument-free local stdio server.
+TaskTrack MCP is a thin stdio bridge over the durable Core model. `TaskTrackMcp.exe` is an argument-free local stdio server; it runs alongside `TaskTrackGui.exe` (the native human GUI) and launches it with `--task <path>` when a task needs a human.
+
+## CLI
+
+```text
+TaskTrackGui.exe                choose an existing task
+TaskTrackGui.exe --task <path>  open a specific task
+TaskTrackGui.exe --help         GUI usage dialog
+TaskTrackGui.exe --version      version dialog
+
+TaskTrackMcp.exe                run the stdio MCP server (no stdout banner)
+TaskTrackMcp.exe --help         MCP usage
+TaskTrackMcp.exe --version      version/schema/protocol summary
+TaskTrackMcp.exe --selftest     deterministic MCP self-test
+```
 
 ## Tools
 

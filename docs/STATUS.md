@@ -9,6 +9,7 @@ BASE: `27ba66082b0eb078090695ba239c7f986b0f2d1e` on `main`
 - **TT-009 PASS** — source/API/package/diff review + deterministic tests accepted; four-state workflow and durable human→agent assistance implemented on `main`.
 - **TT-009-R1 PASS** — unified the assistance protocol: request lifecycle `pending → answered → (cancelled)`; added `continue_with_judgement`; legacy sidecar `resolved` migrates to `answered`; new sidecars never emit request status `resolved`. Published at `149d477`; deterministic baseline 97 passed.
 - **TT-010 implemented (source/product/docs)** — Pass/Fail verification fast path over canonical `confirm` (`choices = ["Pass","Fail"]`), boolean `answer.data`, optional verdict `answer.note`, agent-facing MCP/documentation finalized. Deterministic baseline after TT-010: 123 passed, 0 failed; MCP selftest ok.
+- **TT-010-R1** — executable roles clarified: `TaskTrackGui.exe` (native human GUI) + `TaskTrackMcp.exe` (stdio MCP server), with concise `--help` / `--version` on both and a protocol-clean server stdout. The MCP server launches `TaskTrackGui.exe --task <path>` beside itself.
 - **Runtime/platform/host acceptance is still PENDING.** No authoritative Windows Release + Debug/BLITZ, live-GUI, OpenCode, or Codex acceptance has been claimed yet.
 
 ## TT-009/TT-009-R1 reference detail

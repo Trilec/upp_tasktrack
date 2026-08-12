@@ -26,7 +26,18 @@ Required:
 
 ## Debug/BLITZ
 
-Build and run the same four packages with CLANG x64 Debug/BLITZ. Any U++ assertion, access violation, heap diagnostic, or abnormal shutdown is a FAIL. Close a running `build\TaskTrack.exe` before rebuilding it; Windows executable locking is not a source failure.
+Build and run the same four packages with CLANG x64 Debug/BLITZ. Any U++ assertion, access violation, heap diagnostic, or abnormal shutdown is a FAIL. Close a running `build\TaskTrackGui.exe` before rebuilding it; Windows executable locking is not a source failure.
+
+## CLI
+
+Exercise each executable's self-describing surface:
+
+```text
+TaskTrackGui.exe --help / --version   (GUI usage/version dialog)
+TaskTrackGui.exe                      (file picker; no console window appears)
+TaskTrackMcp.exe --help / --version / --selftest
+TaskTrackMcp.exe                      (stdio server; no banner on stdout)
+```
 
 ## Tests / selftest
 
@@ -34,7 +45,7 @@ Build and run the same four packages with CLANG x64 Debug/BLITZ. Any U++ asserti
 
 ## 18 controls
 
-Generate the demo with `TaskTrackExample.exe` and open it with `TaskTrack.exe --task "<path>"`. The document must be schema V2 with exactly 18 questions, one of each canonical type: confirm, single_choice, multi_choice, select, list_select, text, notes, number, amount, range, rating, color, gradient, position, direction, rank_order, hierarchy_select, curve. Every control must render and interact, with structured `answer.data` preserved (boolean, arrays, numbers, `{low,high}`, ordered arrays, node ids, curves).
+Generate the demo with `TaskTrackExample.exe` and open it with `TaskTrackGui.exe --task "<path>"`. The document must be schema V2 with exactly 18 questions, one of each canonical type: confirm, single_choice, multi_choice, select, list_select, text, notes, number, amount, range, rating, color, gradient, position, direction, rank_order, hierarchy_select, curve. Every control must render and interact, with structured `answer.data` preserved (boolean, arrays, numbers, `{low,high}`, ordered arrays, node ids, curves).
 
 ## Pass/Fail + optional note
 

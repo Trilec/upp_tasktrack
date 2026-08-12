@@ -23,14 +23,30 @@ powershell -ExecutionPolicy Bypass -File .\verify.ps1 -UppRoot E:\upp-18468
 
 This builds directly into `build`:
 
-- `TaskTrack.exe`
-- `TaskTrackMcp.exe`
+- `TaskTrackGui.exe` — native human GUI
+- `TaskTrackMcp.exe` — stdio MCP server
 - `TaskTrackTests.exe`
 - `TaskTrackExample.exe`
 
 and runs `TaskTrackTests.exe` plus `TaskTrackMcp.exe --selftest`.
 
-Do not run the wrapper while `TaskTrack.exe` from the same build path is still open on Windows; the running executable may prevent `ld.lld` from replacing it.
+Do not run the wrapper while `TaskTrackGui.exe` from the same build path is still open on Windows; the running executable may prevent `ld.lld` from replacing it.
+
+## CLI
+
+```text
+TaskTrackGui.exe                choose an existing task
+TaskTrackGui.exe --task <path>  open a specific task
+TaskTrackGui.exe --help         show GUI usage
+TaskTrackGui.exe --version      show version
+
+TaskTrackMcp.exe                run the stdio MCP server
+TaskTrackMcp.exe --help         show MCP usage
+TaskTrackMcp.exe --version      show version/schema/protocol
+TaskTrackMcp.exe --selftest     run deterministic MCP self-test
+```
+
+Both executables should normally be placed in the same directory. `TaskTrackMcp.exe` launches `TaskTrackGui.exe --task <path>` beside itself.
 
 ## Generate the 18-type demo
 
@@ -41,7 +57,7 @@ Do not run the wrapper while `TaskTrack.exe` from the same build path is still o
 The example prints a durable `.tasktrack.json` path. Open it with:
 
 ```powershell
-.\build\TaskTrack.exe --task "<printed path>"
+.\build\TaskTrackGui.exe --task "<printed path>"
 ```
 
 The task contains exactly one canonical V0.2 question of each type and is the preferred first visual/interaction acceptance surface.

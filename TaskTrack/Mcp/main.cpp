@@ -383,11 +383,7 @@ Value BuildLegacyInitialize(const Value& params)
 bool LaunchTaskGui(const String& task_path, String& error)
 {
     String folder = GetFileFolder(GetExeFilePath());
-#ifdef PLATFORM_WIN32
-    String gui = AppendFileName(folder, "TaskTrack.exe");
-#else
-    String gui = AppendFileName(folder, "TaskTrack");
-#endif
+    String gui = AppendFileName(folder, TaskTrackGuiExecutableName());
     if(!FileExists(gui)) { error = "TaskTrack GUI executable not found beside MCP server: " + gui; return false; }
     Vector<String> args; args.Add("--task"); args.Add(task_path);
     LocalProcess process;
@@ -760,11 +756,60 @@ int RunSelfTest()
 
 } // namespace
 
+static String McpHelpText()
+{
+    String gui = TaskTrackGuiExecutableName();
+    return
+        "TaskTrack MCP\n"
+        "Human-in-the-loop decision and verification server for AI agents.\n"
+        "\n"
+        "Usage:\n"
+        "  TaskTrackMcp.exe\n"
+        "      Run the stdio MCP server.\n"
+        "  TaskTrackMcp.exe --help\n"
+        "      Show this help.\n"
+        "  TaskTrackMcp.exe --version\n"
+        "      Show version information.\n"
+        "  TaskTrackMcp.exe --selftest\n"
+        "      Run deterministic MCP self-test.\n"
+        "\n"
+        "Runtime:\n"
+        "  " + gui + " must be in the same directory.\n"
+        "  Human tasks are opened with:\n"
+        "      " + gui + " --task <task-file>\n"
+        "\n"
+        "Transport:\n"
+        "  stdio MCP\n"
+        "  No arguments are required when registered with OpenCode or Codex.";
+}
+
 CONSOLE_APP_MAIN
 {
     const Vector<String>& cmd = CommandLine();
-    if(cmd.GetCount() == 1 && cmd[0] == "--selftest") { SetExitCode(RunSelfTest()); return; }
-    if(cmd.GetCount() == 2 && cmd[0] == "--oneshot") { SetExitCode(RunOneShot(cmd[1])); return; }
-    if(!cmd.IsEmpty()) { Cout() << "TaskTrackMcp [--selftest] [--oneshot request.json]\n"; SetExitCode(2); return; }
-    SetExitCode(RunServer());
+    switch(TaskTrackClassifyMcpCommand(cmd)) {
+    case TaskTrackMcpCommand::Server:
+        SetExitCode(RunServer());
+        return;
+    case TaskTrackMcpCommand::OneShot:
+        SetExitCode(RunOneShot(cmd[1]));
+        return;
+    case TaskTrackMcpCommand::SelfTest:
+        SetExitCode(RunSelfTest());
+        return;
+    case TaskTrackMcpCommand::Help:
+        Cout() << McpHelpText() << "\n";
+        SetExitCode(0);
+        return;
+    case TaskTrackMcpCommand::Version:
+        Cout() << "TaskTrack MCP\n"
+               << "TaskTrack version " << TaskTrackVersion() << "\n"
+               << "schema version " << 2 << "\n"
+               << "MCP protocol " << CURRENT_PROTOCOL << "\n";
+        SetExitCode(0);
+        return;
+    default:
+        Cerr() << "Unknown TaskTrack MCP arguments.\n" << McpHelpText() << "\n";
+        SetExitCode(2);
+        return;
+    }
 }
