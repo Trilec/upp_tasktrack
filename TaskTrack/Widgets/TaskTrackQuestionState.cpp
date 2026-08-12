@@ -290,10 +290,17 @@ void TaskTrackQuestionCtrl::ApplyRecommendationPresentation()
             recommendation_header_.ItemAt(2).Fixed(0).MinMain(0);
         }
         else if(state == VISUAL_REQUIRED_PENDING || state == VISUAL_ATTENTION) {
-            recommendation_header_label_.SetText(state == VISUAL_ATTENTION ? "Required" : "Needs decision");
-            recommendation_accept_.SetText(proposal_pending_ ? "Waiting" : "Suggest");
-            recommendation_accept_.Enable(!proposal_pending_);
-            recommendation_header_.ItemAt(1).Fixed(DPI(58)).MinMain(DPI(58));
+            if(!item.recommended.IsEmpty()) {
+                recommendation_header_label_.SetText("Suggested: " + TaskTrackRecommendationSummary(item));
+                recommendation_accept_.SetText("Accept").Enable();
+                recommendation_header_.ItemAt(1).Fixed(DPI(50)).MinMain(DPI(50));
+            }
+            else {
+                recommendation_header_label_.SetText(state == VISUAL_ATTENTION ? "Required" : "Needs decision");
+                recommendation_accept_.SetText(proposal_pending_ ? "Waiting" : "Suggest");
+                recommendation_accept_.Enable(!proposal_pending_);
+                recommendation_header_.ItemAt(1).Fixed(DPI(58)).MinMain(DPI(58));
+            }
             recommendation_help_.SetText(clarification_pending_ ? "…" : "?");
             recommendation_help_.Enable(!clarification_pending_);
             recommendation_header_.ItemAt(2).Fixed(DPI(26)).MinMain(DPI(26));
