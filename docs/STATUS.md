@@ -2,51 +2,71 @@
 
 ## Recovery log — 2026-08-12
 
-BASE: `43cca36865e1b143ccf7095d7ec511ab255dbcfe` on `main`
+BASE: `0c8255149b8048da1a30be184dff836683dab860` on `main`
 
-TASK: TT-007 semantic human-decision visual states
+TASK: TT-009 durable human→agent assistance and four-state workflow
 
 STATUS:
 
-- TT-006-R1-W1 is accepted: Release and Debug/BLITZ builds PASS, TaskTrackTests 73/73, MCP selftest PASS, fresh `in_progress` question controls interactive, category switching/resizing stable, closed-task read-only behavior correct, 60-second soak clean, durable get/list recovery PASS, and TaskTrack MCP installed/connected in OpenCode.
-- TT-007 keeps the existing persistence/schema/MCP semantics and adds a TaskTrack-local visual state layer rather than changing global `UiRole::Standard` semantics.
-- Visual language is deterministic: suggested/unanswered = Accent/blue; answered by the human (manual or accepted suggestion) = light green face with a 2px green frame; required unanswered after a bulk-accept/submit review = Alert/red; optional unresolved = neutral.
-- Answered cards expose a compact green `Answered` / `Done` status in the GroupPanel header-content lane. Recommended unanswered cards retain `Suggested: ...` + `Accept`. Required review cards show `Needs input` in Alert styling.
-- `Accept suggestions` still applies only valid unanswered recommendations and never overwrites human evidence or promotes neutral defaults.
-- After bulk acceptance, TaskTrack computes remaining required questions. If any remain, it enters review mode, automatically opens the first affected category, marks affected categories Alert/red with a remaining count, marks the unresolved required cards red, and changes the footer action to `Review N required`.
-- Optional recommendation-free questions remain neutral and do not block completion.
-- Once all required review items are answered, review mode clears automatically. If no suggestions remain, the footer shows a green `Suggestions applied` state when the task contained recommendations.
-- A failed Submit/Accept-and-finish path activates the same red review route instead of only presenting opaque item IDs.
-- TT-006-R1 category-height preservation remains unchanged underneath this work.
+- TT-008-W1 is accepted: Release/BLITZ PASS, TaskTrackTests 73/73, MCP selftest PASS, 8px question-body inset PASS, native range presentation PASS, responsive layout PASS, no assertions/crashes.
+- Development remains directly on `main`; no TT-009 feature branch was created.
+- TaskTrack now uses four local workflow states rather than overloading global Ui roles:
+  - grey = normal agent proposal / suggested baseline;
+  - orange = required item with no responsible agent proposal;
+  - green = human-resolved, manually or by explicit proposal acceptance;
+  - red = required item still unresolved after attempted continuation/submit.
+- Recommendations are now the expected agent fast path: create-task guidance says to provide `recommended` unless no responsible proposal is possible. A required item without `recommended` intentionally means the human must decide it.
+- A durable `<task>.agent.json` sidecar carries human→agent assistance traffic separately from authoritative human answers. This prevents agent responses from racing GUI answer autosave or masquerading as `answer.data`.
+- Compact request actions are:
+  - `propose_answer` → agent must return `recommended`;
+  - `clarify` with `mode=simplify` → agent must return `clarification`; `recommended` is optional.
+- MCP now exposes `agent_action_required` and `pending_requests` from `get_task`, plus `respond_to_request` for agent replies. Replies are validated against the referenced semantic item and remain advisory.
+- Question headers expose `Suggest` when a required item has no proposal and `?` for plain-language clarification. Pending requests survive MCP/client restarts. While the GUI remains open, the relevant question polls its durable sidecar; a returned recommendation becomes the new grey proposal and still requires explicit human acceptance before the card becomes green.
+- Clarification preserves the original question/instruction and adds the latest plain-language explanation; TaskTrack does not become a free-form chat surface.
+- Existing recommendation acceptance, defaults-non-evidence, category rebuild, range, persistence and responsive-grid behavior are intended to remain unchanged.
 
-DEPENDENCY CONTEXT:
+PUBLISHED CHECKPOINTS:
 
-- Use current `upp_Ui/main`; required accepted ancestor remains `3ea8bed64aa5a3ef6d98caf108890296e6245eb5` or a descendant.
-- No Ui dependency changes are required for TT-007. The success/green state is intentionally local to TaskTrack; Ui currently exposes Standard/Subtle/Accent/Alert but no global Success role.
+- `4a78a171602719816dba4a504717a423cf386fd8` — durable agent request sidecar.
+- `38af2e832ef70cf5c4362e88d9633ed4cbb83efa` — compact MCP request/response contract.
+- `c55cf1de6d8ff2fcae417b4d5177c40c48bcac93` — four-state question assistance UI.
+- later documentation commits on `main` update the agent contract/status only.
 
-TOUCHED TASKTRACK PATHS:
+CURRENT DEPENDENCY CONTEXT:
+
+- Use current `upp_Ui/main`; TT-009 source review baseline was `5b398818a11db06e9a3a9511efaa7e6f190b7793` or a descendant.
+- No Ui source change is required for TT-009.
+
+CORE/MCP PATHS:
+
+- `TaskTrack/Core/TaskTrackAgent.h`
+- `TaskTrack/Core/Core.upp`
+- `TaskTrack/Mcp/TaskTrackAgentMcp.h`
+- `TaskTrack/Mcp/main.cpp`
+- `TaskTrack/Mcp/Mcp.upp`
+
+UI PATHS:
 
 - `TaskTrack/Widgets/TaskTrackWidgets.h`
-- `TaskTrack/App/TaskTrackApp.h`
-- `TaskTrack/App/TaskTrackApp.cpp`
+- `TaskTrack/Widgets/TaskTrackQuestionState.cpp`
+- `TaskTrack/Widgets/Widgets.upp`
+
+DOCUMENTATION:
+
+- `docs/AGENT_GUIDE.md`
 - `docs/STATUS.md`
-- `CHANGELOG.md`
-
-PUBLISHED:
-
-- TT-007 implementation checkpoint: `3b134306389919e0d4e01c3ae12f05750d6ee3e1` on `main`.
-- Publication was verified by re-reading the remote `main` ref and comparing against the accepted TT-006-R1 base. Net production scope is limited to the five paths listed above; no staging/temp files remain in the resulting tree.
 
 VALIDATION:
 
-- TT-006-R1-W1 baseline: PASS.
-- TT-007 source/API/diff review: PASS for intended state precedence, current Ui style/palette APIs, recommendation/default evidence separation, category routing and unchanged schema/dependency direction.
-- TT-007 Windows Release/Debug/runtime/visual acceptance: PENDING Gary.
+- TT-008-W1 baseline: PASS.
+- TT-009 source/API review: in final publication review.
+- TT-009 Windows Release/Debug/runtime/MCP/OpenCode dogfood: PENDING Gary.
 
 NEXT:
 
-1. Gary pulls current TaskTrack `main`, confirms `3b134306389919e0d4e01c3ae12f05750d6ee3e1` is an ancestor, and validates against current `upp_Ui/main`.
-2. Run Release + Debug/BLITZ + 73-test/MCP selftest regression.
-3. On a fresh task, confirm blue suggestions are not answers; accepting one turns the card green; `Accept suggestions` fills available recommendations, turns accepted cards green, routes to the first unresolved required category, and marks only those required gaps red.
-4. Confirm optional unresolved questions stay neutral, resolving required gaps clears red review state, and Submit remains explicit.
-5. Leave a review-state demo open for Curt visual acceptance.
+1. Verify final `main` diff from TT-008 and remote HEAD.
+2. Gary runs TT-009-W1 against current `upp_Ui/main`.
+3. Prove the four workflow colours and no regression in the accepted 18-question workspace.
+4. Prove `Suggest` creates durable `propose_answer`, MCP surfaces it, `respond_to_request` supplies a valid proposal, the open GUI updates, and only human Accept creates `answer.data`.
+5. Prove `?` creates `clarify/simplify`, the agent response survives reconnect and is shown without replacing the original question.
+6. Dogfood through the already-installed OpenCode TaskTrack MCP and leave the GUI open for Curt.
