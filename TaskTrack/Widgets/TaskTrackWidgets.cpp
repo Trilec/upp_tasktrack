@@ -504,7 +504,7 @@ TaskTrackQuestionCtrl::TaskTrackQuestionCtrl()
     SetCustomStyle(CompactQuestionStyle());
     SetHeaderMode(UiGroupPanel::Inside);
     SetContent(content_);
-    content_.SetDirection(UiDirection::V).SetGap(DPI(5)).SetInset(0);
+    content_.SetDirection(UiDirection::V).SetGap(DPI(5)).SetInset(DPI(8));
     response_.SetDirection(UiDirection::H)
         .SetGap(DPI(5), DPI(5))
         .SetInset(0)
@@ -524,6 +524,7 @@ TaskTrackQuestionCtrl::TaskTrackQuestionCtrl()
     notes_.SetPlaceholder("Optional note, exception, constraint, or instruction…");
     number_.ShowSpin(true);
     amount_.SetFieldWidth(DPI(66)).SetGap(DPI(5));
+    range_.SetInset(0); // The question body owns the shared card inset.
     unit_label_.SetCustomStyle(CompactLabelStyle(UiRole::Subtle, 8));
     unit_label_.SetAlign(UiAlign::LEFT, UiAlign::CENTER);
 
