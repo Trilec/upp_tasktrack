@@ -9,4 +9,5 @@ uses
 
 file
     TaskTrackWidgets.h,
-    TaskTrackWidgets.cpp;
+    TaskTrackWidgets.cpp,
+    TaskTrackQuestionState.cpp;
