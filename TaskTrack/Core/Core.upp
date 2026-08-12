@@ -3,4 +3,5 @@ uses
 
 file
     TaskTrackCore.h,
+    TaskTrackAgent.h,
     TaskTrackCore.cpp;
