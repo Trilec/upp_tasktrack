@@ -1,5 +1,6 @@
 #include <Core/Core.h>
 #include <TaskTrack/Core/TaskTrackCore.h>
+#include <TaskTrack/Core/TaskTrackAgent.h>
 
 using namespace Upp;
 
@@ -303,6 +304,113 @@ CONSOLE_APP_MAIN
     recovered.state = TaskTrackState::Completed;
     t.Check(TaskTrackSave(path, recovered, error), "completed state save failed");
     t.Check(TaskTrackLoad(path, loaded, error) && loaded.state == TaskTrackState::Completed, "completed state did not persist");
+
+    String sidecar = TaskTrackAgentChannelPath(path);
+
+    // TT-009-R1 protocol: propose_answer requires recommended; lifecycle pending -> answered.
+    String req_id, req_err;
+    t.Check(TaskTrackQueueAgentRequest(path, task_id, "single", "propose_answer", String(), req_id, req_err),
+            "queue propose_answer failed: " + req_err);
+    String dup_id, dup_err;
+    t.Check(TaskTrackQueueAgentRequest(path, task_id, "single", "propose_answer", String(), dup_id, dup_err) && dup_id == req_id,
+            "duplicate pending propose_answer was not reused");
+    t.Check(!TaskTrackResolveAgentRequest(path, task_id, req_id, String(), String(), req_err),
+            "propose_answer accepted without recommended");
+    t.Check(TaskTrackResolveAgentRequest(path, task_id, req_id, "A", String(), req_err),
+            "propose_answer resolve failed: " + req_err);
+
+    TaskTrackAgentChannel ch;
+    TaskTrackLoadAgentChannel(path, task_id, ch, req_err);
+    const TaskTrackAgentRequest* answered_req = nullptr;
+    for(const TaskTrackAgentRequest& r : ch.requests)
+        if(r.id == req_id) answered_req = &r;
+    t.Check(answered_req && answered_req->status == "answered",
+            "propose_answer did not reach request status answered");
+    String sidecar_text = LoadFile(sidecar);
+    t.Check(sidecar_text.Find("resolved") < 0, "newly emitted sidecar still uses resolved request status");
+    t.Check(sidecar_text.Find("answered") >= 0, "sidecar did not emit answered request status");
+
+    // propose_answer must never create human evidence.
+    TaskTrackDocument evidence_check;
+    TaskTrackLoad(path, evidence_check, req_err);
+    t.Check(!evidence_check.items[1].answer.answered, "agent recommendation fabricated human evidence");
+
+    // clarify requires clarification; recommended optional; lifecycle pending -> answered.
+    String cq_id, cq_err;
+    t.Check(TaskTrackQueueAgentRequest(path, task_id, "text", "clarify", String(), cq_id, cq_err),
+            "queue clarify failed: " + cq_err);
+    t.Check(!TaskTrackResolveAgentRequest(path, task_id, cq_id, String(), String(), cq_err),
+            "clarify accepted without clarification");
+    t.Check(TaskTrackResolveAgentRequest(path, task_id, cq_id, String(), "Short and clear", cq_err),
+            "clarify resolve failed: " + cq_err);
+    TaskTrackAgentChannel cch;
+    TaskTrackLoadAgentChannel(path, task_id, cch, cq_err);
+    bool clarify_answered = false;
+    for(const TaskTrackAgentRequest& r : cch.requests)
+        if(r.id == cq_id && r.status == "answered" && !r.clarification.IsEmpty()) clarify_answered = true;
+    t.Check(clarify_answered, "clarify did not reach answered with clarification preserved");
+    TaskTrackDocument clarify_evidence;
+    TaskTrackLoad(path, clarify_evidence, cq_err);
+    t.Check(!clarify_evidence.items[5].answer.answered, "clarification fabricated human evidence");
+
+    // continue_with_judgement: queues durably, duplicate reused, no payload required,
+    // pending -> answered, never creates human evidence.
+    String j_id, j_err;
+    t.Check(TaskTrackQueueAgentRequest(path, task_id, "confirm", "continue_with_judgement", String(), j_id, j_err),
+            "queue continue_with_judgement failed: " + j_err);
+    String j_dup, j_dup_err;
+    t.Check(TaskTrackQueueAgentRequest(path, task_id, "confirm", "continue_with_judgement", String(), j_dup, j_dup_err) && j_dup == j_id,
+            "duplicate pending continue_with_judgement was not reused");
+    TaskTrackAgentChannel jch;
+    TaskTrackLoadAgentChannel(path, task_id, jch, j_err);
+    ValueArray pending = TaskTrackPendingAgentRequestsValue(jch);
+    bool cwj_pending = false;
+    for(int i = 0; i < pending.GetCount(); ++i) {
+        Value p = pending[i];
+        if(AsString(p["action"]) == "continue_with_judgement" && AsString(p["id"]) == j_id) cwj_pending = true;
+    }
+    t.Check(cwj_pending, "continue_with_judgement missing from pending_requests");
+    t.Check(TaskTrackPendingAgentRequestCount(jch) == 1, "pending-request count did not include the active pending request");
+    t.Check(TaskTrackResolveAgentRequest(path, task_id, j_id, String(), String(), j_err),
+            "continue_with_judgement required an unexpected response payload: " + j_err);
+    TaskTrackAgentChannel jch2;
+    TaskTrackLoadAgentChannel(path, task_id, jch2, j_err);
+    bool cwj_answered = false;
+    for(const TaskTrackAgentRequest& r : jch2.requests)
+        if(r.id == j_id && r.status == "answered") cwj_answered = true;
+    t.Check(cwj_answered, "continue_with_judgement did not reach answered");
+    t.Check(TaskTrackPendingAgentRequestCount(jch2) == 0, "answered continue_with_judgement still counted pending");
+    TaskTrackDocument judgement_evidence;
+    TaskTrackLoad(path, judgement_evidence, j_err);
+    t.Check(!judgement_evidence.items[0].answer.answered, "continue_with_judgement fabricated human evidence");
+
+    // Parser accepts pending/answered/cancelled; migrates legacy resolved -> answered; rejects unknown.
+    ValueMap manual;
+    manual.Add("version", 1);
+    manual.Add("task_id", task_id);
+    ValueArray manual_reqs;
+    ValueMap r_p; r_p.Add("id", "r-p"); r_p.Add("item_id", "single"); r_p.Add("action", "propose_answer"); r_p.Add("status", "pending"); manual_reqs.Add(r_p);
+    ValueMap r_a; r_a.Add("id", "r-a"); r_a.Add("item_id", "single"); r_a.Add("action", "propose_answer"); r_a.Add("status", "answered"); manual_reqs.Add(r_a);
+    ValueMap r_c; r_c.Add("id", "r-c"); r_c.Add("item_id", "single"); r_c.Add("action", "propose_answer"); r_c.Add("status", "cancelled"); manual_reqs.Add(r_c);
+    ValueMap r_legacy; r_legacy.Add("id", "r-l"); r_legacy.Add("item_id", "single"); r_legacy.Add("action", "propose_answer"); r_legacy.Add("status", "resolved"); manual_reqs.Add(r_legacy);
+    manual.Add("requests", manual_reqs);
+    SaveFile(sidecar, AsJSON(manual, true));
+    TaskTrackAgentChannel mch;
+    t.Check(TaskTrackLoadAgentChannel(path, task_id, mch, req_err), "canonical status set rejected: " + req_err);
+    bool legacy_migrated = false;
+    for(const TaskTrackAgentRequest& r : mch.requests)
+        if(r.id == "r-l" && r.status == "answered") legacy_migrated = true;
+    t.Check(legacy_migrated, "legacy resolved request did not migrate to answered");
+
+    ValueMap bad_manual = manual;
+    ValueArray bad_reqs;
+    ValueMap r_bad; r_bad.Add("id", "r-b"); r_bad.Add("item_id", "single"); r_bad.Add("action", "propose_answer"); r_bad.Add("status", "nope"); bad_reqs.Add(r_bad);
+    bad_manual.Set("requests", bad_reqs);
+    SaveFile(sidecar, AsJSON(bad_manual, true));
+    TaskTrackAgentChannel bch;
+    t.Check(!TaskTrackLoadAgentChannel(path, task_id, bch, req_err), "unknown request status was accepted");
+
+    FileDelete(sidecar); FileDelete(sidecar + ".bak");
 
     RemoveTaskArtifacts(path, task_id);
     DirectoryDelete(root);

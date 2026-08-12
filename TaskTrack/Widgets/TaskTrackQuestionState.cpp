@@ -180,10 +180,13 @@ void TaskTrackQuestionCtrl::EnsureRecommendationHeader()
     recommendation_accept_.SetContentInset(DPI(2));
     recommendation_help_.SetCustomStyle(MakeStateButtonStyle(VISUAL_SUGGESTED));
     recommendation_help_.SetText("?").SetContentInset(DPI(1));
+    recommendation_judgement_.SetCustomStyle(MakeStateButtonStyle(VISUAL_SUGGESTED));
+    recommendation_judgement_.SetText("Use judgement").SetContentInset(DPI(2));
 
     recommendation_header_.Add(recommendation_header_label_).Fit().MinMain(DPI(58)).MinCross(DPI(23));
     recommendation_header_.Add(recommendation_accept_).Fixed(DPI(58)).MinCross(DPI(23));
     recommendation_header_.Add(recommendation_help_).Fixed(DPI(26)).MinCross(DPI(23));
+    recommendation_header_.Add(recommendation_judgement_).Fixed(DPI(96)).MinCross(DPI(23));
 
     recommendation_accept_.WhenAction = [=] {
         if(!document_ || item_index_ < 0 || item_index_ >= document_->items.GetCount())
@@ -195,6 +198,7 @@ void TaskTrackQuestionCtrl::EnsureRecommendationHeader()
             AcceptRecommendation();
     };
     recommendation_help_.WhenAction = [=] { QueueAgentRequest("clarify", "simplify"); };
+    recommendation_judgement_.WhenAction = [=] { QueueAgentRequest("continue_with_judgement"); };
 }
 
 void TaskTrackQuestionCtrl::ApplyRecommendedChoiceStyles(const TaskTrackItem& item)
@@ -288,6 +292,8 @@ void TaskTrackQuestionCtrl::ApplyRecommendationPresentation()
             recommendation_header_.ItemAt(1).Fixed(DPI(50)).MinMain(DPI(50));
             recommendation_help_.Disable();
             recommendation_header_.ItemAt(2).Fixed(0).MinMain(0);
+            recommendation_judgement_.Disable();
+            recommendation_header_.ItemAt(3).Fixed(0).MinMain(0);
         }
         else if(state == VISUAL_REQUIRED_PENDING || state == VISUAL_ATTENTION) {
             if(!item.recommended.IsEmpty()) {
@@ -304,6 +310,9 @@ void TaskTrackQuestionCtrl::ApplyRecommendationPresentation()
             recommendation_help_.SetText(clarification_pending_ ? "…" : "?");
             recommendation_help_.Enable(!clarification_pending_);
             recommendation_header_.ItemAt(2).Fixed(DPI(26)).MinMain(DPI(26));
+            recommendation_judgement_.SetText(judgement_pending_ ? "…" : "Use judgement");
+            recommendation_judgement_.Enable(!judgement_pending_);
+            recommendation_header_.ItemAt(3).Fixed(DPI(96)).MinMain(DPI(23));
         }
         else {
             if(item.recommended.IsEmpty()) {
@@ -318,6 +327,8 @@ void TaskTrackQuestionCtrl::ApplyRecommendationPresentation()
             recommendation_help_.SetText(clarification_pending_ ? "…" : "?");
             recommendation_help_.Enable(!clarification_pending_);
             recommendation_header_.ItemAt(2).Fixed(DPI(26)).MinMain(DPI(26));
+            recommendation_judgement_.Disable();
+            recommendation_header_.ItemAt(3).Fixed(0).MinMain(0);
         }
     }
 
@@ -387,6 +398,8 @@ void TaskTrackQuestionCtrl::QueueAgentRequest(const String& action, const String
         proposal_pending_ = true;
     else if(action == "clarify")
         clarification_pending_ = true;
+    else if(action == "continue_with_judgement")
+        judgement_pending_ = true;
     recommendation_header_state_ = -1;
     RefreshLayout();
     ArmAgentPoll();
@@ -415,17 +428,20 @@ void TaskTrackQuestionCtrl::CheckAgentChannel(bool show_clarification)
     const TaskTrackItem& item = document_->items[item_index_];
     bool pending_proposal = TaskTrackAgentHasPending(channel, item.id, "propose_answer");
     bool pending_clarify = TaskTrackAgentHasPending(channel, item.id, "clarify");
+    bool pending_judgement = TaskTrackAgentHasPending(channel, item.id, "continue_with_judgement");
     bool changed = channel.updated_at != last_seen_agent_update_ ||
-                   pending_proposal != proposal_pending_ || pending_clarify != clarification_pending_;
+                   pending_proposal != proposal_pending_ || pending_clarify != clarification_pending_ ||
+                   pending_judgement != judgement_pending_;
     if(!changed)
         return;
 
     last_seen_agent_update_ = channel.updated_at;
     proposal_pending_ = pending_proposal;
     clarification_pending_ = pending_clarify;
+    judgement_pending_ = pending_judgement;
     ApplyAgentChannel(channel, show_clarification);
 
-    if(!proposal_pending_ && !clarification_pending_)
+    if(!proposal_pending_ && !clarification_pending_ && !judgement_pending_)
         KillTimeCallback(TASKTRACK_AGENT_POLL_TIMER_ID);
 }
 

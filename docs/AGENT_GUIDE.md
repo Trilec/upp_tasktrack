@@ -95,6 +95,13 @@ The wire vocabulary is deliberately compact:
 ```text
 propose_answer
 clarify  mode=simplify
+continue_with_judgement
+```
+
+Request lifecycle (an answered request is not a resolved human question):
+
+```text
+pending -> answered -> (cancelled)
 ```
 
 `get_task` returns:
@@ -132,7 +139,13 @@ recommended
 
 when the clarification makes a responsible proposal possible.
 
-Resolve both request types with `respond_to_request`.
+### `continue_with_judgement`
+
+The human explicitly delegates the blocked judgement back to the agent and authorizes the agent to continue using its own judgement. This is delegation/authorization, not a human semantic answer.
+
+No response payload is required. The agent proceeds in its own workflow and resolves the request with `respond_to_request` (request id only). Never synthesize `answer.data` or mark the question green; only explicit human action creates human evidence.
+
+Resolve every request type with `respond_to_request`.
 
 Agent responses are advisory. They never become `answer.data` until the human explicitly acts.
 

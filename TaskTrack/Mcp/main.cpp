@@ -330,7 +330,7 @@ Value BuildToolsList(bool modern)
         "Return durable task state, human evidence, and pending human->agent requests. If agent_action_required=true, resolve pending_requests with respond_to_request before waiting again.",
         TaskLocatorSchema(true), true, false, true));
     tools.Add(ToolSpec("respond_to_request",
-        "Resolve one pending human request. propose_answer=>recommended required. clarify=>clarification required; recommended optional. Advisory only; never writes a human answer.",
+        "Resolve one pending human request. propose_answer=>recommended required. clarify=>clarification required; recommended optional. continue_with_judgement=>no response payload required. Advisory only; never writes a human answer.",
         TaskTrackMcpRespondRequestSchema(), false, false, false));
     tools.Add(ToolSpec("open_task", "Launch the TaskTrack GUI for an existing task_id.", TaskLocatorSchema(false), false, false, false));
 
@@ -358,7 +358,7 @@ Value BuildDiscoverResult()
     result.Add("supportedVersions", versions);
     result.Add("capabilities", capabilities);
     result.Add("instructions",
-        "TaskTrack: human-dependent decisions only after machine evidence. Ask minimum related items. Provide recommended unless no responsible proposal exists; required+missing recommendation means human decision. Retain task_id; poll get_task. If agent_action_required, process pending_requests: propose_answer=>recommended; clarify=>clarification, recommended optional. Agent replies remain advisory until human action.");
+        "TaskTrack: human-dependent decisions only after machine evidence. Ask minimum related items. Provide recommended unless no responsible proposal exists; required+missing recommendation means human decision. Retain task_id; poll get_task. If agent_action_required, process pending_requests: propose_answer=>recommended; clarify=>clarification, recommended optional; continue_with_judgement=>no response payload (human delegated judgement). Agent replies remain advisory until human action.");
     result.Add("ttlMs", 300000);
     result.Add("cacheScope", "public");
     AddModernMeta(result);
@@ -376,7 +376,7 @@ Value BuildLegacyInitialize(const Value& params)
     result.Add("protocolVersion", requested);
     result.Add("capabilities", caps);
     result.Add("serverInfo", ServerInfoValue());
-    result.Add("instructions", "TaskTrack: human-dependent decisions only. Provide recommended unless no responsible proposal exists. Poll get_task; resolve pending human requests with respond_to_request.");
+    result.Add("instructions", "TaskTrack: human-dependent decisions only. Provide recommended unless no responsible proposal exists. Poll get_task; resolve pending human requests with respond_to_request (propose_answer=>recommended; clarify=>clarification, recommended optional; continue_with_judgement=>no payload).");
     return Value(result);
 }
 
@@ -664,7 +664,8 @@ int RunSelfTest()
     String list_json = AsJSON(HandleRequest(Request("tools/list", 3, list_params), has), false);
     st.Check(list_json.Find("create_task") >= 0, "tools/list missing create_task");
     st.Check(list_json.Find("respond_to_request") >= 0, "tools/list missing respond_to_request");
-    st.Check(list_json.Find("propose_answer") >= 0 && list_json.Find("clarify") >= 0,
+    st.Check(list_json.Find("propose_answer") >= 0 && list_json.Find("clarify") >= 0 &&
+             list_json.Find("continue_with_judgement") >= 0,
              "respond_to_request schema missing compact actions");
     const char *semantic_types[] = { "confirm", "single_choice", "multi_choice", "select", "list_select", "text", "notes", "number", "amount", "range", "rating", "color", "gradient", "position", "direction", "rank_order", "hierarchy_select", "curve" };
     for(const char *type : semantic_types)
@@ -702,8 +703,29 @@ int RunSelfTest()
     respond_args.Add("request_id", request_id); respond_args.Add("recommended", "Pass");
     ValueMap respond_call; respond_call.Add("name", "respond_to_request"); respond_call.Add("arguments", respond_args); respond_call.Add("_meta", ModernMeta(true));
     String respond_json = AsJSON(HandleRequest(Request("tools/call", 6, respond_call), has), false);
-    st.Check(respond_json.Find("\"status\":\"resolved\"") >= 0,
-             "respond_to_request did not resolve propose_answer");
+    st.Check(respond_json.Find("\"status\":\"answered\"") >= 0,
+             "respond_to_request did not answer propose_answer");
+
+    // continue_with_judgement: queues durably, duplicate reused, no payload required,
+    // pending -> answered, and never creates human evidence.
+    String cwj_request_id, cwj_error;
+    st.Check(TaskTrackQueueAgentRequest(task_path, task_id, "visual", "continue_with_judgement", String(), cwj_request_id, cwj_error),
+             "unable to queue continue_with_judgement: " + cwj_error);
+    String cwj_dup_id, cwj_dup_error;
+    st.Check(TaskTrackQueueAgentRequest(task_path, task_id, "visual", "continue_with_judgement", String(), cwj_dup_id, cwj_dup_error) && cwj_dup_id == cwj_request_id,
+             "duplicate continue_with_judgement request was not reused");
+
+    ValueMap cwj_get_args; cwj_get_args.Add("task_id", task_id); cwj_get_args.Add("store_root", root); cwj_get_args.Add("include_items", true);
+    ValueMap cwj_get_call; cwj_get_call.Add("name", "get_task"); cwj_get_call.Add("arguments", cwj_get_args); cwj_get_call.Add("_meta", ModernMeta(true));
+    String cwj_get_json = AsJSON(HandleRequest(Request("tools/call", 51, cwj_get_call), has), false);
+    st.Check(cwj_get_json.Find("\"agent_action_required\":true") >= 0 && cwj_get_json.Find(cwj_request_id) >= 0,
+             "get_task did not surface pending continue_with_judgement");
+
+    ValueMap cwj_respond_args; cwj_respond_args.Add("task_id", task_id); cwj_respond_args.Add("store_root", root); cwj_respond_args.Add("request_id", cwj_request_id);
+    ValueMap cwj_respond_call; cwj_respond_call.Add("name", "respond_to_request"); cwj_respond_call.Add("arguments", cwj_respond_args); cwj_respond_call.Add("_meta", ModernMeta(true));
+    String cwj_respond_json = AsJSON(HandleRequest(Request("tools/call", 52, cwj_respond_call), has), false);
+    st.Check(cwj_respond_json.Find("\"status\":\"answered\"") >= 0,
+             "continue_with_judgement did not reach answered");
 
     ValueMap task_params; task_params.Add("taskId", task_id); task_params.Add("_meta", ModernMeta(true));
     String get_json = AsJSON(HandleRequest(Request("tasks/get", 7, task_params), has), false);

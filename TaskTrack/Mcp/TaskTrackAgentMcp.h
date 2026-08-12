@@ -5,9 +5,11 @@
     TaskTrack MCP agent-assistance bridge.
 
     Compact wire contract:
-      propose_answer  -> recommended required
-      clarify         -> clarification required; recommended optional
+      propose_answer            -> recommended required
+      clarify                   -> clarification required; recommended optional
+      continue_with_judgement   -> no response payload required
 
+    Request lifecycle: pending -> answered -> (cancelled).
     Agent responses remain advisory. They never write TaskTrackAnswer.
 */
 
@@ -29,7 +31,7 @@ inline Value TaskTrackMcpRespondRequestSchema()
     props.Add("task_id", TaskTrackMcpAgentStringSchema("Task id."));
     props.Add("request_id", TaskTrackMcpAgentStringSchema("Pending request id from get_task.pending_requests."));
     props.Add("store_root", TaskTrackMcpAgentStringSchema("Optional non-default task store."));
-    props.Add("recommended", TaskTrackMcpAgentStringSchema("Required for propose_answer; optional for clarify. Canonical recommendation for the referenced item."));
+    props.Add("recommended", TaskTrackMcpAgentStringSchema("Required for propose_answer; optional for clarify. Not used for continue_with_judgement. Canonical recommendation for the referenced item."));
     props.Add("clarification", TaskTrackMcpAgentStringSchema("Required for clarify. Concise plain-language restatement for the human."));
 
     ValueArray required;
@@ -187,7 +189,7 @@ inline Value TaskTrackMcpRespondAgentRequest(const Value& args, bool& ok, String
     result.Add("ok", true);
     result.Add("task_id", task_id);
     result.Add("request_id", request_id);
-    result.Add("status", "resolved");
+    result.Add("status", "answered");
     result.Add("agent_action_required", TaskTrackPendingAgentRequestCount(updated) > 0);
     result.Add("pending_count", TaskTrackPendingAgentRequestCount(updated));
     ok = true;

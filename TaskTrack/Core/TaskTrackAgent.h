@@ -14,6 +14,10 @@
     Wire actions are intentionally terse and imperative:
       propose_answer              -> recommended required
       clarify + mode=simplify     -> clarification required, recommended optional
+      continue_with_judgement     -> no response payload required (delegation)
+
+    Request lifecycle (agent request answered != human question resolved):
+      pending -> answered -> (cancelled)
 
     Copyright (c) 2026 Curtis Edwards
     Licensed under the Apache License, Version 2.0. See LICENSE.
@@ -32,7 +36,7 @@ struct TaskTrackAgentRequest : Moveable<TaskTrackAgentRequest> {
     String recommended;
     String clarification;
     String created_at;
-    String resolved_at;
+    String answered_at;
 };
 
 struct TaskTrackAgentChannel : Moveable<TaskTrackAgentChannel> {
@@ -66,8 +70,8 @@ inline Value TaskTrackAgentRequestValue(const TaskTrackAgentRequest& request)
     if(!request.clarification.IsEmpty())
         m.Add("clarification", request.clarification);
     m.Add("created_at", request.created_at);
-    if(!request.resolved_at.IsEmpty())
-        m.Add("resolved_at", request.resolved_at);
+    if(!request.answered_at.IsEmpty())
+        m.Add("answered_at", request.answered_at);
     return Value(m);
 }
 
@@ -93,7 +97,7 @@ inline bool TaskTrackParseAgentRequest(const Value& raw, TaskTrackAgentRequest& 
     }
     const char *fields[] = {
         "id", "item_id", "action", "mode", "status", "recommended",
-        "clarification", "created_at", "resolved_at"
+        "clarification", "created_at", "answered_at", "resolved_at"
     };
     for(const char *field : fields) {
         Value v = raw[field];
@@ -111,21 +115,26 @@ inline bool TaskTrackParseAgentRequest(const Value& raw, TaskTrackAgentRequest& 
     request.recommended = TrimBoth(AsString(raw["recommended"]));
     request.clarification = TrimBoth(AsString(raw["clarification"]));
     request.created_at = TrimBoth(AsString(raw["created_at"]));
-    request.resolved_at = TrimBoth(AsString(raw["resolved_at"]));
+    request.answered_at = TrimBoth(AsString(raw["answered_at"]));
+    if(request.answered_at.IsEmpty())
+        request.answered_at = TrimBoth(AsString(raw["resolved_at"])); // legacy TT-009
 
     if(request.id.IsEmpty() || request.item_id.IsEmpty()) {
         error = "agent request requires id and item_id.";
         return false;
     }
-    if(request.action != "propose_answer" && request.action != "clarify") {
-        error = "agent request action must be propose_answer or clarify.";
+    if(request.action != "propose_answer" && request.action != "clarify" &&
+       request.action != "continue_with_judgement") {
+        error = "agent request action must be propose_answer, clarify or continue_with_judgement.";
         return false;
     }
     if(request.action == "clarify" && request.mode.IsEmpty())
         request.mode = "simplify";
     if(request.status.IsEmpty())
         request.status = "pending";
-    if(request.status != "pending" && request.status != "resolved" && request.status != "cancelled") {
+    if(request.status == "resolved") // legacy TT-009 request answered state
+        request.status = "answered";
+    if(request.status != "pending" && request.status != "answered" && request.status != "cancelled") {
         error = "agent request status is invalid.";
         return false;
     }
@@ -270,8 +279,8 @@ inline bool TaskTrackQueueAgentRequest(const String& task_path, const String& ta
         error = "agent request requires item_id.";
         return false;
     }
-    if(action != "propose_answer" && action != "clarify") {
-        error = "agent request action must be propose_answer or clarify.";
+    if(action != "propose_answer" && action != "clarify" && action != "continue_with_judgement") {
+        error = "agent request action must be propose_answer, clarify or continue_with_judgement.";
         return false;
     }
 
@@ -324,8 +333,8 @@ inline bool TaskTrackResolveAgentRequest(const String& task_path, const String& 
         }
         request.recommended = TrimBoth(recommended);
         request.clarification = TrimBoth(clarification);
-        request.status = "resolved";
-        request.resolved_at = TaskTrackNowIso();
+        request.status = "answered";
+        request.answered_at = TaskTrackNowIso();
         return TaskTrackSaveAgentChannel(task_path, channel, error);
     }
 
@@ -347,7 +356,7 @@ inline String TaskTrackAgentLatestClarification(const TaskTrackAgentChannel& cha
 {
     for(int i = channel.requests.GetCount() - 1; i >= 0; --i) {
         const TaskTrackAgentRequest& request = channel.requests[i];
-        if(request.item_id == item_id && request.status == "resolved" &&
+        if(request.item_id == item_id && request.status == "answered" &&
            request.action == "clarify" && !request.clarification.IsEmpty())
             return request.clarification;
     }
@@ -359,7 +368,7 @@ inline String TaskTrackAgentLatestRecommendation(const TaskTrackAgentChannel& ch
 {
     for(int i = channel.requests.GetCount() - 1; i >= 0; --i) {
         const TaskTrackAgentRequest& request = channel.requests[i];
-        if(request.item_id == item_id && request.status == "resolved" &&
+        if(request.item_id == item_id && request.status == "answered" &&
            !request.recommended.IsEmpty())
             return request.recommended;
     }

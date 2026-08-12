@@ -285,6 +285,7 @@ private:
     bool destroying_ = false;
     bool proposal_pending_ = false;
     bool clarification_pending_ = false;
+    bool judgement_pending_ = false;
     bool clarification_attached_ = false;
     int applied_visual_state_ = -1;
     int recommendation_header_state_ = -1;
@@ -298,6 +299,7 @@ private:
     UiLabel recommendation_header_label_;
     UiButton recommendation_accept_;
     UiButton recommendation_help_;
+    UiButton recommendation_judgement_;
     UiBoxLayout response_ { UiDirection::H };
 
     Array<UiRadioButton> radios_;

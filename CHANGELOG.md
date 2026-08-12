@@ -2,6 +2,8 @@
 
 ## Unreleased — 2026-08-12
 
+- TT-009-R1: unified the compact human→agent assistance protocol across Core, MCP, Widgets, tests and documentation. The request lifecycle is now `pending → answered → (cancelled)`; legacy TT-009 sidecar status `resolved` migrates to `answered` on load and new sidecars never emit request status `resolved`. Added the exact `continue_with_judgement` action (human delegates judgement back to the agent; no response payload; never writes `answer.data`) with a restrained "Use judgement" GUI control on unresolved human-blocking cards and durable duplicate suppression for all three actions.
+
 - Refreshed TaskTrack against current `upp_Ui/main` and removed the retired `UiCompositeColor` dependency from the question renderer; the custom-colour field delegates to first-class `UiColorMatrix`.
 - Hardened the agent guide around the real operating boundary: ask only for genuinely human-dependent facts, ask the minimum needed to continue, choose types by semantic meaning, avoid GUI/layout instructions, retain `task_id`, and consume structured `answer.data`.
 - Replaced the question workspace's masonry-like natural-width flow with deterministic equal-width responsive columns and stable row alignment.

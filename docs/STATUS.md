@@ -19,7 +19,9 @@ STATUS:
 - A durable `<task>.agent.json` sidecar carries human→agent assistance separately from authoritative human-answer JSON.
 - Compact request actions are exact:
   - `propose_answer` → `recommended` required;
-  - `clarify`, `mode=simplify` → `clarification` required; `recommended` optional.
+  - `clarify`, `mode=simplify` → `clarification` required; `recommended` optional;
+  - `continue_with_judgement` → no response payload required (human delegates judgement back to the agent).
+- Request lifecycle is `pending → answered → (cancelled)`. An answered agent request is not a resolved human question; only explicit human acceptance/manual answering creates `answer.data`. Legacy TT-009 sidecar status `resolved` migrates to `answered` on load; new sidecars never emit request status `resolved`.
 - MCP `get_task` exposes `agent_action_required` + `pending_requests`; `respond_to_request` resolves the compact request and validates any recommendation against the referenced semantic item. Agent replies never write `TaskTrackAnswer`.
 - Required/no-proposal cards expose `Suggest`; unanswered cards expose `?` for simplification. The relevant open card polls the durable sidecar while assistance is pending. A returned proposal becomes advisory and still requires explicit human acceptance before green/resolved evidence exists.
 - If a red/escalated item receives a proposal, it remains visibly escalated until the human resolves it, but the header changes to `Suggested: ...` + `Accept` rather than incorrectly offering another `Suggest` action.
