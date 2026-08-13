@@ -25,6 +25,7 @@ GUI_APP_MAIN
 {
     const Vector<String>& cmd = CommandLine();
     String task_path;
+    bool agent_launch = false;
 
     switch(TaskTrackClassifyGuiCommand(cmd)) {
     case TaskTrackGuiCommand::Run: {
@@ -37,6 +38,7 @@ GUI_APP_MAIN
     }
     case TaskTrackGuiCommand::OpenTask:
         task_path = cmd[1];
+        agent_launch = true;
         break;
     case TaskTrackGuiCommand::Help:
         PromptOK(GuiHelpText());
@@ -55,5 +57,7 @@ GUI_APP_MAIN
         Exclamation("Unable to open TaskTrack task.\n" + error);
         return;
     }
+    if(agent_launch)
+        window.PrepareAgentLaunch();
     window.Run();
 }

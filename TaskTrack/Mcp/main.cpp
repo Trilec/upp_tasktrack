@@ -23,6 +23,9 @@ static const char *CURRENT_PROTOCOL = "2026-07-28";
 static const char *TASKS_EXTENSION = "io.modelcontextprotocol/tasks";
 static const int UNSUPPORTED_PROTOCOL_VERSION = -32022;
 static const int MISSING_REQUIRED_CLIENT_CAPABILITY = -32021;
+static const int DEFAULT_WAIT_MS = 120000;
+static const int MAX_WAIT_MS = 300000;
+static const int WAIT_SLICE_MS = 250;
 
 Value ServerInfoValue()
 {
@@ -223,7 +226,11 @@ Value TaskLocatorSchema(bool include_items = false)
     ValueMap props;
     props.Add("task_id", StringSchema("Stable TaskTrack task id returned by create_task."));
     props.Add("store_root", StringSchema("Optional store used when the task was created outside the default store."));
-    if(include_items) props.Add("include_items", BoolSchema("Include question definitions and structured answers."));
+    if(include_items) {
+        props.Add("include_items", BoolSchema("Include question definitions and structured answers."));
+        props.Add("wait_ms", IntSchema(0, MAX_WAIT_MS,
+            "Wait up to this many milliseconds for completion, closure, or a human->agent request. Use after create_task; 0 returns immediately."));
+    }
     ValueArray required; required.Add("task_id");
     ValueMap s;
     s.Add("type", "object"); s.Add("required", required); s.Add("properties", props); s.Add("additionalProperties", false);
@@ -297,7 +304,7 @@ Value CreateTaskSchema()
 
     ValueMap items;
     items.Add("type", "array"); items.Add("minItems", 1); items.Add("items", item_schema);
-    items.Add("description", "Ask only the minimum genuinely human-dependent decisions needed to continue. Keep related decisions in one task, one independent decision per item, prefer structured types, and provide recommended unless no responsible proposal is possible. For ordinary human verification prefer type=confirm with choices=[\"Pass\",\"Fail\"]; use richer semantic types only when the requested evidence genuinely requires them.");
+    items.Add("description", "Minimum durable human evidence only. One independent decision per item. Prefer structured types. Ordinary verification: confirm + [Pass,Fail].");
 
     ValueMap props;
     props.Add("task_id", StringSchema("Optional caller-supplied id beginning task-. Normally omit."));
@@ -322,24 +329,24 @@ Value CreateTaskSchema()
 Value BuildToolsList(bool modern)
 {
     ValueArray tools;
-    tools.Add(ToolSpec("version", "Return the TaskTrack application/protocol version.", EmptyObjectSchema(), true, false, true));
+    tools.Add(ToolSpec("version", "Return TaskTrack version/protocol.", EmptyObjectSchema(), true, false, true));
     tools.Add(ToolSpec("create_task",
-        "Create durable structured human decisions only when repository/tests/tools cannot establish the answer. Ask the minimum related decisions. For ordinary human verification prefer type=confirm with choices=[\"Pass\",\"Fail\"] (boolean evidence, optional human note). Provide recommended for every item unless no responsible proposal is possible; required+missing recommendation means human decision required. Recommendations/defaults are not human evidence. Retain task_id; poll get_task.",
+        "Create durable human evidence when the agent cannot establish a decision/approval/classification/selection/verification, or when the user explicitly requests TaskTrack recording. Do not use for ordinary conversation/explanation/opinion/information. Ask minimum items. Recommendations are advisory. Retain task_id; then call get_task with wait_ms until completed/closed or agent_action_required.",
         CreateTaskSchema(), false, false, false));
     tools.Add(ToolSpec("get_task",
-        "Return durable task state, human evidence, and pending human->agent requests. If agent_action_required=true, resolve pending_requests with respond_to_request before waiting again.",
+        "Return durable human evidence and pending human->agent requests. After create_task use wait_ms to wait for completion/closure/request. If agent_action_required, respond_to_request then wait again. closed with no answer = no human evidence.",
         TaskLocatorSchema(true), true, false, true));
     tools.Add(ToolSpec("respond_to_request",
-        "Resolve one pending human request. propose_answer=>recommended required. clarify=>clarification required; recommended optional. continue_with_judgement=>no response payload required. Advisory only; never writes a human answer.",
+        "Resolve pending human->agent request: propose_answer=>recommended; clarify=>clarification (+optional recommended); continue_with_judgement=>no payload. Advisory only; never writes human answer.",
         TaskTrackMcpRespondRequestSchema(), false, false, false));
-    tools.Add(ToolSpec("open_task", "Launch the TaskTrack GUI for an existing task_id.", TaskLocatorSchema(false), false, false, false));
+    tools.Add(ToolSpec("open_task", "Launch TaskTrack GUI for task_id.", TaskLocatorSchema(false), false, false, false));
 
     ValueMap list_props;
     list_props.Add("store_root", StringSchema());
     list_props.Add("limit", IntSchema(1, 200));
     ValueMap list_schema; list_schema.Add("type", "object"); list_schema.Add("properties", list_props); list_schema.Add("additionalProperties", false);
-    tools.Add(ToolSpec("list_tasks", "List recent tasks in a TaskTrack store.", list_schema, true, false, true));
-    tools.Add(ToolSpec("close_task", "Explicitly close unfinished work. TaskTrack never closes a task merely because it is old or paused.", TaskLocatorSchema(false), false, true, false));
+    tools.Add(ToolSpec("list_tasks", "List recent TaskTrack tasks.", list_schema, true, false, true));
+    tools.Add(ToolSpec("close_task", "Close unfinished task without fabricating human evidence.", TaskLocatorSchema(false), false, true, false));
 
     ValueMap result;
     if(modern) result.Add("resultType", "complete");
@@ -358,7 +365,7 @@ Value BuildDiscoverResult()
     result.Add("supportedVersions", versions);
     result.Add("capabilities", capabilities);
     result.Add("instructions",
-        "TaskTrack: human-dependent decisions only after machine evidence. For ordinary human verification prefer type=confirm with choices=[\"Pass\",\"Fail\"]. Ask minimum related items. Provide recommended unless no responsible proposal exists; required+missing recommendation means human decision. Retain task_id; poll get_task. If agent_action_required, process pending_requests: propose_answer=>recommended; clarify=>clarification, recommended optional; continue_with_judgement=>no response payload (human delegated judgement). Agent replies remain advisory until human action.");
+        "Invoke TaskTrack only for durable human evidence the agent cannot establish (decision/approval/classification/selection/verification), or explicit TaskTrack recording. Not ordinary conversation/explanation/opinion/information. Ask minimum items; ordinary verification=confirm+[Pass,Fail]. Recommendations advisory. Retain task_id; call get_task(wait_ms<=300000) until completed/closed. If agent_action_required, respond_to_request then wait again. closed+no answer=no human evidence.");
     result.Add("ttlMs", 300000);
     result.Add("cacheScope", "public");
     AddModernMeta(result);
@@ -376,7 +383,8 @@ Value BuildLegacyInitialize(const Value& params)
     result.Add("protocolVersion", requested);
     result.Add("capabilities", caps);
     result.Add("serverInfo", ServerInfoValue());
-    result.Add("instructions", "TaskTrack: human-dependent decisions only. For ordinary verification prefer type=confirm with choices=[\"Pass\",\"Fail\"]. Provide recommended unless no responsible proposal exists. Poll get_task; resolve pending human requests with respond_to_request (propose_answer=>recommended; clarify=>clarification, recommended optional; continue_with_judgement=>no payload).");
+    result.Add("instructions",
+        "TaskTrack=durable human evidence, not ordinary chat. Ask minimum items. Retain task_id; poll get_task. Resolve pending human->agent requests with respond_to_request. closed+no answer=no human evidence.");
     return Value(result);
 }
 
@@ -406,12 +414,39 @@ bool ResolveAndLoad(const Value& args, TaskTrackDocument& doc, String& path, Str
     return TaskTrackLoad(path, doc, error);
 }
 
+bool TaskHasMeaningfulAgentState(const TaskTrackDocument& doc, const String& path)
+{
+    return doc.state == TaskTrackState::Completed || doc.state == TaskTrackState::Closed ||
+           TaskTrackMcpPendingAgentRequestCount(path, doc.task_id) > 0;
+}
+
+bool WaitAndReloadTask(const Value& args, TaskTrackDocument& doc, const String& path,
+                       int wait_ms, String& error)
+{
+    if(wait_ms <= 0 || TaskHasMeaningfulAgentState(doc, path))
+        return true;
+
+    int elapsed = 0;
+    while(elapsed < wait_ms) {
+        int slice = min(WAIT_SLICE_MS, wait_ms - elapsed);
+        Sleep(slice);
+        elapsed += slice;
+        TaskTrackDocument latest;
+        if(!TaskTrackLoad(path, latest, error))
+            return false;
+        doc = pick(latest);
+        if(TaskHasMeaningfulAgentState(doc, path))
+            return true;
+    }
+    return true;
+}
+
 Value TaskHandleValue(const TaskTrackDocument& doc, const String& status_message)
 {
     ValueMap result;
     result.Add("resultType", "task"); result.Add("taskId", doc.task_id); result.Add("status", "working");
     result.Add("statusMessage", status_message); result.Add("createdAt", doc.created_at); result.Add("lastUpdatedAt", doc.updated_at);
-    result.Add("ttlMs", Value()); result.Add("pollIntervalMs", 30000); AddModernMeta(result);
+    result.Add("ttlMs", Value()); result.Add("pollIntervalMs", 2000); AddModernMeta(result);
     return Value(result);
 }
 
@@ -419,19 +454,19 @@ Value DetailedTaskValue(const TaskTrackDocument& doc, const String& path)
 {
     ValueMap result;
     result.Add("resultType", "complete"); result.Add("taskId", doc.task_id); result.Add("createdAt", doc.created_at);
-    result.Add("lastUpdatedAt", doc.updated_at); result.Add("ttlMs", Value()); result.Add("pollIntervalMs", 30000);
+    result.Add("lastUpdatedAt", doc.updated_at); result.Add("ttlMs", Value()); result.Add("pollIntervalMs", 2000);
     if(doc.state == TaskTrackState::Completed) {
         result.Add("status", "completed"); result.Add("statusMessage", "Human input completed.");
         result.Add("result", BuildCallToolResult(TaskTrackMcpAugmentAgentStatus(TaskTrackStatusValue(doc, path, true), path, doc.task_id), false, true));
     }
     else if(doc.state == TaskTrackState::Closed) {
-        result.Add("status", "cancelled"); result.Add("statusMessage", "Task was explicitly closed without completion.");
+        result.Add("status", "cancelled"); result.Add("statusMessage", "Task closed; no additional human evidence.");
     }
     else {
         int pending = TaskTrackMcpPendingAgentRequestCount(path, doc.task_id);
         result.Add("status", "working");
         result.Add("statusMessage", pending > 0
-                   ? Format("agent_action_required:%d; call get_task then respond_to_request.", pending)
+                   ? Format("agent_action_required:%d; call get_task/respond_to_request.", pending)
                    : "TaskTrack state: " + TaskTrackStateName(doc.state));
     }
     AddModernMeta(result);
@@ -453,10 +488,12 @@ Value ExecuteTool(const String& name, const Value& args, bool modern, bool task_
         bool launched = false; String launch_error;
         if(launch) launched = LaunchTaskGui(path, launch_error);
         if(modern && task_capability)
-            return TaskHandleValue(doc, launched ? "Awaiting human input; TaskTrack GUI launched."
-                                                 : "Awaiting human input; retrieve/open the durable task by taskId.");
+            return TaskHandleValue(doc, launched ? "Awaiting human input; GUI launched. Poll tasks/get."
+                                                 : "Awaiting human input; open durable task by taskId.");
         ValueMap status = TaskTrackStatusValue(doc, path, true);
         status.Add("launched", launched); if(launch && !launched) status.Add("launch_error", launch_error);
+        status.Add("next_action", "call get_task with wait_ms until completed/closed; handle agent_action_required before waiting again");
+        status.Add("suggested_wait_ms", DEFAULT_WAIT_MS);
         return BuildCallToolResult(status, false, modern);
     }
     if(name == "get_task") {
@@ -464,15 +501,31 @@ Value ExecuteTool(const String& name, const Value& args, bool modern, bool task_
         if(!ResolveAndLoad(args, doc, path, error)) return BuildCallToolResult(BuildFailure("TASK_NOT_FOUND", error), true, modern);
         bool include_items = true;
         if(!ReadBool(args, "include_items", true, include_items, error)) return BuildCallToolResult(BuildFailure("BAD_REQUEST", error), true, modern);
+        int wait_ms = 0;
+        if(!ReadInt(args, "wait_ms", 0, wait_ms, error)) return BuildCallToolResult(BuildFailure("BAD_REQUEST", error), true, modern);
+        if(wait_ms < 0 || wait_ms > MAX_WAIT_MS) return BuildCallToolResult(BuildFailure("BAD_REQUEST", "wait_ms must be 0..300000."), true, modern);
         TaskTrackTouchAgentPoll(path);
-        return BuildCallToolResult(TaskTrackMcpAugmentAgentStatus(TaskTrackStatusValue(doc, path, include_items), path, doc.task_id), false, modern);
+        if(!WaitAndReloadTask(args, doc, path, wait_ms, error)) return BuildCallToolResult(BuildFailure("TASK_LOAD_FAILED", error), true, modern);
+        ValueMap status = TaskTrackMcpAugmentAgentStatus(TaskTrackStatusValue(doc, path, include_items), path, doc.task_id);
+        if(doc.state != TaskTrackState::Completed && doc.state != TaskTrackState::Closed && !status["agent_action_required"].Is<bool>())
+            status.Add("agent_action_required", false);
+        if(doc.state != TaskTrackState::Completed && doc.state != TaskTrackState::Closed) {
+            status.Add("next_action", (bool)status["agent_action_required"]
+                       ? Value("respond_to_request, then call get_task with wait_ms again")
+                       : Value("call get_task with wait_ms again"));
+            status.Add("suggested_wait_ms", DEFAULT_WAIT_MS);
+        }
+        return BuildCallToolResult(status, false, modern);
     }
     if(name == "respond_to_request") {
         bool ok = false; String code;
         Value result = TaskTrackMcpRespondAgentRequest(args, ok, code);
         if(!ok)
             return BuildCallToolResult(BuildFailure(code, ReadString(result, "message", "request failed")), true, modern);
-        return BuildCallToolResult(result, false, modern);
+        ValueMap out = result;
+        out.Add("next_action", "call get_task with wait_ms again");
+        out.Add("suggested_wait_ms", DEFAULT_WAIT_MS);
+        return BuildCallToolResult(out, false, modern);
     }
     if(name == "open_task") {
         TaskTrackDocument doc; String path, error;
@@ -530,7 +583,7 @@ Value HandleTaskExtension(const Value& request, const String& method)
         return JsonRpcResult(id, result);
     }
     if(method == "tasks/update")
-        return JsonRpcError(id, -32602, "Use respond_to_request for pending TaskTrack human requests.");
+        return JsonRpcError(id, -32602, "TaskTrack agent assistance uses get_task/respond_to_request.");
     return JsonRpcError(id, -32601, "Method not found");
 }
 
@@ -648,8 +701,8 @@ int RunSelfTest()
     st.Check(has && discover_json.Find(CURRENT_PROTOCOL) >= 0, "modern discovery failed");
     st.Check(discover_json.Find(TASKS_EXTENSION) >= 0, "discovery missing Tasks extension");
     st.Check(discover_json.Find("\"resultType\":\"complete\"") >= 0, "discovery missing modern resultType");
-    st.Check(discover_json.Find("required+missing recommendation") >= 0 && discover_json.Find("pending_requests") >= 0,
-             "modern discovery missing compact human/agent routing guidance");
+    st.Check(discover_json.Find("durable human evidence") >= 0 && discover_json.Find("closed+no answer") >= 0,
+             "modern discovery missing compact TaskTrack decision/lifecycle rule");
 
     Value legacy = ParseJSON("{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-11-25\"}}");
     String legacy_json = AsJSON(HandleRequest(legacy, has), false);
@@ -660,6 +713,7 @@ int RunSelfTest()
     String list_json = AsJSON(HandleRequest(Request("tools/list", 3, list_params), has), false);
     st.Check(list_json.Find("create_task") >= 0, "tools/list missing create_task");
     st.Check(list_json.Find("respond_to_request") >= 0, "tools/list missing respond_to_request");
+    st.Check(list_json.Find("wait_ms") >= 0, "get_task schema missing bounded wait_ms");
     st.Check(list_json.Find("propose_answer") >= 0 && list_json.Find("clarify") >= 0 &&
              list_json.Find("continue_with_judgement") >= 0,
              "respond_to_request schema missing compact actions");
@@ -667,8 +721,8 @@ int RunSelfTest()
     for(const char *type : semantic_types)
         st.Check(list_json.Find(type) >= 0, String("tools/list missing semantic type ") + type);
     st.Check(list_json.Find("pass_fail") < 0, "canonical MCP schema still advertises legacy pass_fail");
-    st.Check(list_json.Find("no responsible proposal") >= 0 && list_json.Find("human evidence") >= 0,
-             "create_task schema missing recommendation obligation/evidence boundary");
+    st.Check(list_json.Find("advisory") >= 0 && list_json.Find("human evidence") >= 0,
+             "create_task schema missing recommendation/evidence boundary");
     st.Check(list_json.Find("cacheScope") >= 0 && list_json.Find("ttlMs") >= 0, "modern tools/list is not cacheable");
 
     String root = AppendFileName(GetFileFolder(GetExeFilePath()), "_tasktrack_mcp_selftest"); RealizeDirectory(root);
@@ -681,6 +735,7 @@ int RunSelfTest()
     String create_json = AsJSON(HandleRequest(Request("tools/call", 4, call_params), has), false);
     st.Check(create_json.Find("\"resultType\":\"task\"") >= 0, "modern create_task did not return task handle");
     st.Check(create_json.Find(task_id) >= 0, "task handle missing task id");
+    st.Check(create_json.Find("\"pollIntervalMs\":2000") >= 0, "task handle polling interval is not interactive");
 
     String task_path = TaskTrackMakeTaskPath(root, task_id);
     st.Check(FileExists(task_path), "create_task returned before durable task existed");
@@ -689,11 +744,13 @@ int RunSelfTest()
     st.Check(TaskTrackQueueAgentRequest(task_path, task_id, "visual", "propose_answer", String(), request_id, error),
              "unable to queue self-test agent request: " + error);
 
-    ValueMap get_args; get_args.Add("task_id", task_id); get_args.Add("store_root", root); get_args.Add("include_items", true);
+    ValueMap get_args; get_args.Add("task_id", task_id); get_args.Add("store_root", root); get_args.Add("include_items", true); get_args.Add("wait_ms", 1000);
     ValueMap get_call; get_call.Add("name", "get_task"); get_call.Add("arguments", get_args); get_call.Add("_meta", ModernMeta(true));
     String agent_get_json = AsJSON(HandleRequest(Request("tools/call", 5, get_call), has), false);
     st.Check(agent_get_json.Find("\"agent_action_required\":true") >= 0 && agent_get_json.Find(request_id) >= 0,
              "get_task did not surface pending human agent request");
+    st.Check(agent_get_json.Find("respond_to_request") >= 0 && agent_get_json.Find("suggested_wait_ms") >= 0,
+             "get_task missing deterministic next action after human agent request");
 
     ValueMap respond_args; respond_args.Add("task_id", task_id); respond_args.Add("store_root", root);
     respond_args.Add("request_id", request_id); respond_args.Add("recommended", "Pass");
@@ -701,9 +758,9 @@ int RunSelfTest()
     String respond_json = AsJSON(HandleRequest(Request("tools/call", 6, respond_call), has), false);
     st.Check(respond_json.Find("\"status\":\"answered\"") >= 0,
              "respond_to_request did not answer propose_answer");
+    st.Check(respond_json.Find("get_task with wait_ms") >= 0,
+             "respond_to_request did not return the next polling action");
 
-    // continue_with_judgement: queues durably, duplicate reused, no payload required,
-    // pending -> answered, and never creates human evidence.
     String cwj_request_id, cwj_error;
     st.Check(TaskTrackQueueAgentRequest(task_path, task_id, "visual", "continue_with_judgement", String(), cwj_request_id, cwj_error),
              "unable to queue continue_with_judgement: " + cwj_error);
@@ -711,7 +768,7 @@ int RunSelfTest()
     st.Check(TaskTrackQueueAgentRequest(task_path, task_id, "visual", "continue_with_judgement", String(), cwj_dup_id, cwj_dup_error) && cwj_dup_id == cwj_request_id,
              "duplicate continue_with_judgement request was not reused");
 
-    ValueMap cwj_get_args; cwj_get_args.Add("task_id", task_id); cwj_get_args.Add("store_root", root); cwj_get_args.Add("include_items", true);
+    ValueMap cwj_get_args; cwj_get_args.Add("task_id", task_id); cwj_get_args.Add("store_root", root); cwj_get_args.Add("include_items", true); cwj_get_args.Add("wait_ms", 1000);
     ValueMap cwj_get_call; cwj_get_call.Add("name", "get_task"); cwj_get_call.Add("arguments", cwj_get_args); cwj_get_call.Add("_meta", ModernMeta(true));
     String cwj_get_json = AsJSON(HandleRequest(Request("tools/call", 51, cwj_get_call), has), false);
     st.Check(cwj_get_json.Find("\"agent_action_required\":true") >= 0 && cwj_get_json.Find(cwj_request_id) >= 0,

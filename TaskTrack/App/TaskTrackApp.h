@@ -29,6 +29,11 @@ public:
 
     bool LoadTask(const String& path, String& error);
 
+    // MCP-launched tasks should behave like a focused human decision dialog:
+    // compact for small requests, foregrounded, no immediate reminder, and
+    // terminal actions close the window after durable state is saved.
+    void PrepareAgentLaunch();
+
 private:
     enum ReminderResult {
         REMINDER_CONTINUE = 1,
@@ -80,6 +85,14 @@ private:
     int  TaskTrackExitPrompt();
     void RequestExit();
 
+    // Agent-launch lifecycle helpers. Durable JSON remains internal storage;
+    // completion/closure is exposed to the agent only through MCP task state.
+    void CompleteAgentTaskAndClose();
+    void CloseAgentTaskAndExit();
+    void ArmAgentReminderGrace();
+    void BringAgentWindowForward();
+    void ApplyAgentCompactLayout();
+
     UiTitleCard::Style MakeTitleStyle(Font title_font, Font subtitle_font, UiRole role = UiRole::Standard) const;
     UiButton::Style MakeCategoryButtonStyle(bool selected, bool needs_attention = false) const;
     UiGroupPanel::Style MakeCategoryGroupStyle() const;
@@ -93,6 +106,7 @@ private:
     bool reminder_showing_ = false;
     bool closing_ = false;
     bool review_required_ = false;
+    bool agent_launch_mode_ = false;
     int64 last_seen_agent_poll_epoch_ = 0;
 
     UiBoxLayout main_box_ { UiDirection::V };

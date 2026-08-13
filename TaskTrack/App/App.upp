@@ -12,6 +12,7 @@ file
 	TaskTrackResponsiveFlow.h,
 	TaskTrackApp.h,
 	TaskTrackApp.cpp,
+	TaskTrackAgentLaunch.cpp,
 	main.cpp;
 
 mainconfig
