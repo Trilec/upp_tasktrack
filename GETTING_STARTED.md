@@ -44,6 +44,8 @@ TaskTrackMcp.exe                run the stdio MCP server
 TaskTrackMcp.exe --help         show MCP usage
 TaskTrackMcp.exe --version      show version/schema/protocol
 TaskTrackMcp.exe --selftest     run deterministic MCP self-test
+TaskTrackMcp.exe --oneshot <request.json>   process one MCP JSON-RPC request file and exit
+                                         (diagnostic/test utility; not needed for host registration)
 ```
 
 Both executables should normally be placed in the same directory. `TaskTrackMcp.exe` launches `TaskTrackGui.exe --task <path>` beside itself.

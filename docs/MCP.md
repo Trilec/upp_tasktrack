@@ -14,6 +14,8 @@ TaskTrackMcp.exe                run the stdio MCP server (no stdout banner)
 TaskTrackMcp.exe --help         MCP usage
 TaskTrackMcp.exe --version      version/schema/protocol summary
 TaskTrackMcp.exe --selftest     deterministic MCP self-test
+TaskTrackMcp.exe --oneshot <request.json>   process one MCP JSON-RPC request file and exit
+                                         (diagnostic/test utility)
 ```
 
 ## Tools

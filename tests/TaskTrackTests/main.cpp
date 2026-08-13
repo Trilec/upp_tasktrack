@@ -400,6 +400,8 @@ CONSOLE_APP_MAIN
             "MCP no-arg did not select stdio server mode");
     t.Check(TaskTrackClassifyMcpCommand(V("--oneshot", "f.json")) == TaskTrackMcpCommand::OneShot,
             "MCP --oneshot was not recognized");
+    t.Check(TaskTrackClassifyMcpCommand(V("--oneshot")) == TaskTrackMcpCommand::Invalid,
+            "incomplete MCP --oneshot was accepted");
     t.Check(TaskTrackClassifyMcpCommand(V("--selftest")) == TaskTrackMcpCommand::SelfTest,
             "MCP --selftest was not recognized");
     t.Check(TaskTrackClassifyMcpCommand(V("--help")) == TaskTrackMcpCommand::Help, "MCP --help not recognized");
