@@ -555,10 +555,10 @@ void TaskTrackQuestionCtrl::ClearDynamicControls()
     checks_.Clear();
     choice_buttons_.Clear();
     color_buttons_.Clear();
-    dropdown_.UseInternalModel().Clear();
-    list_.GetInternalModel().Clear();
-    rank_.GetInternalModel().Clear();
-    tree_.GetInternalModel().Clear();
+    dropdown_.UseInternalModel().ClearModel();
+    list_.UseInternalModel().ClearModel();
+    rank_.UseInternalModel().ClearModel();
+    tree_.UseInternalModel().ClearModel();
 }
 
 void TaskTrackQuestionCtrl::Configure()
@@ -731,7 +731,8 @@ void TaskTrackQuestionCtrl::BuildSelect()
 
 void TaskTrackQuestionCtrl::PopulateList(UiList& list, const Vector<String>& choices)
 {
-    UiListModel& model = list.GetInternalModel();
+    list.UseInternalModel();
+    UiListModel& model = list.Model();
     model.Clear();
     for(const String& choice : choices)
         model.Add(choice, choice);
@@ -918,21 +919,22 @@ void TaskTrackQuestionCtrl::BuildRankOrder()
 void TaskTrackQuestionCtrl::AddHierarchyChildren(const String& parent_id, UiTreeNodeRef parent)
 {
     TaskTrackItem& item = document_->items[item_index_];
+    UiTreeModel& model = tree_.Model();
     for(const TaskTrackHierarchyNode& node : item.hierarchy) {
         if(node.parent_id != parent_id)
             continue;
         UiModelItem model_item(node.label, node.id, true);
-        UiTreeNodeRef ref = tree_.GetInternalModel().AddChild(parent, model_item);
+        UiTreeNodeRef ref = model.AddChild(parent, model_item);
         AddHierarchyChildren(node.id, ref);
-        if(tree_.GetInternalModel().GetChildCount(ref) > 0)
+        if(model.GetChildCount(ref) > 0)
             tree_.Expand(ref, true);
     }
 }
 
 void TaskTrackQuestionCtrl::PopulateHierarchy()
 {
-
-    UiTreeModel& model = tree_.GetInternalModel();
+    tree_.UseInternalModel();
+    UiTreeModel& model = tree_.Model();
     model.Clear();
     AddHierarchyChildren(String(), model.Root());
 }
@@ -1126,7 +1128,7 @@ void TaskTrackQuestionCtrl::CommitRankOrder(bool confirmed)
     if(syncing_ || !document_ || item_index_ < 0)
         return;
     ValueArray order;
-    const UiListModel& model = rank_.GetModel();
+    const UiListModel& model = rank_.Model();
     for(int i = 0; i < model.GetCount(); ++i)
         order.Add(model.Get(i).data);
     TaskTrackAnswer& answer = document_->items[item_index_].answer;
