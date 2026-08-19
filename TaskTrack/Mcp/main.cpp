@@ -21,10 +21,12 @@ namespace {
 
 static const char *CURRENT_PROTOCOL = "2026-07-28";
 static const char *TASKS_EXTENSION = "io.modelcontextprotocol/tasks";
+static const char *INTERACTIVE_STATE_PREFIX = "tasktrack-live:";
 static const int UNSUPPORTED_PROTOCOL_VERSION = -32022;
 static const int MISSING_REQUIRED_CLIENT_CAPABILITY = -32021;
 static const int DEFAULT_WAIT_MS = 120000;
 static const int MAX_WAIT_MS = 300000;
+static const int INTERACTIVE_WAIT_MS = 300000;
 static const int WAIT_SLICE_MS = 250;
 
 Value ServerInfoValue()
@@ -241,7 +243,7 @@ Value TaskLocatorSchema(bool include_items = false)
     if(include_items) {
         props.Add("include_items", BoolSchema("Include question definitions and structured answers."));
         props.Add("wait_ms", IntSchema(0, MAX_WAIT_MS,
-            "Wait up to this many milliseconds for completion, closure, or a human->agent request. Use after create_task; 0 returns immediately."));
+            "Recovery/detached wait only. Normal launched create_task keeps its own MCP call active until the human finishes."));
     }
     ValueArray required; required.Add("task_id");
     ValueMap s;
@@ -327,9 +329,9 @@ Value CreateTaskSchema()
     props.Add("store_root", StringSchema("Optional durable store directory."));
     props.Add("reminder_minutes", IntSchema(0, 1440, "Inactivity reminder interval; 0 disables reminders."));
     props.Add("remind_while_paused", BoolSchema("Whether inactivity reminders may also appear for explicitly paused tasks."));
-    props.Add("nudge_on_agent_poll", BoolSchema("Let a later agent poll gently remind an inactive human without changing task state."));
+    props.Add("nudge_on_agent_poll", BoolSchema("Let a later recovery poll gently remind an inactive human without changing task state."));
     props.Add("history_limit", IntSchema(5, 200, "Bound retained completed/closed task history. Active work is never pruned for this limit."));
-    props.Add("launch", BoolSchema("Launch the TaskTrack GUI after durable creation. Defaults true."));
+    props.Add("launch", BoolSchema("Launch the TaskTrack GUI. Defaults true. Normal launch keeps create_task active until the human completes; launch=false is the explicit detached/recovery path."));
     props.Add("items", items);
 
     ValueArray required; required.Add("title"); required.Add("items");
@@ -343,13 +345,13 @@ Value BuildToolsList(bool modern)
     ValueArray tools;
     tools.Add(ToolSpec("version", "Return TaskTrack version/protocol.", EmptyObjectSchema(), true, false, true));
     tools.Add(ToolSpec("create_task",
-        "Create durable human evidence when the agent cannot establish a decision/approval/classification/selection/verification, or when the user explicitly requests TaskTrack recording. Do not use for ordinary conversation/explanation/opinion/information. Ask minimum items. Recommendations are advisory. Retain task_id; then call get_task with wait_ms until completed/closed or agent_action_required.",
+        "Create durable human evidence and, by default, keep this tool call active while the TaskTrack GUI is open. When the human completes or cancels, the final structured result returns directly from this create_task call so the agent continues without manual polling. If the human requests Suggest/Clarify, modern clients receive an in-call MCP input_required sampling round and then the same create_task call resumes. Use launch=false only for explicitly detached/recovery workflows. Do not use TaskTrack for ordinary conversation/explanation/opinion/information.",
         CreateTaskSchema(), false, false, false));
     tools.Add(ToolSpec("get_task",
-        "Return durable human evidence and pending human->agent requests. After create_task use wait_ms to wait for completion/closure/request. If agent_action_required, respond_to_request then wait again. Tasks-aware clients may instead receive the same request as task input_required. closed with no answer = no human evidence.",
+        "Recovery/detached lookup for durable TaskTrack state. Normal launched create_task already waits for and returns the final human result directly. If an older/non-MRTR host exposes agent_action_required, respond_to_request is the fallback. closed with no answer = no human evidence.",
         TaskLocatorSchema(true), true, false, true));
     tools.Add(ToolSpec("respond_to_request",
-        "Fallback for pending human->agent request: propose_answer=>recommended; clarify=>clarification (+optional recommended); continue_with_judgement=>no payload. Tasks-aware clients should fulfill input_required automatically. Advisory only; never writes human answer.",
+        "Recovery/compatibility fallback for a pending human->agent request: propose_answer=>recommended; clarify=>clarification (+optional recommended); continue_with_judgement=>no payload. Normal modern create_task handles these through in-call input_required. Advisory only; never writes human answer.",
         TaskTrackMcpRespondRequestSchema(), false, false, false));
     tools.Add(ToolSpec("open_task", "Launch TaskTrack GUI for task_id.", TaskLocatorSchema(false), false, false, false));
 
@@ -377,7 +379,7 @@ Value BuildDiscoverResult()
     result.Add("supportedVersions", versions);
     result.Add("capabilities", capabilities);
     result.Add("instructions",
-        "Invoke TaskTrack only for durable human evidence the agent cannot establish (decision/approval/classification/selection/verification), or explicit TaskTrack recording. Not ordinary conversation/explanation/opinion/information. Ask minimum items; ordinary verification=confirm+[Pass,Fail]. Recommendations advisory. Retain task_id. Tasks-aware hosts poll tasks/get and fulfill input_required; otherwise call get_task(wait_ms<=300000), respond_to_request when agent_action_required, then wait again. closed+no answer=no human evidence.");
+        "TaskTrack=durable human evidence, not ordinary chat. Normal launched create_task stays active until the human completes/cancels and returns the result directly; do not manually poll after a normal create_task. Human Suggest/Clarify is fulfilled through modern input_required when supported. get_task/respond_to_request are recovery/compatibility fallbacks. closed+no answer=no human evidence.");
     result.Add("ttlMs", 300000);
     result.Add("cacheScope", "public");
     AddModernMeta(result);
@@ -396,7 +398,7 @@ Value BuildLegacyInitialize(const Value& params)
     result.Add("capabilities", caps);
     result.Add("serverInfo", ServerInfoValue());
     result.Add("instructions",
-        "TaskTrack=durable human evidence, not ordinary chat. Ask minimum items. Retain task_id; poll get_task. Resolve pending human->agent requests with respond_to_request. closed+no answer=no human evidence.");
+        "TaskTrack=durable human evidence, not ordinary chat. Normal launched create_task waits for terminal human state. Legacy clients without modern input_required use get_task/respond_to_request only as assistance fallback. closed+no answer=no human evidence.");
     return Value(result);
 }
 
@@ -490,7 +492,7 @@ String AgentSamplingPrompt(const TaskTrackDocument& doc, const TaskTrackItem& it
     else if(request.action == "clarify")
         out << "Restate the question or decision criterion more simply for the human. Return only a concise clarification, with no greeting or markdown.";
     else
-        out << "The human has explicitly authorized the agent to continue using its own judgement. Return only ACK.";
+        out << "The human explicitly authorized the agent to continue using its own judgement. Return only ACK.";
     return out;
 }
 
@@ -575,7 +577,7 @@ bool ApplyTaskInputResponses(const String& task_id, const String& path, const Va
                              String& error)
 {
     if(!raw_responses.Is<ValueMap>()) {
-        error = "tasks/update inputResponses must be an object.";
+        error = "inputResponses must be an object.";
         return false;
     }
 
@@ -628,6 +630,87 @@ bool ApplyTaskInputResponses(const String& task_id, const String& path, const Va
     return true;
 }
 
+String InteractiveState(const String& task_id)
+{
+    return String(INTERACTIVE_STATE_PREFIX) + task_id;
+}
+
+bool ParseInteractiveState(const String& state, String& task_id, String& error)
+{
+    task_id.Clear();
+    String prefix = INTERACTIVE_STATE_PREFIX;
+    if(!state.StartsWith(prefix)) {
+        error = "TaskTrack requestState is invalid.";
+        return false;
+    }
+    task_id = state.Mid(prefix.GetCount());
+    if(!task_id.StartsWith("task-") || task_id.GetCount() <= 5) {
+        error = "TaskTrack requestState contains an invalid task id.";
+        task_id.Clear();
+        return false;
+    }
+    return true;
+}
+
+bool InteractiveArgsMatchTask(const Value& args, const TaskTrackDocument& doc, String& error)
+{
+    if(!args.Is<ValueMap>()) {
+        error = "interactive TaskTrack retry arguments must be an object.";
+        return false;
+    }
+    if(TrimBoth(ReadString(args, "title")) != doc.title) {
+        error = "TaskTrack requestState does not match the retried task title.";
+        return false;
+    }
+    String supplied_id = TrimBoth(ReadString(args, "task_id"));
+    if(!supplied_id.IsEmpty() && supplied_id != doc.task_id) {
+        error = "TaskTrack requestState does not match the supplied task_id.";
+        return false;
+    }
+    Value raw_items = args["items"];
+    if(!raw_items.Is<ValueArray>()) {
+        error = "TaskTrack retry is missing items.";
+        return false;
+    }
+    ValueArray items = raw_items;
+    if(items.GetCount() != doc.items.GetCount()) {
+        error = "TaskTrack requestState does not match the retried item count.";
+        return false;
+    }
+    for(int i = 0; i < items.GetCount(); ++i) {
+        if(!items[i].Is<ValueMap>()) {
+            error = "TaskTrack retry item is invalid.";
+            return false;
+        }
+        String title = TrimBoth(ReadString(items[i], "title"));
+        TaskTrackItemType type;
+        if(title != doc.items[i].title || !TaskTrackParseItemType(ReadString(items[i], "type"), type) || type != doc.items[i].type) {
+            error = Format("TaskTrack requestState does not match retried item %d.", i);
+            return false;
+        }
+        String id = TrimBoth(ReadString(items[i], "id"));
+        if(!id.IsEmpty() && id != doc.items[i].id) {
+            error = Format("TaskTrack requestState does not match retried item id %d.", i);
+            return false;
+        }
+    }
+    return true;
+}
+
+Value InteractiveInputRequired(const TaskTrackDocument& doc, const String& path, String& error)
+{
+    ValueMap inputs = PendingTaskInputRequests(doc, path, error);
+    if(inputs.IsEmpty())
+        return Value();
+
+    ValueMap result;
+    result.Add("resultType", "input_required");
+    result.Add("inputRequests", inputs);
+    result.Add("requestState", InteractiveState(doc.task_id));
+    AddModernMeta(result);
+    return Value(result);
+}
+
 Value TaskHandleValue(const TaskTrackDocument& doc, const String& status_message)
 {
     ValueMap result;
@@ -662,14 +745,14 @@ Value DetailedTaskValue(const TaskTrackDocument& doc, const String& path, bool s
             else {
                 result.Add("status", "working");
                 result.Add("statusMessage", input_error.IsEmpty()
-                           ? "Human requested agent assistance; fallback get_task/respond_to_request is available."
+                           ? "Human requested agent assistance; recovery get_task/respond_to_request is available."
                            : "Human requested agent assistance; unable to build task input request: " + input_error);
             }
         }
         else {
             result.Add("status", "working");
             result.Add("statusMessage", pending > 0
-                       ? Format("agent_action_required:%d; use get_task/respond_to_request fallback.", pending)
+                       ? Format("agent_action_required:%d; use get_task/respond_to_request recovery fallback.", pending)
                        : "TaskTrack state: " + TaskTrackStateName(doc.state));
         }
     }
@@ -677,28 +760,151 @@ Value DetailedTaskValue(const TaskTrackDocument& doc, const String& path, bool s
     return Value(result);
 }
 
-Value ExecuteTool(const String& name, const Value& args, bool modern, bool task_capability)
+Value FinalInteractiveResult(const TaskTrackDocument& doc, const String& path, bool modern)
 {
+    ValueMap status = TaskTrackMcpAugmentAgentStatus(TaskTrackStatusValue(doc, path, true), path, doc.task_id);
+    status.Add("delivery", "direct_create_task_result");
+    status.Add("agent_poll_required", false);
+    if(doc.state == TaskTrackState::Completed)
+        status.Add("message", "Human input completed; continue using items[].answer.data as authority.");
+    else if(doc.state == TaskTrackState::Closed)
+        status.Add("message", "Task closed; no additional human evidence was supplied.");
+    return BuildCallToolResult(status, false, modern);
+}
+
+Value WaitForInteractiveResult(TaskTrackDocument& doc, const String& path, const Value& request,
+                               bool modern, bool task_capability)
+{
+    int elapsed = 0;
+    String error;
+    for(;;) {
+        if(elapsed > 0) {
+            TaskTrackDocument latest;
+            if(!TaskTrackLoad(path, latest, error))
+                return BuildCallToolResult(BuildFailure("TASK_LOAD_FAILED", error), true, modern);
+            doc = pick(latest);
+        }
+
+        if(doc.state == TaskTrackState::Completed || doc.state == TaskTrackState::Closed)
+            return FinalInteractiveResult(doc, path, modern);
+
+        if(TaskTrackMcpPendingAgentRequestCount(path, doc.task_id) > 0) {
+            if(modern && ClientSupportsSampling(request)) {
+                Value input = InteractiveInputRequired(doc, path, error);
+                if(!IsNull(input))
+                    return input;
+            }
+
+            // Older/non-sampling clients cannot service MRTR automatically.
+            // Return to the agent with an explicit fallback action instead of
+            // leaving the human staring at Waiting forever.
+            ValueMap status = TaskTrackMcpAugmentAgentStatus(TaskTrackStatusValue(doc, path, true), path, doc.task_id);
+            status.Add("delivery", "compatibility_fallback");
+            status.Add("interaction_blocked", true);
+            status.Add("next_action", "Call respond_to_request for each pending request, then get_task(wait_ms) until the human completes.");
+            return BuildCallToolResult(status, false, modern);
+        }
+
+        if(elapsed >= INTERACTIVE_WAIT_MS) {
+            if(modern && task_capability)
+                return TaskHandleValue(doc, "Live human wait exceeded five minutes; durable task remains open. Poll tasks/get as a long-running recovery task.");
+            ValueMap status = TaskTrackStatusValue(doc, path, true);
+            status.Add("delivery", "wait_timeout");
+            status.Add("wait_timed_out", true);
+            status.Add("next_action", "The durable GUI task remains open; use get_task for recovery.");
+            return BuildCallToolResult(status, false, modern);
+        }
+
+        Sleep(WAIT_SLICE_MS);
+        elapsed += WAIT_SLICE_MS;
+    }
+}
+
+Value ExecuteTool(const String& name, const Value& args, const Value& request)
+{
+    bool modern = IsModern(request);
+    bool task_capability = ClientSupportsTasks(request);
+
     if(name == "version") {
         ValueMap v; v.Add("ok", true); v.Add("version", TaskTrackVersion()); v.Add("schema_version", 2);
         v.Add("question_types", 18); v.Add("current_protocol", CURRENT_PROTOCOL); v.Add("tasks_extension", TASKS_EXTENSION);
+        v.Add("live_create_task", true); v.Add("mrtr_assistance", true);
         return BuildCallToolResult(v, false, modern);
     }
     if(name == "create_task") {
-        bool launch = true; String error;
-        if(!ReadBool(args, "launch", true, launch, error)) return BuildCallToolResult(BuildFailure("BAD_REQUEST", error), true, modern);
-        TaskTrackDocument doc; String path;
-        if(!TaskTrackCreateFromArguments(args, doc, path, error)) return BuildCallToolResult(BuildFailure("CREATE_FAILED", error), true, modern);
-        bool launched = false; String launch_error;
-        if(launch) launched = LaunchTaskGui(path, launch_error);
-        if(modern && task_capability)
-            return TaskHandleValue(doc, launched ? "Awaiting human input; GUI launched. Poll tasks/get."
-                                                 : "Awaiting human input; open durable task by taskId.");
-        ValueMap status = TaskTrackStatusValue(doc, path, true);
-        status.Add("launched", launched); if(launch && !launched) status.Add("launch_error", launch_error);
-        status.Add("next_action", "call get_task with wait_ms until completed/closed; handle agent_action_required before waiting again");
-        status.Add("suggested_wait_ms", DEFAULT_WAIT_MS);
-        return BuildCallToolResult(status, false, modern);
+        bool launch = true;
+        String error;
+        if(!ReadBool(args, "launch", true, launch, error))
+            return BuildCallToolResult(BuildFailure("BAD_REQUEST", error), true, modern);
+
+        Value params = request["params"];
+        String request_state;
+        Value input_responses;
+        if(params.Is<ValueMap>()) {
+            Value raw_state = params["requestState"];
+            if(!IsNull(raw_state)) {
+                if(!raw_state.Is<String>())
+                    return BuildCallToolResult(BuildFailure("BAD_REQUEST", "requestState must be a string."), true, modern);
+                request_state = AsString(raw_state);
+            }
+            input_responses = params["inputResponses"];
+        }
+
+        TaskTrackDocument doc;
+        String path;
+        bool reentry = !request_state.IsEmpty();
+        if(reentry) {
+            if(!modern)
+                return BuildCallToolResult(BuildFailure("BAD_REQUEST", "requestState is only valid for the modern MCP multi-round-trip flow."), true, modern);
+            String task_id;
+            if(!ParseInteractiveState(request_state, task_id, error))
+                return BuildCallToolResult(BuildFailure("BAD_REQUEST", error), true, modern);
+            if(!TaskTrackResolveTaskPath(task_id, ReadString(args, "store_root"), path, error) || !TaskTrackLoad(path, doc, error))
+                return BuildCallToolResult(BuildFailure("TASK_NOT_FOUND", error), true, modern);
+            if(!InteractiveArgsMatchTask(args, doc, error))
+                return BuildCallToolResult(BuildFailure("BAD_REQUEST", error), true, modern);
+            if(!IsNull(input_responses)) {
+                if(!ApplyTaskInputResponses(doc.task_id, path, input_responses, error))
+                    return BuildCallToolResult(BuildFailure("INPUT_RESPONSE_FAILED", error), true, modern);
+                if(!TaskTrackLoad(path, doc, error))
+                    return BuildCallToolResult(BuildFailure("TASK_LOAD_FAILED", error), true, modern);
+            }
+        }
+        else {
+            if(!IsNull(input_responses))
+                return BuildCallToolResult(BuildFailure("BAD_REQUEST", "inputResponses require TaskTrack requestState."), true, modern);
+            if(!TaskTrackCreateFromArguments(args, doc, path, error))
+                return BuildCallToolResult(BuildFailure("CREATE_FAILED", error), true, modern);
+
+            bool launched = false;
+            String launch_error;
+            if(launch)
+                launched = LaunchTaskGui(path, launch_error);
+
+            if(!launch) {
+                if(modern && task_capability)
+                    return TaskHandleValue(doc, "Durable detached TaskTrack task created; GUI launch disabled.");
+                ValueMap status = TaskTrackStatusValue(doc, path, true);
+                status.Add("launched", false);
+                status.Add("detached", true);
+                status.Add("next_action", "Open or poll this task only because launch=false explicitly requested detached operation.");
+                return BuildCallToolResult(status, false, modern);
+            }
+
+            if(!launched) {
+                ValueMap status = TaskTrackStatusValue(doc, path, true);
+                status.Add("launched", false);
+                status.Add("launch_error", launch_error);
+                status.Add("delivery", "launch_failed");
+                return BuildCallToolResult(status, true, modern);
+            }
+        }
+
+        // This is the primary TaskTrack path. The initiating tool call stays
+        // owned until the GUI reaches a terminal state. A human Suggest/Clarify
+        // returns input_required; the client retries this same call with
+        // inputResponses/requestState, after which we resume waiting.
+        return WaitForInteractiveResult(doc, path, request, modern, task_capability);
     }
     if(name == "get_task") {
         TaskTrackDocument doc; String path, error;
@@ -727,7 +933,7 @@ Value ExecuteTool(const String& name, const Value& args, bool modern, bool task_
         if(!ok)
             return BuildCallToolResult(BuildFailure(code, ReadString(result, "message", "request failed")), true, modern);
         ValueMap out = result;
-        out.Add("next_action", "call get_task with wait_ms again");
+        out.Add("next_action", "call get_task with wait_ms again only on the compatibility/recovery path");
         out.Add("suggested_wait_ms", DEFAULT_WAIT_MS);
         return BuildCallToolResult(out, false, modern);
     }
@@ -831,7 +1037,7 @@ Value HandleRequest(const Value& request, bool& has_response)
         if(IsNull(name) || !name.Is<String>()) { has_response = true; return JsonRpcError(id, -32602, "Tool call is missing string name"); }
         Value args = params["arguments"]; if(IsNull(args)) args = Value(ValueMap());
         if(!args.Is<ValueMap>()) { has_response = true; return JsonRpcError(id, -32602, "Tool arguments must be an object"); }
-        has_response = true; return JsonRpcResult(id, ExecuteTool(AsString(name), args, IsModern(request), ClientSupportsTasks(request)));
+        has_response = true; return JsonRpcResult(id, ExecuteTool(AsString(name), args, request));
     }
     if(method == "tasks/get" || method == "tasks/update" || method == "tasks/cancel") {
         if(has_id) { has_response = true; return HandleTaskExtension(request, method); }
@@ -912,8 +1118,8 @@ int RunSelfTest()
     st.Check(has && discover_json.Find(CURRENT_PROTOCOL) >= 0, "modern discovery failed");
     st.Check(discover_json.Find(TASKS_EXTENSION) >= 0, "discovery missing Tasks extension");
     st.Check(discover_json.Find("\"resultType\":\"complete\"") >= 0, "discovery missing modern resultType");
-    st.Check(discover_json.Find("durable human evidence") >= 0 && discover_json.Find("closed+no answer") >= 0,
-             "modern discovery missing compact TaskTrack decision/lifecycle rule");
+    st.Check(discover_json.Find("Normal launched create_task") >= 0 && discover_json.Find("closed+no answer") >= 0,
+             "modern discovery missing direct live lifecycle rule");
 
     Value legacy = ParseJSON("{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-11-25\"}}");
     String legacy_json = AsJSON(HandleRequest(legacy, has), false);
@@ -924,7 +1130,8 @@ int RunSelfTest()
     String list_json = AsJSON(HandleRequest(Request("tools/list", 3, list_params), has), false);
     st.Check(list_json.Find("create_task") >= 0, "tools/list missing create_task");
     st.Check(list_json.Find("respond_to_request") >= 0, "tools/list missing respond_to_request");
-    st.Check(list_json.Find("wait_ms") >= 0, "get_task schema missing bounded wait_ms");
+    st.Check(list_json.Find("direct") >= 0 && list_json.Find("input_required") >= 0,
+             "create_task description missing direct-return/MRTR contract");
     st.Check(list_json.Find("propose_answer") >= 0 && list_json.Find("clarify") >= 0 &&
              list_json.Find("continue_with_judgement") >= 0,
              "respond_to_request schema missing compact actions");
@@ -944,9 +1151,9 @@ int RunSelfTest()
     ValueMap args; args.Add("task_id", task_id); args.Add("title", "MCP self-test"); args.Add("store_root", root); args.Add("launch", false); args.Add("items", items);
     ValueMap call_params; call_params.Add("name", "create_task"); call_params.Add("arguments", args); call_params.Add("_meta", ModernMeta(true));
     String create_json = AsJSON(HandleRequest(Request("tools/call", 4, call_params), has), false);
-    st.Check(create_json.Find("\"resultType\":\"task\"") >= 0, "modern create_task did not return task handle");
+    st.Check(create_json.Find("\"resultType\":\"task\"") >= 0, "detached modern create_task did not return task handle");
     st.Check(create_json.Find(task_id) >= 0, "task handle missing task id");
-    st.Check(create_json.Find("\"pollIntervalMs\":2000") >= 0, "task handle polling interval is not interactive");
+    st.Check(create_json.Find("Durable detached") >= 0, "detached task handle missing explicit lifecycle message");
 
     String task_path = TaskTrackMakeTaskPath(root, task_id);
     st.Check(FileExists(task_path), "create_task returned before durable task existed");
@@ -960,8 +1167,6 @@ int RunSelfTest()
     String agent_get_json = AsJSON(HandleRequest(Request("tools/call", 5, get_call), has), false);
     st.Check(agent_get_json.Find("\"agent_action_required\":true") >= 0 && agent_get_json.Find(request_id) >= 0,
              "get_task did not surface pending human agent request");
-    st.Check(agent_get_json.Find("respond_to_request") >= 0 && agent_get_json.Find("suggested_wait_ms") >= 0,
-             "get_task missing deterministic next action after human agent request");
 
     ValueMap respond_args; respond_args.Add("task_id", task_id); respond_args.Add("store_root", root);
     respond_args.Add("request_id", request_id); respond_args.Add("recommended", "Pass");
@@ -969,9 +1174,62 @@ int RunSelfTest()
     String respond_json = AsJSON(HandleRequest(Request("tools/call", 6, respond_call), has), false);
     st.Check(respond_json.Find("\"status\":\"answered\"") >= 0,
              "respond_to_request did not answer propose_answer");
-    st.Check(respond_json.Find("get_task with wait_ms") >= 0,
-             "respond_to_request did not return the next polling action");
 
+    // Direct MRTR assistance path: create a second detached task only to set up
+    // deterministic durable state, then re-enter create_task with requestState
+    // exactly as a modern client would after the live call observes Suggest.
+    String live_task_id = TaskTrackMakeTaskId();
+    ValueMap live_args = clone(args);
+    live_args.Set("task_id", live_task_id);
+    live_args.Set("title", "MCP live self-test");
+    ValueMap live_create; live_create.Add("name", "create_task"); live_create.Add("arguments", live_args); live_create.Add("_meta", ModernMeta(true));
+    String live_create_json = AsJSON(HandleRequest(Request("tools/call", 70, live_create), has), false);
+    st.Check(live_create_json.Find(live_task_id) >= 0, "unable to create live self-test backing task");
+    String live_path = TaskTrackMakeTaskPath(root, live_task_id);
+    String live_request_id;
+    st.Check(TaskTrackQueueAgentRequest(live_path, live_task_id, "visual", "propose_answer", String(), live_request_id, error),
+             "unable to queue live MRTR proposal: " + error);
+
+    ValueMap live_retry = live_create;
+    live_retry.Add("requestState", InteractiveState(live_task_id));
+    String mrtr_json = AsJSON(HandleRequest(Request("tools/call", 71, live_retry), has), false);
+    st.Check(mrtr_json.Find("\"resultType\":\"input_required\"") >= 0,
+             "live create_task did not surface Suggest as input_required");
+    st.Check(mrtr_json.Find("sampling/createMessage") >= 0 && mrtr_json.Find(live_request_id) >= 0,
+             "live create_task input_required missing sampling request");
+    st.Check(mrtr_json.Find(InteractiveState(live_task_id)) >= 0,
+             "live create_task input_required missing requestState");
+
+    ValueMap sample_text; sample_text.Add("type", "text"); sample_text.Add("text", "Pass");
+    ValueMap sample_result; sample_result.Add("role", "assistant"); sample_result.Add("content", sample_text); sample_result.Add("model", "selftest");
+    ValueMap live_responses; live_responses.Add(live_request_id, sample_result);
+
+    TaskTrackDocument live_doc;
+    if(TaskTrackLoad(live_path, live_doc, error)) {
+        live_doc.items[0].answer.answered = true;
+        live_doc.items[0].answer.status = "accepted";
+        live_doc.items[0].answer.value = "Pass";
+        live_doc.items[0].answer.data = "Pass";
+        live_doc.items[0].answer.answered_at = TaskTrackNowIso();
+        live_doc.state = TaskTrackState::Completed;
+        live_doc.updated_at = TaskTrackNowIso();
+        st.Check(TaskTrackSave(live_path, live_doc, error), "unable to complete live self-test task");
+    }
+    else st.Check(false, "unable to load live self-test task: " + error);
+
+    ValueMap live_final = live_create;
+    live_final.Add("requestState", InteractiveState(live_task_id));
+    live_final.Add("inputResponses", live_responses);
+    String live_final_json = AsJSON(HandleRequest(Request("tools/call", 72, live_final), has), false);
+    st.Check(live_final_json.Find("direct_create_task_result") >= 0 && live_final_json.Find("\"data\":\"Pass\"") >= 0,
+             "live create_task did not return terminal human evidence directly");
+    TaskTrackAgentChannel live_channel;
+    st.Check(TaskTrackLoadAgentChannel(live_path, live_task_id, live_channel, error) &&
+             !TaskTrackAgentHasPending(live_channel, "visual", "propose_answer") &&
+             TaskTrackAgentLatestRecommendation(live_channel, "visual") == "Pass",
+             "live create_task retry did not apply sampling response to advisory channel");
+
+    // Keep Tasks extension behavior as recovery compatibility.
     String task_input_id;
     st.Check(TaskTrackQueueAgentRequest(task_path, task_id, "visual", "propose_answer", String(), task_input_id, error),
              "unable to queue Tasks input request: " + error);
@@ -982,22 +1240,11 @@ int RunSelfTest()
     st.Check(input_json.Find("sampling/createMessage") >= 0 && input_json.Find(task_input_id) >= 0,
              "tasks/get input_required missing sampling request");
 
-    ValueMap sample_text; sample_text.Add("type", "text"); sample_text.Add("text", "Pass");
-    ValueMap sample_result; sample_result.Add("role", "assistant"); sample_result.Add("content", sample_text); sample_result.Add("model", "selftest");
-    ValueMap input_responses; input_responses.Add(task_input_id, sample_result);
-    ValueMap update_params; update_params.Add("taskId", task_id); update_params.Add("inputResponses", input_responses); update_params.Add("_meta", ModernMeta(true, true));
+    ValueMap task_responses; task_responses.Add(task_input_id, sample_result);
+    ValueMap update_params; update_params.Add("taskId", task_id); update_params.Add("inputResponses", task_responses); update_params.Add("_meta", ModernMeta(true, true));
     String update_json = AsJSON(HandleRequest(Request("tasks/update", 62, update_params), has), false);
     st.Check(update_json.Find("\"resultType\":\"complete\"") >= 0,
              "tasks/update did not acknowledge sampling response");
-    TaskTrackAgentChannel after_input;
-    st.Check(TaskTrackLoadAgentChannel(task_path, task_id, after_input, error) &&
-             !TaskTrackAgentHasPending(after_input, "visual", "propose_answer") &&
-             TaskTrackAgentLatestRecommendation(after_input, "visual") == "Pass",
-             "tasks/update did not resolve proposal into advisory channel");
-
-    String fallback_json = AsJSON(HandleRequest(Request("tasks/get", 63, task_params), has), false);
-    st.Check(fallback_json.Find("\"status\":\"working\"") >= 0,
-             "tasks/get did not return to working after assistance response");
 
     String cwj_request_id, cwj_error;
     st.Check(TaskTrackQueueAgentRequest(task_path, task_id, "visual", "continue_with_judgement", String(), cwj_request_id, cwj_error),
@@ -1040,7 +1287,12 @@ int RunSelfTest()
 
     FileDelete(task_path); FileDelete(task_path + ".bak"); FileDelete(TaskTrackPollMarkerPath(task_path));
     FileDelete(TaskTrackAgentChannelPath(task_path)); FileDelete(TaskTrackAgentChannelPath(task_path) + ".bak");
-    String locator = AppendFileName(TaskTrackDefaultRegistryRoot(), task_id + ".path"); FileDelete(locator); FileDelete(locator + ".bak"); DirectoryDelete(root);
+    String locator = AppendFileName(TaskTrackDefaultRegistryRoot(), task_id + ".path"); FileDelete(locator); FileDelete(locator + ".bak");
+
+    FileDelete(live_path); FileDelete(live_path + ".bak"); FileDelete(TaskTrackPollMarkerPath(live_path));
+    FileDelete(TaskTrackAgentChannelPath(live_path)); FileDelete(TaskTrackAgentChannelPath(live_path) + ".bak");
+    String live_locator = AppendFileName(TaskTrackDefaultRegistryRoot(), live_task_id + ".path"); FileDelete(live_locator); FileDelete(live_locator + ".bak");
+    DirectoryDelete(root);
 
     if(st.failures.IsEmpty()) { Cout() << "tasktrack-mcp-selftest: ok\n"; return 0; }
     Cout() << "tasktrack-mcp-selftest: failed\n";
@@ -1074,6 +1326,11 @@ static String McpHelpText()
         "  " + gui + " must be in the same directory.\n"
         "  Human tasks are opened with:\n"
         "      " + gui + " --task <task-file>\n"
+        "\n"
+        "Live interaction:\n"
+        "  Normal launched create_task remains active until the human completes.\n"
+        "  Final human evidence returns directly as the create_task result.\n"
+        "  Suggest/Clarify uses MCP multi-round-trip input_required when supported.\n"
         "\n"
         "Transport:\n"
         "  stdio MCP\n"
