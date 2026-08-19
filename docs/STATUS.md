@@ -1,65 +1,93 @@
 # TaskTrack Status
 
-## Recovery log — 2026-08-12
+## Recovery log — 2026-08-19
 
-BASE: `27ba66082b0eb078090695ba239c7f986b0f2d1e` on `main`
+BASE: `9e5ef843f3cecf1df8cfefe450e647b0f1f1d4c2` on `main`
 
-## Accepted state
+CURRENT SOURCE CANDIDATE: pending Windows validation on current `main`.
 
-- **TT-009 PASS** — source/API/package/diff review + deterministic tests accepted; four-state workflow and durable human→agent assistance implemented on `main`.
-- **TT-009-R1 PASS** — unified the assistance protocol: request lifecycle `pending → answered → (cancelled)`; added `continue_with_judgement`; legacy sidecar `resolved` migrates to `answered`; new sidecars never emit request status `resolved`. Published at `149d477`; deterministic baseline 97 passed.
-- **TT-010 implemented (source/product/docs)** — Pass/Fail verification fast path over canonical `confirm` (`choices = ["Pass","Fail"]`), boolean `answer.data`, optional verdict `answer.note`, agent-facing MCP/documentation finalized. Deterministic baseline after TT-010: 123 passed, 0 failed; MCP selftest ok.
-- **TT-010-R1** — executable roles clarified: `TaskTrackGui.exe` (native human GUI) + `TaskTrackMcp.exe` (stdio MCP server), with concise `--help` / `--version` on both and a protocol-clean server stdout. The MCP server launches `TaskTrackGui.exe --task <path>` beside itself.
-- **Runtime/platform/host acceptance is still PENDING.** No authoritative Windows Release + Debug/BLITZ, live-GUI, OpenCode, or Codex acceptance has been claimed yet.
+TaskTrack development remains directly on `main`; no feature/review/checkpoint branches are used.
 
-## TT-009/TT-009-R1 reference detail
+## Accepted foundation
 
-Development remains directly on `main`; no feature branches are used.
+- **TT-009 PASS** — four-state workflow and durable human→agent assistance.
+- **TT-009-R1 PASS** — assistance lifecycle unified as `pending → answered → (cancelled)` with `continue_with_judgement`; deterministic baseline 97 passed.
+- **TT-010 source accepted** — Pass/Fail fast path over canonical `confirm`, boolean `answer.data`, optional verdict note; deterministic baseline 123 passed.
+- **TT-010-R1 source accepted** — two-executable distribution: `TaskTrackGui.exe` + argument-free stdio `TaskTrackMcp.exe`; MCP launches the sibling GUI with `--task <path>`.
+- **TT-010-R2 machine validation** — Release builds, 142/142 deterministic checks, MCP selftest, CLI/distribution checks passed at `174edf6c51a1222c3898881f183c55b4789e9ec6`.
 
-TaskTrack uses four local workflow states rather than remapping global Ui roles:
+## Live-host correction
+
+Real Codex MCP dogfood exposed UX/lifecycle issues that machine validation could not establish: the GUI could launch behind the host, single-question tasks were oversized, reminders could appear too early, completion required too many explicit steps, and the agent-side assistance round-trip was not sufficiently live.
+
+`9e5ef843f3cecf1df8cfefe450e647b0f1f1d4c2` corrected that boundary:
+
+- MCP-launched GUI has a dedicated focused-dialog lifecycle;
+- foreground/restore is attempted explicitly on Windows;
+- reminder timing starts from actual GUI presentation;
+- Submit persists `Completed` then closes;
+- closing after all required evidence is present also completes and closes;
+- closing with required evidence missing records `Closed` without fabricating an answer;
+- agent-facing `get_task` supports bounded waiting for completion, closure, or a pending human→agent assistance request;
+- TaskTrack JSON remains internal durable storage; agents receive evidence through MCP, not by reading JSON files.
+
+## 2026-08-19 Ui convergence and compact-dialog pass
+
+TaskTrack was rechecked against current `upp_Ui/main` after the Ui model/view overhaul and button interaction hardening.
+
+Current dependency inspected:
+
+- `upp_Ui/main`: `1c239c68c504919e60859955db4faf9ea537d181`
+
+The current Ui ownership contract is `SetModel(...)` / `UseInternalModel()` / `Model()` / `ClearModel()`. TaskTrack still contained retired `GetInternalModel()` / `GetModel()` calls in List/Tree/Rank rendering. These were migrated on `main`; no compatibility shim or Ui rollback was introduced.
+
+The agent-launched TaskTrack shell was also tightened for real use:
+
+- one simple decision targets a compact `660×350` dialog with a reduced task-area minimum;
+- one visually/structurally richer decision receives more room (`720×440`);
+- 2–4 items use an intermediate `880×560` shell;
+- larger tasks retain a workspace-sized fallback;
+- redundant top state/progress remains hidden; the footer is the progress authority;
+- Save/export remains hidden in agent mode because edits autosave;
+- Paused-reminder and Agent-nudge controls are hidden in agent mode;
+- a one-item dialog also hides Pause/Reminder configuration, leaving the decision, progress, Submit and compact close affordance;
+- delayed foreground callback uses a weak `Ptr` guard and terminal paths cancel agent reminder/foreground callbacks.
+
+Source checkpoints:
+
+- `cc423f11a9b4f572d090a579d73e0820c94cd5fe` — compact MCP dialog/lifecycle refinement.
+- `8e8193f1e38aad39478fec75a3d2e2a35f4b7c15` — current Ui model ownership API migration.
+
+## Human evidence contract
+
+TaskTrack uses four local workflow states:
 
 - grey = normal agent proposal / suggested baseline;
 - orange = required item with no responsible agent proposal;
 - green = human-resolved, manually or by explicit proposal acceptance;
 - red = required item still unresolved after attempted continuation/submit.
 
-A durable `<task>.agent.json` sidecar carries human→agent assistance separately from authoritative human-answer JSON. Compact request actions are exact:
+Recommendations are advisory. Defaults, recommendations, and agent replies never silently become human evidence. `items[].answer.data` remains authoritative.
+
+A durable `<task>.agent.json` sidecar carries human→agent assistance separately from authoritative human-answer storage:
 
 - `propose_answer` → `recommended` required;
 - `clarify`, `mode=simplify` → `clarification` required; `recommended` optional;
-- `continue_with_judgement` → no response payload required (human delegates judgement back to the agent).
+- `continue_with_judgement` → no response payload; delegates judgement to the agent and never writes human evidence.
 
-Request lifecycle is `pending → answered → (cancelled)`. An answered agent request is not a resolved human question; only explicit human acceptance/manual answering creates `answer.data`. `get_task` exposes `agent_action_required` + `pending_requests`; `respond_to_request` resolves the compact request and validates any recommendation against the referenced semantic item. Agent replies never write `TaskTrackAnswer`.
+Agent-facing guidance is intentionally terse: use TaskTrack for durable human evidence the agent cannot establish (or when TaskTrack is explicitly requested), not ordinary conversation; retain `task_id`; obtain results through MCP; `closed` with no answer means no human evidence.
 
-## TT-010 reference detail
+## Validation state
 
-- Ordinary verification is `type=confirm` with `choices=["Pass","Fail"]`: Pass → `answer.data=true`, Fail → `answer.data=false`; `answer.value` is the compact display label; Pass renders green and Fail red with accessible text labels.
-- A restrained optional verdict **Note** editor is available on Pass/Fail; `answer.note` persists, round-trips, returns in status/result evidence, does not answer the question by itself, and survives verdict change and recommendation acceptance (the shared `TaskTrackApplyRecommendation()` authority preserves it).
-- No new semantic type; `pass_fail` remains loader compatibility only; schema V2 unchanged.
+Source/static review against current Ui: **IMPLEMENTATION COMPLETE — PLATFORM VALIDATION PENDING**.
 
-PUBLISHED CHECKPOINTS (TT-009):
+Still required before release closure:
 
-- `4a78a171602719816dba4a504717a423cf386fd8` — durable agent request sidecar.
-- `38af2e832ef70cf5c4362e88d9633ed4cbb83efa` — compact MCP request/response contract.
-- `c55cf1de6d8ff2fcae417b4d5177c40c48bcac93` — four-state question assistance UI.
-- `3598a1aedcded91783134157a4f17e6d13c90fba` — keep proposals actionable after red/escalated review.
-- `149d4770f66b3915ee5256eb59257d22172ff1da` — TT-009-R1 protocol unification.
+1. Build TaskTrack against current `upp_Ui/main` on Windows (Release plus a quick Debug/BLITZ compile check).
+2. Run TaskTrack deterministic tests and MCP selftest.
+3. Real Codex MCP smoke: foreground, compact one-item shell, Submit/auto-close, close-with-answer, close-without-answer, and result returned through MCP.
+4. Real assistance smoke: Suggest (and preferably Clarify) must reach the agent, receive `respond_to_request`, leave Waiting, and remain advisory until explicit human acceptance.
+5. Confirm no immediate reminder and no residual TaskTrack GUI/reminder after terminal close.
+6. Quick 3-item task visual check to confirm adaptive sizing remains usable.
 
-CURRENT DEPENDENCY CONTEXT:
-
-- Use current `upp_Ui/main`; no Ui source changes are required.
-- Core remains GUI-independent; MCP is a thin semantic bridge; Widgets own TaskTrack-local presentation.
-
-VALIDATION:
-
-- TT-009 source/deterministic review: PASS.
-- TT-009-R1 deterministic review: PASS (97 passed; selftest ok).
-- TT-010 deterministic review: PASS (123 passed; selftest ok).
-- Authoritative Windows Release + Debug/BLITZ, live GUI, OpenCode-first and Codex-second host install + unnamed dogfood, and Curt visual acceptance: **PENDING**.
-
-NEXT:
-
-1. Freeze TT-010 (`docs/PLAN.md` reflects the current phase) and run authoritative Windows Release + Debug/BLITZ validation.
-2. Install the published MCP binary into OpenCode first; run unnamed-agent discovery + real TaskTrack dogfood.
-3. Install into Codex second; run unnamed-agent discovery + dogfood.
-4. Leave the GUI open for Curt visual acceptance of the compact shell, Pass/Fail + note, four states, and assistance controls.
+After that PASS, update release/version/acceptance documentation and close the project.
