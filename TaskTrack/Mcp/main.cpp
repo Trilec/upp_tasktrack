@@ -133,17 +133,29 @@ bool IsModern(const Value& request)
     return RequestProtocol(request) == CURRENT_PROTOCOL;
 }
 
-bool ClientSupportsTasks(const Value& request)
+Value ClientCapabilities(const Value& request)
 {
     Value params = request["params"];
-    if(!params.Is<ValueMap>()) return false;
+    if(!params.Is<ValueMap>()) return Value();
     Value meta = params["_meta"];
-    if(!meta.Is<ValueMap>()) return false;
+    if(!meta.Is<ValueMap>()) return Value();
     Value caps = meta["io.modelcontextprotocol/clientCapabilities"];
+    return caps.Is<ValueMap>() ? caps : Value();
+}
+
+bool ClientSupportsTasks(const Value& request)
+{
+    Value caps = ClientCapabilities(request);
     if(!caps.Is<ValueMap>()) return false;
     Value extensions = caps["extensions"];
     if(!extensions.Is<ValueMap>()) return false;
     return extensions[TASKS_EXTENSION].Is<ValueMap>();
+}
+
+bool ClientSupportsSampling(const Value& request)
+{
+    Value caps = ClientCapabilities(request);
+    return caps.Is<ValueMap>() && caps["sampling"].Is<ValueMap>();
 }
 
 Value RequiredTasksCapabilityData()
@@ -334,10 +346,10 @@ Value BuildToolsList(bool modern)
         "Create durable human evidence when the agent cannot establish a decision/approval/classification/selection/verification, or when the user explicitly requests TaskTrack recording. Do not use for ordinary conversation/explanation/opinion/information. Ask minimum items. Recommendations are advisory. Retain task_id; then call get_task with wait_ms until completed/closed or agent_action_required.",
         CreateTaskSchema(), false, false, false));
     tools.Add(ToolSpec("get_task",
-        "Return durable human evidence and pending human->agent requests. After create_task use wait_ms to wait for completion/closure/request. If agent_action_required, respond_to_request then wait again. closed with no answer = no human evidence.",
+        "Return durable human evidence and pending human->agent requests. After create_task use wait_ms to wait for completion/closure/request. If agent_action_required, respond_to_request then wait again. Tasks-aware clients may instead receive the same request as task input_required. closed with no answer = no human evidence.",
         TaskLocatorSchema(true), true, false, true));
     tools.Add(ToolSpec("respond_to_request",
-        "Resolve pending human->agent request: propose_answer=>recommended; clarify=>clarification (+optional recommended); continue_with_judgement=>no payload. Advisory only; never writes human answer.",
+        "Fallback for pending human->agent request: propose_answer=>recommended; clarify=>clarification (+optional recommended); continue_with_judgement=>no payload. Tasks-aware clients should fulfill input_required automatically. Advisory only; never writes human answer.",
         TaskTrackMcpRespondRequestSchema(), false, false, false));
     tools.Add(ToolSpec("open_task", "Launch TaskTrack GUI for task_id.", TaskLocatorSchema(false), false, false, false));
 
@@ -365,7 +377,7 @@ Value BuildDiscoverResult()
     result.Add("supportedVersions", versions);
     result.Add("capabilities", capabilities);
     result.Add("instructions",
-        "Invoke TaskTrack only for durable human evidence the agent cannot establish (decision/approval/classification/selection/verification), or explicit TaskTrack recording. Not ordinary conversation/explanation/opinion/information. Ask minimum items; ordinary verification=confirm+[Pass,Fail]. Recommendations advisory. Retain task_id; call get_task(wait_ms<=300000) until completed/closed. If agent_action_required, respond_to_request then wait again. closed+no answer=no human evidence.");
+        "Invoke TaskTrack only for durable human evidence the agent cannot establish (decision/approval/classification/selection/verification), or explicit TaskTrack recording. Not ordinary conversation/explanation/opinion/information. Ask minimum items; ordinary verification=confirm+[Pass,Fail]. Recommendations advisory. Retain task_id. Tasks-aware hosts poll tasks/get and fulfill input_required; otherwise call get_task(wait_ms<=300000), respond_to_request when agent_action_required, then wait again. closed+no answer=no human evidence.");
     result.Add("ttlMs", 300000);
     result.Add("cacheScope", "public");
     AddModernMeta(result);
@@ -441,6 +453,181 @@ bool WaitAndReloadTask(const Value& args, TaskTrackDocument& doc, const String& 
     return true;
 }
 
+const TaskTrackItem* FindTaskItem(const TaskTrackDocument& doc, const String& item_id)
+{
+    for(const TaskTrackItem& item : doc.items)
+        if(item.id == item_id)
+            return &item;
+    return nullptr;
+}
+
+String AgentSamplingPrompt(const TaskTrackDocument& doc, const TaskTrackItem& item,
+                           const TaskTrackAgentRequest& request)
+{
+    String out;
+    out << "TaskTrack human->agent assistance request.\n"
+        << "Task: " << doc.title << "\n"
+        << "Question: " << item.title << "\n";
+    if(!item.instruction.IsEmpty())
+        out << "Instruction: " << item.instruction << "\n";
+    out << "Type: " << TaskTrackItemTypeName(item.type) << "\n";
+    if(!item.choices.IsEmpty()) {
+        out << "Allowed choices:";
+        for(const String& choice : item.choices)
+            out << " [" << choice << "]";
+        out << "\n";
+    }
+    if(item.has_min || item.has_max) {
+        out << "Numeric bounds:";
+        if(item.has_min) out << " min=" << item.min_value;
+        if(item.has_max) out << " max=" << item.max_value;
+        if(!item.unit.IsEmpty()) out << " unit=" << item.unit;
+        out << "\n";
+    }
+
+    if(request.action == "propose_answer")
+        out << "Return one responsible recommendation compatible with the question. Return only the canonical answer/value, with no explanation or markdown.";
+    else if(request.action == "clarify")
+        out << "Restate the question or decision criterion more simply for the human. Return only a concise clarification, with no greeting or markdown.";
+    else
+        out << "The human has explicitly authorized the agent to continue using its own judgement. Return only ACK.";
+    return out;
+}
+
+Value AgentSamplingRequest(const TaskTrackDocument& doc, const TaskTrackItem& item,
+                           const TaskTrackAgentRequest& request)
+{
+    ValueMap text;
+    text.Add("type", "text");
+    text.Add("text", AgentSamplingPrompt(doc, item, request));
+    ValueMap message;
+    message.Add("role", "user");
+    message.Add("content", text);
+    ValueArray messages;
+    messages.Add(message);
+
+    ValueMap params;
+    params.Add("messages", messages);
+    params.Add("systemPrompt", "Fulfil the TaskTrack assistance request exactly. Be terse and operational. Do not converse with the human.");
+    params.Add("includeContext", "none");
+    params.Add("temperature", 0.1);
+    params.Add("maxTokens", request.action == "clarify" ? 160 : 80);
+
+    ValueMap input;
+    input.Add("method", "sampling/createMessage");
+    input.Add("params", params);
+    return Value(input);
+}
+
+ValueMap PendingTaskInputRequests(const TaskTrackDocument& doc, const String& path, String& error)
+{
+    ValueMap inputs;
+    TaskTrackAgentChannel channel;
+    if(!TaskTrackLoadAgentChannel(path, doc.task_id, channel, error))
+        return inputs;
+
+    for(const TaskTrackAgentRequest& request : channel.requests) {
+        if(request.status != "pending")
+            continue;
+        const TaskTrackItem* item = FindTaskItem(doc, request.item_id);
+        if(item)
+            inputs.Add(request.id, AgentSamplingRequest(doc, *item, request));
+    }
+    return inputs;
+}
+
+String SamplingText(const Value& response)
+{
+    if(!response.Is<ValueMap>())
+        return String();
+    Value content = response["content"];
+    if(content.Is<ValueMap>()) {
+        if(ReadString(content, "type") == "text")
+            return TrimBoth(ReadString(content, "text"));
+        return String();
+    }
+    if(content.Is<ValueArray>()) {
+        ValueArray blocks = content;
+        for(int i = 0; i < blocks.GetCount(); ++i)
+            if(blocks[i].Is<ValueMap>() && ReadString(blocks[i], "type") == "text")
+                return TrimBoth(ReadString(blocks[i], "text"));
+    }
+    return String();
+}
+
+String NormalizeSampleRecommendation(const TaskTrackItem& item, String text)
+{
+    text = TrimBoth(text);
+    if(text.GetCount() >= 2 && ((text[0] == '"' && text[text.GetCount() - 1] == '"') ||
+                               (text[0] == '`' && text[text.GetCount() - 1] == '`')))
+        text = TrimBoth(text.Mid(1, text.GetCount() - 2));
+
+    if(!item.choices.IsEmpty()) {
+        String lower = ToLower(text);
+        for(const String& choice : item.choices)
+            if(ToLower(TrimBoth(choice)) == lower)
+                return choice;
+    }
+    return text;
+}
+
+bool ApplyTaskInputResponses(const String& task_id, const String& path, const Value& raw_responses,
+                             String& error)
+{
+    if(!raw_responses.Is<ValueMap>()) {
+        error = "tasks/update inputResponses must be an object.";
+        return false;
+    }
+
+    TaskTrackDocument doc;
+    if(!TaskTrackLoad(path, doc, error))
+        return false;
+    TaskTrackAgentChannel channel;
+    if(!TaskTrackLoadAgentChannel(path, task_id, channel, error))
+        return false;
+
+    ValueMap responses = raw_responses;
+    for(const TaskTrackAgentRequest& request : channel.requests) {
+        if(request.status != "pending")
+            continue;
+        Value response = responses[request.id];
+        if(IsNull(response))
+            continue;
+
+        TaskTrackItem* item = TaskTrackMcpFindItem(doc, request.item_id);
+        if(!item)
+            continue;
+
+        String text = SamplingText(response);
+        ValueMap args;
+        args.Add("task_id", task_id);
+        args.Add("request_id", request.id);
+        if(request.action == "propose_answer") {
+            if(text.IsEmpty()) {
+                error = "sampling response for propose_answer contained no text.";
+                return false;
+            }
+            args.Add("recommended", NormalizeSampleRecommendation(*item, text));
+        }
+        else if(request.action == "clarify") {
+            if(text.IsEmpty()) {
+                error = "sampling response for clarify contained no text.";
+                return false;
+            }
+            args.Add("clarification", text);
+        }
+
+        bool ok = false;
+        String code;
+        Value result = TaskTrackMcpRespondAgentRequest(args, ok, code);
+        if(!ok) {
+            error = code + ": " + ReadString(result, "message", "unable to apply task input response");
+            return false;
+        }
+    }
+    return true;
+}
+
 Value TaskHandleValue(const TaskTrackDocument& doc, const String& status_message)
 {
     ValueMap result;
@@ -450,7 +637,7 @@ Value TaskHandleValue(const TaskTrackDocument& doc, const String& status_message
     return Value(result);
 }
 
-Value DetailedTaskValue(const TaskTrackDocument& doc, const String& path)
+Value DetailedTaskValue(const TaskTrackDocument& doc, const String& path, bool sampling_capability)
 {
     ValueMap result;
     result.Add("resultType", "complete"); result.Add("taskId", doc.task_id); result.Add("createdAt", doc.created_at);
@@ -464,10 +651,27 @@ Value DetailedTaskValue(const TaskTrackDocument& doc, const String& path)
     }
     else {
         int pending = TaskTrackMcpPendingAgentRequestCount(path, doc.task_id);
-        result.Add("status", "working");
-        result.Add("statusMessage", pending > 0
-                   ? Format("agent_action_required:%d; call get_task/respond_to_request.", pending)
-                   : "TaskTrack state: " + TaskTrackStateName(doc.state));
+        if(pending > 0 && sampling_capability) {
+            String input_error;
+            ValueMap inputs = PendingTaskInputRequests(doc, path, input_error);
+            if(!inputs.IsEmpty()) {
+                result.Add("status", "input_required");
+                result.Add("statusMessage", "Human requested agent assistance.");
+                result.Add("inputRequests", inputs);
+            }
+            else {
+                result.Add("status", "working");
+                result.Add("statusMessage", input_error.IsEmpty()
+                           ? "Human requested agent assistance; fallback get_task/respond_to_request is available."
+                           : "Human requested agent assistance; unable to build task input request: " + input_error);
+            }
+        }
+        else {
+            result.Add("status", "working");
+            result.Add("statusMessage", pending > 0
+                       ? Format("agent_action_required:%d; use get_task/respond_to_request fallback.", pending)
+                       : "TaskTrack state: " + TaskTrackStateName(doc.state));
+        }
     }
     AddModernMeta(result);
     return Value(result);
@@ -572,7 +776,16 @@ Value HandleTaskExtension(const Value& request, const String& method)
         TaskTrackDocument doc;
         if(!TaskTrackLoad(path, doc, error)) return JsonRpcError(id, -32603, error);
         TaskTrackTouchAgentPoll(path);
-        return JsonRpcResult(id, DetailedTaskValue(doc, path));
+        return JsonRpcResult(id, DetailedTaskValue(doc, path, ClientSupportsSampling(request)));
+    }
+    if(method == "tasks/update") {
+        Value input_responses = params["inputResponses"];
+        if(!input_responses.Is<ValueMap>())
+            return JsonRpcError(id, -32602, "tasks/update requires inputResponses object");
+        if(!ApplyTaskInputResponses(AsString(task_id), path, input_responses, error))
+            return JsonRpcError(id, -32602, error);
+        ValueMap result; result.Add("resultType", "complete"); AddModernMeta(result);
+        return JsonRpcResult(id, result);
     }
     if(method == "tasks/cancel") {
         TaskTrackDocument doc;
@@ -582,8 +795,6 @@ Value HandleTaskExtension(const Value& request, const String& method)
         ValueMap result; result.Add("resultType", "complete"); AddModernMeta(result);
         return JsonRpcResult(id, result);
     }
-    if(method == "tasks/update")
-        return JsonRpcError(id, -32602, "TaskTrack agent assistance uses get_task/respond_to_request.");
     return JsonRpcError(id, -32601, "Method not found");
 }
 
@@ -679,10 +890,10 @@ struct SelfTest {
     void Check(bool ok, const String& message) { if(!ok) failures.Add(message); }
 };
 
-Value ModernMeta(bool tasks)
+Value ModernMeta(bool tasks, bool sampling = true)
 {
     ValueMap extensions; if(tasks) extensions.Add(TASKS_EXTENSION, ValueMap());
-    ValueMap caps; caps.Add("extensions", extensions);
+    ValueMap caps; caps.Add("extensions", extensions); if(sampling) caps.Add("sampling", ValueMap());
     ValueMap meta; meta.Add("io.modelcontextprotocol/protocolVersion", CURRENT_PROTOCOL); meta.Add("io.modelcontextprotocol/clientCapabilities", caps);
     ValueMap info; info.Add("name", "tasktrack-selftest"); info.Add("version", "1"); meta.Add("io.modelcontextprotocol/clientInfo", info);
     return Value(meta);
@@ -761,6 +972,33 @@ int RunSelfTest()
     st.Check(respond_json.Find("get_task with wait_ms") >= 0,
              "respond_to_request did not return the next polling action");
 
+    String task_input_id;
+    st.Check(TaskTrackQueueAgentRequest(task_path, task_id, "visual", "propose_answer", String(), task_input_id, error),
+             "unable to queue Tasks input request: " + error);
+    ValueMap task_params; task_params.Add("taskId", task_id); task_params.Add("_meta", ModernMeta(true, true));
+    String input_json = AsJSON(HandleRequest(Request("tasks/get", 61, task_params), has), false);
+    st.Check(input_json.Find("\"status\":\"input_required\"") >= 0,
+             "tasks/get did not expose pending assistance as input_required");
+    st.Check(input_json.Find("sampling/createMessage") >= 0 && input_json.Find(task_input_id) >= 0,
+             "tasks/get input_required missing sampling request");
+
+    ValueMap sample_text; sample_text.Add("type", "text"); sample_text.Add("text", "Pass");
+    ValueMap sample_result; sample_result.Add("role", "assistant"); sample_result.Add("content", sample_text); sample_result.Add("model", "selftest");
+    ValueMap input_responses; input_responses.Add(task_input_id, sample_result);
+    ValueMap update_params; update_params.Add("taskId", task_id); update_params.Add("inputResponses", input_responses); update_params.Add("_meta", ModernMeta(true, true));
+    String update_json = AsJSON(HandleRequest(Request("tasks/update", 62, update_params), has), false);
+    st.Check(update_json.Find("\"resultType\":\"complete\"") >= 0,
+             "tasks/update did not acknowledge sampling response");
+    TaskTrackAgentChannel after_input;
+    st.Check(TaskTrackLoadAgentChannel(task_path, task_id, after_input, error) &&
+             !TaskTrackAgentHasPending(after_input, "visual", "propose_answer") &&
+             TaskTrackAgentLatestRecommendation(after_input, "visual") == "Pass",
+             "tasks/update did not resolve proposal into advisory channel");
+
+    String fallback_json = AsJSON(HandleRequest(Request("tasks/get", 63, task_params), has), false);
+    st.Check(fallback_json.Find("\"status\":\"working\"") >= 0,
+             "tasks/get did not return to working after assistance response");
+
     String cwj_request_id, cwj_error;
     st.Check(TaskTrackQueueAgentRequest(task_path, task_id, "visual", "continue_with_judgement", String(), cwj_request_id, cwj_error),
              "unable to queue continue_with_judgement: " + cwj_error);
@@ -780,7 +1018,6 @@ int RunSelfTest()
     st.Check(cwj_respond_json.Find("\"status\":\"answered\"") >= 0,
              "continue_with_judgement did not reach answered");
 
-    ValueMap task_params; task_params.Add("taskId", task_id); task_params.Add("_meta", ModernMeta(true));
     String get_json = AsJSON(HandleRequest(Request("tasks/get", 7, task_params), has), false);
     st.Check(get_json.Find("\"status\":\"working\"") >= 0, "tasks/get did not report working");
 
