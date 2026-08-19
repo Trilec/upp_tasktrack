@@ -10,6 +10,7 @@ namespace {
 
 static const int TASKTRACK_AGENT_REMINDER_TIMER_ID = 1;
 static const int TASKTRACK_AGENT_FOREGROUND_TIMER_ID = 3;
+static const int TASKTRACK_AGENT_COMPLETE_TIMER_ID = 4;
 
 UiLabel::Style AgentProgressStyle()
 {
@@ -56,6 +57,20 @@ void TaskTrackWindow::PrepareAgentLaunch()
     WhenClose = [=] { CloseAgentTaskAndExit(); };
     exit_button_.WhenAction = [=] { CloseAgentTaskAndExit(); };
     complete_button_.WhenAction = [=] { CompleteAgentTaskAndClose(); };
+
+    // Accepting the only required recommendation is itself an explicit human
+    // finalization action. Do not make the human press Submit as a second step.
+    KillTimeCallback(TASKTRACK_AGENT_COMPLETE_TIMER_ID);
+    Ptr<TaskTrackWindow> self = this;
+    SetTimeCallback(-150, [self] {
+        if(!self || self->closing_ || !self->loaded_ || self->document_.items.GetCount() != 1)
+            return;
+        const TaskTrackItem& item = self->document_.items[0];
+        if(item.answer.answered && item.answer.status == "accepted" && TaskTrackCanComplete(self->document_)) {
+            self->KillTimeCallback(TASKTRACK_AGENT_COMPLETE_TIMER_ID);
+            self->CompleteAgentTaskAndClose();
+        }
+    }, TASKTRACK_AGENT_COMPLETE_TIMER_ID);
 
     BringAgentWindowForward();
 }
@@ -233,10 +248,23 @@ void TaskTrackWindow::CompleteAgentTaskAndClose()
     if(!SaveProgress(false))
         return;
 
+    // Be explicit about what succeeded. At this point the durable answer is
+    // complete; the still-active MCP create_task call will return it directly.
+    progress_label_.SetText("Answer saved — returning to agent…");
+    progress_label_.Refresh();
+
     KillTimeCallback(TASKTRACK_AGENT_REMINDER_TIMER_ID);
     KillTimeCallback(TASKTRACK_AGENT_FOREGROUND_TIMER_ID);
-    closing_ = true;
-    Close();
+    KillTimeCallback(TASKTRACK_AGENT_COMPLETE_TIMER_ID);
+
+    // Keep the acknowledgement visible briefly without requiring another click.
+    Ptr<TaskTrackWindow> self = this;
+    SetTimeCallback(160, [self] {
+        if(!self || self->closing_)
+            return;
+        self->closing_ = true;
+        self->Close();
+    }, TASKTRACK_AGENT_COMPLETE_TIMER_ID);
 }
 
 void TaskTrackWindow::CloseAgentTaskAndExit()
@@ -245,6 +273,7 @@ void TaskTrackWindow::CloseAgentTaskAndExit()
         return;
 
     if(!loaded_) {
+        KillTimeCallback(TASKTRACK_AGENT_COMPLETE_TIMER_ID);
         closing_ = true;
         Close();
         return;
@@ -254,6 +283,7 @@ void TaskTrackWindow::CloseAgentTaskAndExit()
         SaveProgress(false);
         KillTimeCallback(TASKTRACK_AGENT_REMINDER_TIMER_ID);
         KillTimeCallback(TASKTRACK_AGENT_FOREGROUND_TIMER_ID);
+        KillTimeCallback(TASKTRACK_AGENT_COMPLETE_TIMER_ID);
         closing_ = true;
         Close();
         return;
@@ -272,8 +302,11 @@ void TaskTrackWindow::CloseAgentTaskAndExit()
     if(!SaveProgress(false))
         return;
 
+    progress_label_.SetText("Task closed — returning no human evidence…");
+    progress_label_.Refresh();
     KillTimeCallback(TASKTRACK_AGENT_REMINDER_TIMER_ID);
     KillTimeCallback(TASKTRACK_AGENT_FOREGROUND_TIMER_ID);
+    KillTimeCallback(TASKTRACK_AGENT_COMPLETE_TIMER_ID);
     closing_ = true;
     Close();
 }
