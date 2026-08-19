@@ -18,6 +18,28 @@ UiLabel::Style AgentProgressStyle()
     return style;
 }
 
+bool AgentItemNeedsRoom(const TaskTrackItem& item)
+{
+    switch(item.type) {
+    case TaskTrackItemType::ListSelect:
+    case TaskTrackItemType::Notes:
+    case TaskTrackItemType::Range:
+    case TaskTrackItemType::Color:
+    case TaskTrackItemType::Gradient:
+    case TaskTrackItemType::Position:
+    case TaskTrackItemType::Direction:
+    case TaskTrackItemType::RankOrder:
+    case TaskTrackItemType::HierarchySelect:
+    case TaskTrackItemType::Curve:
+        return true;
+    case TaskTrackItemType::MultiChoice:
+    case TaskTrackItemType::SingleChoice:
+        return item.choices.GetCount() > 6;
+    default:
+        return false;
+    }
+}
+
 } // namespace
 
 void TaskTrackWindow::PrepareAgentLaunch()
@@ -29,9 +51,8 @@ void TaskTrackWindow::PrepareAgentLaunch()
     ApplyAgentCompactLayout();
     ArmAgentReminderGrace();
 
-    // In an MCP-launched task, closing the human dialog is terminal: if all
-    // required evidence is already present it is submitted, otherwise the task
-    // is explicitly closed with no fabricated human answer.
+    // An MCP-launched window is a decision dialog, not a second application
+    // workspace. Terminal human actions persist first and then close it.
     WhenClose = [=] { CloseAgentTaskAndExit(); };
     exit_button_.WhenAction = [=] { CloseAgentTaskAndExit(); };
     complete_button_.WhenAction = [=] { CompleteAgentTaskAndClose(); };
@@ -42,6 +63,8 @@ void TaskTrackWindow::PrepareAgentLaunch()
 void TaskTrackWindow::ApplyAgentCompactLayout()
 {
     const int count = document_.items.GetCount();
+    const bool one_item = count == 1;
+    const bool roomy_one_item = one_item && AgentItemNeedsRoom(document_.items[0]);
 
     // The footer is the single progress authority in the compact dialog.
     state_label_.Hide();
@@ -53,17 +76,31 @@ void TaskTrackWindow::ApplyAgentCompactLayout()
     progress_label_.SetCustomStyle(progress_style);
     progress_label_.SetAlign(UiAlign::CENTER, UiAlign::CENTER);
 
-    // Preserve the controls, but keep secondary lifecycle options subordinate.
-    paused_reminder_button_.SetText("Paused");
-    agent_nudge_button_.SetText("Nudge");
+    // Keep the short-lived agent dialog focused on the decision itself. The
+    // richer pause/nudge controls remain available in the standalone console.
+    paused_reminder_button_.Hide();
+    agent_nudge_button_.Hide();
+    header_layout_.ItemAt(6).Fixed(0).MinMain(0).MinCross(0);
+    header_layout_.ItemAt(7).Fixed(0).MinMain(0).MinCross(0);
+
     exit_button_.SetText("×").Tip("Close task");
     complete_button_.SetText("Submit");
-
-    header_layout_.ItemAt(4).Fixed(DPI(58)).MinMain(DPI(58));
-    header_layout_.ItemAt(5).Fixed(DPI(100)).MinMain(DPI(100));
-    header_layout_.ItemAt(6).Fixed(DPI(66)).MinMain(DPI(66));
-    header_layout_.ItemAt(7).Fixed(DPI(62)).MinMain(DPI(62));
     header_layout_.ItemAt(8).Fixed(DPI(32)).MinMain(DPI(32));
+
+    if(one_item) {
+        // A single decision should look and behave like a dialog, not a full
+        // workspace. Reminder behaviour still runs in the background if the
+        // task genuinely remains open for its configured interval.
+        pause_button_.Hide();
+        reminder_dropdown_.Hide();
+        header_layout_.ItemAt(4).Fixed(0).MinMain(0).MinCross(0);
+        header_layout_.ItemAt(5).Fixed(0).MinMain(0).MinCross(0);
+    }
+    else {
+        pause_button_.SetText("Pause");
+        header_layout_.ItemAt(4).Fixed(DPI(58)).MinMain(DPI(58));
+        header_layout_.ItemAt(5).Fixed(DPI(100)).MinMain(DPI(100));
+    }
 
     // Export/save is useful in the standalone console, but it is noise in the
     // ordinary agent dialog. TaskTrack still autosaves every human edit.
@@ -84,18 +121,31 @@ void TaskTrackWindow::ApplyAgentCompactLayout()
 
     Size size;
     Size min_size;
-    if(count <= 1) {
-        size = Size(DPI(760), DPI(430));
-        min_size = Size(DPI(640), DPI(360));
+    int task_min_height;
+    if(one_item && !roomy_one_item) {
+        size = Size(DPI(660), DPI(350));
+        min_size = Size(DPI(580), DPI(320));
+        task_min_height = DPI(180);
+    }
+    else if(one_item) {
+        size = Size(DPI(720), DPI(440));
+        min_size = Size(DPI(620), DPI(380));
+        task_min_height = DPI(250);
     }
     else if(count <= 4) {
-        size = Size(DPI(920), DPI(570));
+        size = Size(DPI(880), DPI(560));
         min_size = Size(DPI(720), DPI(460));
+        task_min_height = DPI(300);
     }
     else {
-        size = Size(DPI(1180), DPI(780));
+        size = Size(DPI(1080), DPI(720));
         min_size = Size(DPI(760), DPI(540));
+        task_min_height = DPI(300);
     }
+
+    // BuildUi gives the general console a generous task-area minimum. Reduce
+    // that only for the deliberately compact agent dialog.
+    main_box_.ItemAt(2).Expand(1).MinMain(task_min_height);
 
     Rect work = Ctrl::GetPrimaryWorkArea();
     size.cx = min(size.cx, work.Width());
@@ -148,15 +198,16 @@ void TaskTrackWindow::BringAgentWindowForward()
 
     Urgent(true);
     KillTimeCallback(TASKTRACK_AGENT_FOREGROUND_TIMER_ID);
-    SetTimeCallback(120, [=] {
-        if(closing_ || !IsOpen())
+    Ptr<TaskTrackWindow> self = this;
+    SetTimeCallback(120, [self] {
+        if(!self || self->closing_ || !self->IsOpen())
             return;
-        SetForeground();
+        self->SetForeground();
 #ifdef PLATFORM_WIN32
-        if(HWND hwnd = GetHWND())
+        if(HWND hwnd = self->GetHWND())
             ::SetForegroundWindow(hwnd);
 #endif
-        Urgent(false);
+        self->Urgent(false);
     }, TASKTRACK_AGENT_FOREGROUND_TIMER_ID);
 }
 
@@ -201,6 +252,8 @@ void TaskTrackWindow::CloseAgentTaskAndExit()
 
     if(document_.state == TaskTrackState::Completed || document_.state == TaskTrackState::Closed) {
         SaveProgress(false);
+        KillTimeCallback(TASKTRACK_AGENT_REMINDER_TIMER_ID);
+        KillTimeCallback(TASKTRACK_AGENT_FOREGROUND_TIMER_ID);
         closing_ = true;
         Close();
         return;
