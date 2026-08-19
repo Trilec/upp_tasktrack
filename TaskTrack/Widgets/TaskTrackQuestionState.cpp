@@ -297,7 +297,10 @@ void TaskTrackQuestionCtrl::ApplyRecommendationPresentation()
     VisualState state = ResolveVisualState();
     EnsureRecommendationHeader();
 
-    int header_state = (int)state;
+    int pending_bits = (proposal_pending_ ? 1 : 0) |
+                       (clarification_pending_ ? 2 : 0) |
+                       (judgement_pending_ ? 4 : 0);
+    int header_state = ((int)state << 3) | pending_bits;
     if(recommendation_header_state_ != header_state) {
         recommendation_header_state_ = header_state;
         recommendation_header_label_.SetCustomStyle(MakeStatusLabelStyle(state));
@@ -319,8 +322,15 @@ void TaskTrackQuestionCtrl::ApplyRecommendationPresentation()
                 recommendation_header_.ItemAt(1).Fixed(DPI(50)).MinMain(DPI(50));
             }
             else {
-                recommendation_header_label_.SetText(state == VISUAL_ATTENTION ? "Required" : "Needs decision");
-                recommendation_accept_.SetText(proposal_pending_ ? "Waiting" : "Suggest");
+                if(proposal_pending_)
+                    recommendation_header_label_.SetText("Request sent — waiting for agent");
+                else if(clarification_pending_)
+                    recommendation_header_label_.SetText("Clarification requested — waiting for agent");
+                else if(judgement_pending_)
+                    recommendation_header_label_.SetText("Delegation sent — waiting for agent");
+                else
+                    recommendation_header_label_.SetText(state == VISUAL_ATTENTION ? "Required" : "Needs decision");
+                recommendation_accept_.SetText(proposal_pending_ ? "…" : "Suggest");
                 recommendation_accept_.Enable(!proposal_pending_);
                 recommendation_header_.ItemAt(1).Fixed(DPI(58)).MinMain(DPI(58));
             }
@@ -333,7 +343,10 @@ void TaskTrackQuestionCtrl::ApplyRecommendationPresentation()
         }
         else {
             if(item.recommended.IsEmpty()) {
-                recommendation_header_label_.SetText(item.required ? "Needs decision" : "Optional");
+                if(clarification_pending_)
+                    recommendation_header_label_.SetText("Clarification requested — waiting for agent");
+                else
+                    recommendation_header_label_.SetText(item.required ? "Needs decision" : "Optional");
                 recommendation_header_.ItemAt(1).Fixed(0).MinMain(0);
             }
             else {
@@ -419,6 +432,7 @@ void TaskTrackQuestionCtrl::QueueAgentRequest(const String& action, const String
         judgement_pending_ = true;
     recommendation_header_state_ = -1;
     RefreshLayout();
+    Refresh();
     ArmAgentPoll();
 }
 
