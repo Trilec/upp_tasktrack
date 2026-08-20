@@ -31,7 +31,7 @@ inline Value TaskTrackMcpRespondRequestSchema()
     props.Add("task_id", TaskTrackMcpAgentStringSchema("Task id."));
     props.Add("request_id", TaskTrackMcpAgentStringSchema("Pending request id from get_task.pending_requests."));
     props.Add("store_root", TaskTrackMcpAgentStringSchema("Optional non-default task store."));
-    props.Add("recommended", TaskTrackMcpAgentStringSchema("Required for propose_answer; optional for clarify. Not used for continue_with_judgement. Canonical recommendation for the referenced item."));
+    props.Add("recommended", TaskTrackMcpAgentStringSchema("Required for propose_answer; optional for clarify. Not used for continue_with_judgement. Canonical advisory recommendation for the referenced item; it is not human evidence until explicitly accepted by the human."));
     props.Add("clarification", TaskTrackMcpAgentStringSchema("Required for clarify. Concise plain-language restatement for the human."));
 
     ValueArray required;
