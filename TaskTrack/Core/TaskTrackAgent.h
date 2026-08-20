@@ -42,6 +42,7 @@ struct TaskTrackAgentRequest : Moveable<TaskTrackAgentRequest> {
 struct TaskTrackAgentChannel : Moveable<TaskTrackAgentChannel> {
     int version = 1;
     String task_id;
+    String task_created_at; // binds this sidecar to one task generation
     String updated_at;
     Vector<TaskTrackAgentRequest> requests;
 };
@@ -80,6 +81,8 @@ inline Value TaskTrackAgentChannelValue(const TaskTrackAgentChannel& channel)
     ValueMap root;
     root.Add("version", channel.version);
     root.Add("task_id", channel.task_id);
+    if(!channel.task_created_at.IsEmpty())
+        root.Add("task_created_at", channel.task_created_at);
     root.Add("updated_at", channel.updated_at);
     ValueArray requests;
     for(const TaskTrackAgentRequest& request : channel.requests)
@@ -193,6 +196,13 @@ inline bool TaskTrackLoadAgentChannel(const String& task_path, const String& tas
         return false;
     }
 
+    Value raw_generation = raw["task_created_at"];
+    if(!IsNull(raw_generation) && !raw_generation.Is<String>()) {
+        error = "TaskTrack agent channel task_created_at must be a string.";
+        return false;
+    }
+    channel.task_created_at = IsNull(raw_generation) ? String() : TrimBoth(AsString(raw_generation));
+
     Value updated = raw["updated_at"];
     if(!IsNull(updated) && !updated.Is<String>()) {
         error = "TaskTrack agent channel updated_at must be a string.";
@@ -201,26 +211,48 @@ inline bool TaskTrackLoadAgentChannel(const String& task_path, const String& tas
     channel.updated_at = IsNull(updated) ? String() : AsString(updated);
 
     Value requests = raw["requests"];
-    if(IsNull(requests))
-        return true;
-    if(!requests.Is<ValueArray>()) {
-        error = "TaskTrack agent channel requests must be an array.";
-        return false;
-    }
-
-    Index<String> ids;
-    ValueArray array = requests;
-    for(int i = 0; i < array.GetCount(); ++i) {
-        TaskTrackAgentRequest request;
-        if(!TaskTrackParseAgentRequest(array[i], request, error))
-            return false;
-        if(ids.Find(request.id) >= 0) {
-            error = "Duplicate TaskTrack agent request id: " + request.id;
+    if(!IsNull(requests)) {
+        if(!requests.Is<ValueArray>()) {
+            error = "TaskTrack agent channel requests must be an array.";
             return false;
         }
-        ids.Add(request.id);
-        channel.requests.Add(pick(request));
+
+        Index<String> ids;
+        ValueArray array = requests;
+        for(int i = 0; i < array.GetCount(); ++i) {
+            TaskTrackAgentRequest request;
+            if(!TaskTrackParseAgentRequest(array[i], request, error))
+                return false;
+            if(ids.Find(request.id) >= 0) {
+                error = "Duplicate TaskTrack agent request id: " + request.id;
+                return false;
+            }
+            ids.Add(request.id);
+            channel.requests.Add(pick(request));
+        }
     }
+
+    // A task id can be reused after an older task was pruned. The old sidecar
+    // must never make the new task appear to have a pending Suggest/Clarify.
+    // New sidecars carry an explicit generation marker. Legacy sidecars are
+    // filtered conservatively by request creation time.
+    TaskTrackDocument current;
+    String task_error;
+    if(TaskTrackLoad(task_path, current, task_error) && current.task_id == task_id) {
+        if(!channel.task_created_at.IsEmpty() && channel.task_created_at != current.created_at) {
+            channel.requests.Clear();
+            channel.updated_at.Clear();
+        }
+        else if(channel.task_created_at.IsEmpty() && !current.created_at.IsEmpty()) {
+            for(int i = channel.requests.GetCount() - 1; i >= 0; --i)
+                if(!channel.requests[i].created_at.IsEmpty() && channel.requests[i].created_at < current.created_at)
+                    channel.requests.Remove(i);
+            if(channel.requests.IsEmpty())
+                channel.updated_at.Clear();
+        }
+        channel.task_created_at = current.created_at;
+    }
+
     return true;
 }
 
@@ -228,7 +260,18 @@ inline bool TaskTrackSaveAgentChannel(const String& task_path, TaskTrackAgentCha
                                       String& error)
 {
     error.Clear();
+
+    TaskTrackDocument current;
+    String task_error;
+    if(!TaskTrackLoad(task_path, current, task_error) || current.task_id != channel.task_id) {
+        error = "TaskTrack agent channel cannot be bound to the current durable task.";
+        if(!task_error.IsEmpty())
+            error << " " << task_error;
+        return false;
+    }
+    channel.task_created_at = current.created_at;
     channel.updated_at = TaskTrackNowIso();
+
     String path = TaskTrackAgentChannelPath(task_path);
     String folder = GetFileFolder(path);
     if(!RealizeDirectory(folder)) {
