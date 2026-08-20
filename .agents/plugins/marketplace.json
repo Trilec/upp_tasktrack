@@ -1,0 +1,20 @@
+{
+  "name": "tasktrack",
+  "interface": {
+    "displayName": "TaskTrack"
+  },
+  "plugins": [
+    {
+      "name": "tasktrack",
+      "source": {
+        "source": "local",
+        "path": "./"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Developer Tools"
+    }
+  ]
+}
