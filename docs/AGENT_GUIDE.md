@@ -2,9 +2,11 @@
 
 ## Purpose
 
-TaskTrack is for facts that genuinely require a person: judgement, preference, visual comparison, interactive behaviour, wording, placement, colour, prioritisation, hierarchy, numeric bounds, or another decision repository evidence/tests/tools cannot establish reliably.
+TaskTrack is for durable human evidence that repository inspection, tests, tools, or objective reasoning cannot establish reliably: judgement, approval, preference, visual comparison, interactive behaviour, wording, placement, colour, prioritisation, hierarchy, numeric bounds, classification, selection, or another genuinely human-dependent decision.
 
-Do not use TaskTrack merely because asking a person is easier. Use machine evidence first.
+Also use TaskTrack when the user explicitly asks for TaskTrack recording.
+
+Do not use TaskTrack merely because asking a person is easier. Use machine evidence first. Do not use it for ordinary conversation, explanations, summaries, or information requests.
 
 ## Simple verification is the fast path
 
@@ -18,9 +20,9 @@ For ordinary human verification, prefer the most direct form:
 }
 ```
 
-TaskTrack shows Pass (green) / Fail (red) and a compact optional **verdict note**. `answer.data` is the boolean verdict; `answer.note` is optional supporting human evidence and never answers the question by itself. This is the canonical `confirm` type — it is not a separate question type.
+TaskTrack shows Pass (green) / Fail (red) and a compact optional verdict note. `answer.data` is the boolean verdict authority; `answer.note` is optional supporting human evidence and never answers the question by itself. This remains the canonical `confirm` type, not a separate semantic type.
 
-Use a richer semantic type (`text`, `notes`, `single_choice`, `color`, `range`, …) only when the requested human evidence genuinely requires it. Do not create a separate `notes` item "just in case".
+Use a richer semantic type (`text`, `notes`, `single_choice`, `color`, `range`, …) only when the requested evidence genuinely requires it.
 
 ## Assembly algorithm
 
@@ -33,15 +35,15 @@ When work reaches a human-dependent boundary:
 5. Choose the semantic type by answer meaning, never by GUI widget.
 6. Make `title` the question; use `instruction` only for useful criteria/context.
 7. Use few categories.
-8. Set `required=true` only when the decision really blocks the normal continuation path.
-9. **Provide `recommended` unless no responsible proposal is possible.** A missing recommendation on a required item means the human must actually decide it.
+8. Set `required=true` only when the decision blocks the normal continuation path.
+9. Provide `recommended` when a responsible canonical proposal is possible. Omit it when no responsible proposal exists.
 10. Keep `recommended` and `default` separate. Recommendation = agent proposal. Default = neutral control starting value. Neither is human evidence until the human acts.
-11. Create durably, retain `task_id`, then poll `get_task` / `tasks/get` later.
+11. For normal launched work, call `create_task` and keep ownership of the interaction until TaskTrack returns terminal human state.
 12. Consume `items[].answer.data` as authoritative human evidence.
 
 ## Semantic types
 
-- yes/no proposition → `confirm` (use `choices = ["Pass", "Fail"]` for ordinary verification)
+- yes/no proposition → `confirm` (use `choices=["Pass","Fail"]` for ordinary verification)
 - exactly one named alternative → `single_choice`
 - several independent alternatives → `multi_choice`
 - compact populated lookup → `select`
@@ -62,17 +64,17 @@ When work reaches a human-dependent boundary:
 
 Prefer a structured type over `text` or `notes` when one fits.
 
-## Recommendations are the normal fast path
+## Recommendations are advisory
 
 For every remaining human decision ask:
 
-> Given the evidence I already have, can I responsibly propose the answer?
+> Given the evidence already available, can I responsibly propose the answer?
 
 If yes, set `recommended` to the canonical semantic value. If no, omit it. Do not invent a recommendation merely to avoid human input.
 
 Examples:
 
-- `confirm` → `Yes` / `No` (or custom display label)
+- `confirm` → `Yes` / `No` or the exact custom label
 - `single_choice`, `select` → exact choice
 - `multi_choice` → `Layout, Tests` or JSON array text
 - `list_select` → exact choice; array form when multiple is allowed
@@ -93,14 +95,32 @@ A recommendation remains advisory until the human accepts it or supplies another
 
 TaskTrack owns these presentation states locally; they are not global Ui-role definitions.
 
-- **Grey — suggested/normal:** an agent recommendation is available. This is the expected baseline for most questions.
-- **Orange — required pending:** required item with no recommendation. The human must decide or request agent assistance.
-- **Green — resolved:** the human answered manually or explicitly accepted the proposal.
-- **Red — escalated required:** a required item still remains after the human tried to accept/submit/continue.
+- Grey — suggested/normal: an agent recommendation is available.
+- Orange — required pending: required item with no recommendation.
+- Green — resolved: the human answered manually or explicitly accepted the proposal.
+- Red — escalated required: a required item still remains after an attempted continuation.
 
 Normal path: grey → green.
 
 Exceptional path: orange → red if still blocking → green.
+
+## Primary live lifecycle
+
+Normal `create_task` with GUI launch enabled is a live human interaction.
+
+The intended path is:
+
+1. agent calls `create_task`;
+2. TaskTrack persists the task and launches the GUI;
+3. the initiating MCP interaction remains owned until the human completes/cancels or an assistance round-trip is required;
+4. final human evidence returns through MCP;
+5. the agent continues without requiring a follow-up human chat message.
+
+Do not ask the human to say “done”, “I submitted”, “check TaskTrack”, or similar merely to wake the agent.
+
+When `create_task` returns completed human evidence, consume it immediately. When it returns closed/cancelled with no answer, treat that as no human evidence and do not fabricate an answer.
+
+`launch=false` is the explicit detached/recovery path and may legitimately require later `get_task` calls.
 
 ## Human → agent assistance
 
@@ -114,71 +134,85 @@ clarify  mode=simplify
 continue_with_judgement
 ```
 
-Request lifecycle (an answered request is not a resolved human question):
+Request lifecycle:
 
 ```text
 pending -> answered -> (cancelled)
 ```
 
-`get_task` returns:
+An answered assistance request is not a resolved human question. Only explicit human action creates `answer.data`.
+
+### Modern multi-round-trip path
+
+When the host exposes the required MCP capability, TaskTrack may return `resultType=input_required` from the active `create_task`. The client fulfils the requested input and retries the same TaskTrack call using `requestState` / `inputResponses`.
+
+No manual polling is required on this path.
+
+### Compatibility path — agent MUST continue automatically
+
+Some hosts do not expose the required sampling/multi-round-trip capability. TaskTrack then returns a compatibility result containing:
 
 ```text
-agent_action_required: true|false
-pending_requests: [...] 
+delivery: compatibility_fallback
+interaction_blocked: true
+agent_action_required: true
+pending_requests: [...]
 ```
 
-If `agent_action_required=true`, process pending requests before waiting again.
+This is not a signal to stop and wait for another human chat message.
 
-### `propose_answer`
+The agent must immediately process every pending request:
 
-Required response:
+#### `propose_answer`
+
+Derive one responsible canonical recommendation from the current context and call `respond_to_request` with:
 
 ```text
+request_id
 recommended
 ```
 
-Return a valid canonical recommendation for the referenced item. Do not write or imply a human answer.
+The returned recommendation is advisory only.
 
-### `clarify`
+#### `clarify`
 
-For `mode=simplify`, required response:
+For `mode=simplify`, call `respond_to_request` with:
 
 ```text
+request_id
 clarification
 ```
 
-Keep it concise, plain-language, and directly useful to the person. You may also return:
+Keep it concise and directly useful to the person. Include `recommended` only when a responsible proposal is also possible.
+
+#### `continue_with_judgement`
+
+The human explicitly delegates the blocked judgement back to the agent. Call `respond_to_request` with the request id and no semantic answer payload. Never synthesize `answer.data` or mark the question human-resolved.
+
+After resolving all current pending requests, immediately call:
 
 ```text
-recommended
+get_task(task_id, include_items=true, wait_ms=300000)
 ```
 
-when the clarification makes a responsible proposal possible.
+Then loop:
 
-### `continue_with_judgement`
+- completed → consume `items[].answer.data` and continue;
+- closed → continue with no human evidence;
+- `agent_action_required=true` → resolve new pending requests and wait again;
+- wait timeout while task remains active → continue waiting when still appropriate.
 
-The human explicitly delegates the blocked judgement back to the agent and authorizes the agent to continue using its own judgement. This is delegation/authorization, not a human semantic answer.
-
-No response payload is required. The agent proceeds in its own workflow and resolves the request with `respond_to_request` (request id only). Never synthesize `answer.data` or mark the question green; only explicit human action creates human evidence.
-
-Resolve every request type with `respond_to_request`.
-
-Agent responses are advisory. They never become `answer.data` until the human explicitly acts.
+The human must not be responsible for restarting this loop.
 
 ## Durable/reconnect behaviour
 
-Task creation is persisted before `create_task` returns. Human→agent assistance is persisted in a separate `<task>.agent.json` sidecar so agent replies cannot race GUI answer autosave or masquerade as human evidence.
+Task creation is persisted before live waiting. Human→agent assistance is persisted in a separate `<task>.agent.json` sidecar so agent replies cannot race GUI answer autosave or masquerade as human evidence.
 
-A typical flow is:
+These files are durability/recovery state, not the normal answer transport.
 
-1. `create_task`
-2. retain `task_id`
-3. poll `get_task`
-4. if `agent_action_required`, process each `pending_requests` entry and call `respond_to_request`
-5. poll later for human completion
-6. consume `items[].answer.data`
+Never read `.tasktrack.json` or `.agent.json` to obtain the routine human result. Use MCP results and `get_task` only for the defined live/recovery lifecycle.
 
-If the client disconnects, reconnect with the same `task_id`. If task context is lost, use `list_tasks` to rediscover active work. TaskTrack does not expire or auto-close active human work.
+If the client disconnects, reconnect with the same `task_id`. If task context is lost, use `list_tasks` to rediscover active work.
 
 ## Compact example
 
@@ -209,6 +243,8 @@ If the client disconnects, reconnect with the same `task_id`. If task context is
 
 `direction` starts in the normal grey proposal state. `label` starts orange because no responsible proposal was supplied; the human may answer it, request `propose_answer`, or ask for `clarify`/`simplify`.
 
-## Result handling
+## Result authority
 
-Use `items[].answer.data` as the authoritative human response. `answer.value` is compact display/log text. `answer.note` is optional supporting human evidence (e.g. a Pass/Fail verdict note) and is never a substitute for `answer.data`. Never silently substitute an agent recommendation or neutral default for human evidence.
+Use `items[].answer.data` as the authoritative human response. `answer.value` is compact display/log text. `answer.note` is optional supporting human evidence and is never a substitute for `answer.data`.
+
+Never silently substitute an agent recommendation, neutral default, task title, sidecar value, or inferred response for missing human evidence.
