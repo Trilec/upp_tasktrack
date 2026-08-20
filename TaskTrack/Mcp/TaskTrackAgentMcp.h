@@ -86,8 +86,15 @@ inline Value TaskTrackMcpAugmentAgentStatus(const Value& status, const String& t
         return Value(out);
     }
     ValueArray pending = TaskTrackPendingAgentRequestsValue(channel);
-    out.Add("agent_action_required", !pending.IsEmpty());
+    bool action_required = !pending.IsEmpty();
+    out.Add("agent_action_required", action_required);
     out.Add("pending_requests", pending);
+    if(action_required) {
+        out.Add("agent_must_continue", true);
+        out.Add("human_followup_required", false);
+        out.Add("compatibility_action",
+                "Immediately resolve every pending_requests entry with respond_to_request, then call get_task(task_id, include_items=true, wait_ms=300000). Repeat until completed/closed or another agent request appears. Do not ask the human to send a follow-up chat message.");
+    }
     return Value(out);
 }
 
@@ -192,6 +199,9 @@ inline Value TaskTrackMcpRespondAgentRequest(const Value& args, bool& ok, String
     result.Add("status", "answered");
     result.Add("agent_action_required", TaskTrackPendingAgentRequestCount(updated) > 0);
     result.Add("pending_count", TaskTrackPendingAgentRequestCount(updated));
+    result.Add("human_followup_required", false);
+    result.Add("next_action",
+               "If pending_count>0, resolve remaining requests immediately. Otherwise call get_task(task_id, include_items=true, wait_ms=300000) and remain in the TaskTrack workflow until completed/closed.");
     ok = true;
     error_code.Clear();
     return Value(result);
