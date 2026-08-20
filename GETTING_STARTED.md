@@ -64,31 +64,70 @@ The example prints a durable `.tasktrack.json` path. Open it with:
 
 The task contains exactly one canonical V0.2 question of each type and is the preferred first visual/interaction acceptance surface.
 
-## MCP
+## MCP live workflow
 
-`build\TaskTrackMcp.exe` is an **argument-free local stdio MCP server**. The main workflow is:
+`build\TaskTrackMcp.exe` is an argument-free local stdio MCP server.
+
+Normal launched work is live:
 
 1. agent calls `create_task`;
-2. TaskTrack persists it and optionally launches the GUI;
-3. agent retains `task_id` rather than waiting for the person;
-4. agent calls `get_task` later;
-5. `respond_to_request` resolves any pending human→agent assistance (`propose_answer`, `clarify`, `continue_with_judgement`);
-6. completed results expose structured `answer.data` (and optional `answer.note`).
+2. TaskTrack persists the task and launches the GUI;
+3. the initiating interaction stays owned while the person answers;
+4. final human evidence returns through MCP;
+5. the agent continues without requiring the person to send another chat message.
+
+`launch=false` is the explicit detached/recovery mode.
+
+### Human → agent assistance
+
+If the person presses Suggest/Clarify while a host exposes the required modern MCP capability, TaskTrack uses the in-call multi-round-trip path.
+
+Some hosts do not expose that capability. TaskTrack then returns a structured compatibility result with pending assistance requests. The agent must immediately:
+
+1. resolve every pending request with `respond_to_request`;
+2. call `get_task(task_id, include_items=true, wait_ms=300000)`;
+3. remain in that loop until the human completes/closes the task or asks for more assistance.
+
+The person should never need to type “done”, “I submitted”, “check TaskTrack”, or similar merely to wake the agent.
+
+Task JSON and `.agent.json` are durability/recovery state only, not the routine answer transport.
 
 Read `docs/AGENT_GUIDE.md` before authoring real requests.
 
 ## Host registration
 
-The executable is a stdio MCP server with no required command-line arguments:
+Register only the MCP executable:
 
 ```text
 E:\apps\github\upp_tasktrack\build\TaskTrackMcp.exe
 ```
 
-Host configuration is **not** modified by the repository. Final host acceptance will:
+`TaskTrackGui.exe` must sit beside it. No wrapper or GUI registration is required.
 
-1. install/register the published binary into **OpenCode** first;
-2. verify `opencode mcp list` shows the TaskTrack server connected;
-3. then install/register it into **Codex** second.
+After rebuilding the MCP binary, fully restart the host so it loads the fresh executable and fresh tool descriptions.
 
-Before documenting exact per-host commands, the validator inspects the actually installed CLI (`opencode --version` / `opencode mcp --help`, `codex --version` / `codex mcp --help`) and records the real command names rather than assuming syntax. No wrapper is added unless a host genuinely requires one.
+## Codex workflow plugin (recommended)
+
+TaskTrack also ships a small workflow plugin/skill under:
+
+```text
+.codex-plugin/plugin.json
+skills/tasktrack/SKILL.md
+```
+
+The skill does not replace the MCP server. It teaches Codex the TaskTrack invocation boundary and, importantly, tells it to drive the compatibility fallback automatically when the host does not expose MCP sampling/multi-round-trip support.
+
+Using the current Codex Git-marketplace pattern, installation is expected to be equivalent to:
+
+```text
+codex plugin marketplace add Trilec/upp_tasktrack
+codex plugin add tasktrack@tasktrack
+```
+
+If the installed Codex version exposes different plugin commands, inspect `codex plugin --help` and use the equivalent marketplace/local-install commands rather than guessing.
+
+Restart Codex after installing/updating the plugin and use a fresh session for acceptance.
+
+## OpenCode
+
+The MCP server remains independently usable without the Codex plugin. Before documenting exact OpenCode commands, inspect the installed version and `opencode mcp --help`; register `TaskTrackMcp.exe` as the local stdio server with no arguments and validate the same human lifecycle.
