@@ -1,0 +1,35 @@
+{
+  "name": "tasktrack",
+  "description": "Use TaskTrack for durable human decisions, approvals, selections, classifications, preferences, visual or interaction verification, Pass/Fail checks, wording, placement, colour, prioritisation, hierarchy, numeric bounds, and other human evidence an agent cannot establish from available machine evidence. Keep the TaskTrack workflow live until the human completes it; never require the human to send a follow-up chat message just to wake the agent.",
+  "version": "0.2.0",
+  "author": {
+    "name": "Curtis Edwards"
+  },
+  "repository": "https://github.com/Trilec/upp_tasktrack",
+  "license": "Apache-2.0",
+  "keywords": [
+    "human-in-the-loop",
+    "approval",
+    "verification",
+    "decision",
+    "mcp",
+    "tasktrack"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "TaskTrack",
+    "shortDescription": "Durable human decisions and verification for agent workflows.",
+    "longDescription": "Use TaskTrack when an agent reaches a genuinely human-dependent decision, approval, selection, classification, preference, visual or interaction verification, Pass/Fail check, or other durable human evidence. The skill keeps live TaskTrack interactions moving automatically, including compatibility fallback when a host does not expose MCP sampling.",
+    "developerName": "Curtis Edwards",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Read",
+      "Write"
+    ],
+    "defaultPrompt": [
+      "Use TaskTrack for the next human decision that machine evidence cannot resolve.",
+      "Ask me for a Pass/Fail verification through TaskTrack.",
+      "Use TaskTrack to record my approval before continuing."
+    ]
+  }
+}
