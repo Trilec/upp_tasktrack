@@ -10,6 +10,7 @@
       continue_with_judgement   -> no response payload required
 
     Request lifecycle: pending -> answered -> (cancelled).
+    Assistance lifecycle: awaiting_human -> awaiting_agent -> awaiting_human.
     Agent responses remain advisory. They never write TaskTrackAnswer.
 */
 
@@ -78,22 +79,33 @@ inline Value TaskTrackMcpAugmentAgentStatus(const Value& status, const String& t
                                             const String& task_id)
 {
     ValueMap out = status;
+    String task_state = TrimBoth(AsString(out["state"]));
+    bool terminal = task_state == "completed" || task_state == "closed";
+
     TaskTrackAgentChannel channel;
     String error;
     if(!TaskTrackLoadAgentChannel(task_path, task_id, channel, error)) {
         out.Add("agent_action_required", false);
+        out.Add("interaction_state", terminal ? task_state : String("awaiting_human"));
+        out.Add("task_terminal", terminal);
         out.Add("agent_channel_error", error);
         return Value(out);
     }
+
     ValueArray pending = TaskTrackPendingAgentRequestsValue(channel);
     bool action_required = !pending.IsEmpty();
+    String interaction_state = terminal ? task_state : TaskTrackAgentEffectiveInteractionState(channel);
+
+    out.Add("interaction_state", interaction_state);
+    out.Add("task_terminal", terminal);
     out.Add("agent_action_required", action_required);
     out.Add("pending_requests", pending);
     if(action_required) {
         out.Add("agent_must_continue", true);
         out.Add("human_followup_required", false);
+        out.Add("interaction_blocked", true);
         out.Add("compatibility_action",
-                "Immediately resolve every pending_requests entry with respond_to_request, then call get_task(task_id, include_items=true, wait_ms=300000). Repeat until completed/closed or another agent request appears. Do not ask the human to send a follow-up chat message.");
+                "TaskTrack is awaiting_agent and the human task is NOT terminal. Resolve every pending_requests entry immediately with respond_to_request, then call get_task(task_id, include_items=true, wait_ms=300000). Remain in this TaskTrack workflow until completed/closed or another agent request appears. Do not ask the human to send a follow-up chat message.");
     }
     return Value(out);
 }
@@ -192,16 +204,19 @@ inline Value TaskTrackMcpRespondAgentRequest(const Value& args, bool& ok, String
 
     TaskTrackAgentChannel updated;
     TaskTrackLoadAgentChannel(task_path, task_id, updated, error);
+    int pending_count = TaskTrackPendingAgentRequestCount(updated);
     ValueMap result;
     result.Add("ok", true);
     result.Add("task_id", task_id);
     result.Add("request_id", request_id);
     result.Add("status", "answered");
-    result.Add("agent_action_required", TaskTrackPendingAgentRequestCount(updated) > 0);
-    result.Add("pending_count", TaskTrackPendingAgentRequestCount(updated));
+    result.Add("interaction_state", TaskTrackAgentEffectiveInteractionState(updated));
+    result.Add("task_terminal", false);
+    result.Add("agent_action_required", pending_count > 0);
+    result.Add("pending_count", pending_count);
     result.Add("human_followup_required", false);
     result.Add("next_action",
-               "If pending_count>0, resolve remaining requests immediately. Otherwise call get_task(task_id, include_items=true, wait_ms=300000) and remain in the TaskTrack workflow until completed/closed.");
+               "If pending_count>0, resolve remaining requests immediately. Otherwise the interaction is awaiting_human: call get_task(task_id, include_items=true, wait_ms=300000) and remain in the TaskTrack workflow until completed/closed or another assistance request appears.");
     ok = true;
     error_code.Clear();
     return Value(result);
