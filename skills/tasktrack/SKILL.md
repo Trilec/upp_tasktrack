@@ -18,9 +18,24 @@ Do not invoke TaskTrack for ordinary conversation, explanations, summaries, gene
 
 Ask only the minimum human evidence required to continue. Prefer structured semantic types. For ordinary verification prefer `confirm` with `choices=["Pass","Fail"]`.
 
+## Lifecycle authority
+
+Task completion and assistance are different state machines.
+
+Task-terminal states are only:
+
+- `completed` — authoritative human evidence is ready;
+- `closed` — task ended without additional required human evidence.
+
+Human-to-agent assistance is explicitly non-terminal:
+
+`awaiting_human -> awaiting_agent -> awaiting_human`
+
+`interaction_state=awaiting_agent` or `task_terminal=false` means the TaskTrack task remains open. A compatibility tool result is only a continuation checkpoint; it is never permission to abandon the TaskTrack workflow.
+
 ## Primary live lifecycle
 
-For normal use call `create_task` with GUI launch enabled and keep ownership of the interaction until it reaches a terminal state.
+For normal use call `create_task` with GUI launch enabled and keep ownership of the interaction until it reaches a task-terminal state.
 
 After calling `create_task`:
 
@@ -28,13 +43,13 @@ After calling `create_task`:
 2. If it returns completed human evidence, consume `items[].answer.data` and continue immediately.
 3. If it returns closed/cancelled with no answer, treat that as no human evidence. Do not invent an answer.
 4. If it returns `input_required`, let the MCP multi-round-trip complete and continue the same TaskTrack interaction.
-5. If it returns `compatibility_fallback`, `interaction_blocked=true`, or `agent_action_required=true`, **do not stop the turn and do not ask the human to wake you**. Run the compatibility loop below immediately.
+5. If it returns `interaction_state=awaiting_agent`, `task_terminal=false`, `compatibility_fallback`, `interaction_blocked=true`, or `agent_action_required=true`, **the task is still open**. Do not stop the turn and do not ask the human to wake you. Run the compatibility continuation below immediately.
 
 JSON files are durability/recovery storage only. Never inspect `.tasktrack.json` or `.agent.json` to obtain the normal human answer.
 
-## Compatibility loop — mandatory when sampling/MRTR is unavailable
+## Compatibility continuation — mandatory when sampling/MRTR is unavailable
 
-When `create_task` returns pending human→agent requests, process them immediately.
+When `create_task` exposes pending human->agent requests, process them immediately. This is a non-terminal assistance round, not task completion.
 
 For every entry in `pending_requests`:
 
@@ -42,7 +57,7 @@ For every entry in `pending_requests`:
 - `clarify`: produce a concise plain-language restatement and call `respond_to_request` with that request id and `clarification`. Include `recommended` only when a responsible proposal is also possible.
 - `continue_with_judgement`: call `respond_to_request` with the request id and no answer payload, then continue the delegated agent work as authorized. Never synthesize human `answer.data`.
 
-After resolving all pending requests, immediately call:
+After resolving all pending requests, TaskTrack should report `interaction_state=awaiting_human`. Immediately call:
 
 `get_task(task_id, include_items=true, wait_ms=300000)`
 
@@ -50,7 +65,8 @@ Then:
 
 - if completed: consume `items[].answer.data` and continue;
 - if closed: continue with no human evidence;
-- if new `agent_action_required=true`: resolve the new pending requests and call `get_task(..., wait_ms=300000)` again;
+- if new `interaction_state=awaiting_agent` / `agent_action_required=true`: resolve the new pending requests and call `get_task(..., wait_ms=300000)` again;
+- if still `awaiting_human`: remain in the wait loop;
 - if the wait times out while the durable task remains active: call `get_task(..., wait_ms=300000)` again when continued waiting is still appropriate.
 
 The human must never need to send “done”, “I submitted”, “check TaskTrack”, or similar merely to resume the agent.
