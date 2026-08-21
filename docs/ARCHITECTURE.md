@@ -4,6 +4,8 @@
 
 TaskTrack models a human as a structured decision/observation source, not as a generic chat box. The caller sends a compact inspection/decision protocol; the human returns typed evidence.
 
+Task completion and agent assistance are deliberately separate state machines. See `INTERACTION_LIFECYCLE.md` for the normative lifecycle.
+
 ## Package boundary
 
 ### `TaskTrack/Core`
@@ -18,7 +20,10 @@ GUI- and MCP-independent authority for:
 - stable task-id lookup;
 - bounded terminal history;
 - Markdown export;
-- polling reminder marker.
+- polling reminder marker;
+- durable human→agent assistance sidecar.
+
+The main task JSON remains the human-evidence authority. The separate `.agent.json` channel stores advisory assistance traffic and a non-terminal interaction phase (`awaiting_human` / `awaiting_agent`).
 
 ### `TaskTrack/Widgets`
 
@@ -47,27 +52,47 @@ Owns only application composition and lifecycle:
 - pause/resume;
 - debounced autosave;
 - reminder prompt;
-- export actions.
+- export actions;
+- agent-launched foreground/close behaviour;
+- semantic-model-based dialog sizing.
 
-The question grid is `UiBoxLayout` horizontal flow with wrapping and fixed-column sizing. Wide windows naturally show more columns; narrower windows fall to two/one without an alternate UI implementation.
+Agent-launched windows estimate useful size from item count, semantic type, choice count and naturally taller editors. They grow only as much as the requested interaction warrants, then prefer scrolling over an oversized workspace. The result is clamped to the primary desktop work area.
 
 ### `TaskTrack/Mcp`
 
-Thin stdio transport. It advertises the 18 semantic types and returns durable task ids/results. It contains no GUI logic and does not interpret human evidence beyond transport/status.
+Thin stdio transport. It advertises the 18 semantic types and returns durable task ids/results. It contains no GUI logic and does not reinterpret agent recommendations as human evidence.
 
-## Long-running lifecycle
+The MCP process and GUI remain separate executables. Process separation is not the interaction boundary: the durable task/assistance model is the shared authority between them.
 
-TaskTrack intentionally does not keep an MCP tool call waiting for a person.
+## Live interaction lifecycle
+
+Normal launched `create_task` owns the human interaction until the main task reaches a terminal state:
 
 1. validate request;
 2. generate/validate stable task id;
 3. persist the complete task;
 4. register its independent locator;
-5. optionally launch the GUI;
-6. return task id/handle;
-7. later retrieval resolves the durable task from disk.
+5. launch the GUI;
+6. wait for human completion/close;
+7. return structured human evidence directly when the task terminates.
 
-The human can therefore take seconds or days without coupling work lifetime to an MCP process or host timeout.
+`launch=false` is the explicit detached/recovery path.
+
+Only `completed` and `closed` are task-terminal.
+
+Human assistance is non-terminal:
+
+```text
+awaiting_human -> awaiting_agent -> awaiting_human
+```
+
+Suggest/Clarify/Use judgement create pending sidecar requests and move the effective interaction to `awaiting_agent`. Agent response moves it back to `awaiting_human`; the GUI remains open throughout.
+
+For MRTR/sampling-capable hosts this may happen inside the same modern MCP interaction. For hosts without sampling, TaskTrack returns a compatibility continuation so the model can fulfil the request, but the structured status explicitly says `task_terminal=false`. The agent must resolve the request and resume waiting for the human; that checkpoint is not task completion.
+
+## Durability
+
+`.tasktrack.json` and `.agent.json` make the interaction restartable and auditable, but they are not the normal answer transport. Normal delivery is GUI → MCP lifecycle → agent.
 
 ## Pause/reminders
 
