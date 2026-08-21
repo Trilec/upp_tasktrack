@@ -103,7 +103,6 @@ inline Value TaskTrackMcpAugmentAgentStatus(const Value& status, const String& t
     if(action_required) {
         out.Add("agent_must_continue", true);
         out.Add("human_followup_required", false);
-        out.Add("interaction_blocked", true);
         out.Add("compatibility_action",
                 "TaskTrack is awaiting_agent and the human task is NOT terminal. Resolve every pending_requests entry immediately with respond_to_request, then call get_task(task_id, include_items=true, wait_ms=300000). Remain in this TaskTrack workflow until completed/closed or another agent request appears. Do not ask the human to send a follow-up chat message.");
     }
