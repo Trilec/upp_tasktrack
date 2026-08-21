@@ -81,23 +81,29 @@ inline Value TaskTrackMcpAugmentAgentStatus(const Value& status, const String& t
     ValueMap out = status;
     String task_state = TrimBoth(AsString(out["state"]));
     bool terminal = task_state == "completed" || task_state == "closed";
+    if(terminal) {
+        out.Add("interaction_state", task_state);
+        out.Add("task_terminal", true);
+        out.Add("agent_action_required", false);
+        out.Add("pending_requests", ValueArray());
+        return Value(out);
+    }
 
     TaskTrackAgentChannel channel;
     String error;
     if(!TaskTrackLoadAgentChannel(task_path, task_id, channel, error)) {
         out.Add("agent_action_required", false);
-        out.Add("interaction_state", terminal ? task_state : String("awaiting_human"));
-        out.Add("task_terminal", terminal);
+        out.Add("interaction_state", "awaiting_human");
+        out.Add("task_terminal", false);
         out.Add("agent_channel_error", error);
         return Value(out);
     }
 
     ValueArray pending = TaskTrackPendingAgentRequestsValue(channel);
     bool action_required = !pending.IsEmpty();
-    String interaction_state = terminal ? task_state : TaskTrackAgentEffectiveInteractionState(channel);
 
-    out.Add("interaction_state", interaction_state);
-    out.Add("task_terminal", terminal);
+    out.Add("interaction_state", TaskTrackAgentEffectiveInteractionState(channel));
+    out.Add("task_terminal", false);
     out.Add("agent_action_required", action_required);
     out.Add("pending_requests", pending);
     if(action_required) {
@@ -157,6 +163,11 @@ inline Value TaskTrackMcpRespondAgentRequest(const Value& args, bool& ok, String
     if(!TaskTrackLoad(task_path, doc, error)) {
         error_code = "TASK_LOAD_FAILED";
         ValueMap out; out.Add("ok", false); out.Add("message", error);
+        return Value(out);
+    }
+    if(doc.state == TaskTrackState::Completed || doc.state == TaskTrackState::Closed) {
+        error_code = "TASK_TERMINAL";
+        ValueMap out; out.Add("ok", false); out.Add("message", "TaskTrack task is already terminal; assistance requests cannot be answered after completion/close.");
         return Value(out);
     }
 
