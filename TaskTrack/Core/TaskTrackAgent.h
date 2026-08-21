@@ -19,6 +19,11 @@
     Request lifecycle (agent request answered != human question resolved):
       pending -> answered -> (cancelled)
 
+    Assistance interaction lifecycle is deliberately non-terminal:
+      awaiting_human -> awaiting_agent -> awaiting_human
+
+    Completed/Closed remain task-terminal states in the main task document.
+
     Copyright (c) 2026 Curtis Edwards
     Licensed under the Apache License, Version 2.0. See LICENSE.
 */
@@ -43,9 +48,30 @@ struct TaskTrackAgentChannel : Moveable<TaskTrackAgentChannel> {
     int version = 1;
     String task_id;
     String task_created_at; // binds this sidecar to one task generation
+    String interaction_state = "awaiting_human";
     String updated_at;
     Vector<TaskTrackAgentRequest> requests;
 };
+
+inline int TaskTrackAgentPendingCountRaw(const TaskTrackAgentChannel& channel)
+{
+    int count = 0;
+    for(const TaskTrackAgentRequest& request : channel.requests)
+        if(request.status == "pending")
+            ++count;
+    return count;
+}
+
+inline bool TaskTrackAgentInteractionStateValid(const String& state)
+{
+    return state == "awaiting_human" || state == "awaiting_agent";
+}
+
+inline String TaskTrackAgentEffectiveInteractionState(const TaskTrackAgentChannel& channel)
+{
+    return TaskTrackAgentPendingCountRaw(channel) > 0 ? String("awaiting_agent")
+                                                      : String("awaiting_human");
+}
 
 inline String TaskTrackAgentChannelPath(const String& task_path)
 {
@@ -83,6 +109,7 @@ inline Value TaskTrackAgentChannelValue(const TaskTrackAgentChannel& channel)
     root.Add("task_id", channel.task_id);
     if(!channel.task_created_at.IsEmpty())
         root.Add("task_created_at", channel.task_created_at);
+    root.Add("interaction_state", TaskTrackAgentEffectiveInteractionState(channel));
     root.Add("updated_at", channel.updated_at);
     ValueArray requests;
     for(const TaskTrackAgentRequest& request : channel.requests)
@@ -203,6 +230,17 @@ inline bool TaskTrackLoadAgentChannel(const String& task_path, const String& tas
     }
     channel.task_created_at = IsNull(raw_generation) ? String() : TrimBoth(AsString(raw_generation));
 
+    Value raw_interaction = raw["interaction_state"];
+    if(!IsNull(raw_interaction) && !raw_interaction.Is<String>()) {
+        error = "TaskTrack agent channel interaction_state must be a string.";
+        return false;
+    }
+    channel.interaction_state = IsNull(raw_interaction) ? String() : TrimBoth(AsString(raw_interaction));
+    if(!channel.interaction_state.IsEmpty() && !TaskTrackAgentInteractionStateValid(channel.interaction_state)) {
+        error = "TaskTrack agent channel interaction_state is invalid.";
+        return false;
+    }
+
     Value updated = raw["updated_at"];
     if(!IsNull(updated) && !updated.Is<String>()) {
         error = "TaskTrack agent channel updated_at must be a string.";
@@ -253,6 +291,10 @@ inline bool TaskTrackLoadAgentChannel(const String& task_path, const String& tas
         channel.task_created_at = current.created_at;
     }
 
+    // interaction_state is a durable presentation/protocol phase, not a second
+    // authority. Pending requests are canonical: they imply awaiting_agent;
+    // no pending request implies awaiting_human. This also migrates old sidecars.
+    channel.interaction_state = TaskTrackAgentEffectiveInteractionState(channel);
     return true;
 }
 
@@ -270,6 +312,7 @@ inline bool TaskTrackSaveAgentChannel(const String& task_path, TaskTrackAgentCha
         return false;
     }
     channel.task_created_at = current.created_at;
+    channel.interaction_state = TaskTrackAgentEffectiveInteractionState(channel);
     channel.updated_at = TaskTrackNowIso();
 
     String path = TaskTrackAgentChannelPath(task_path);
@@ -334,7 +377,8 @@ inline bool TaskTrackQueueAgentRequest(const String& task_path, const String& ta
     for(const TaskTrackAgentRequest& request : channel.requests) {
         if(request.item_id == item_id && request.action == action && request.status == "pending") {
             request_id = request.id;
-            return true;
+            channel.interaction_state = "awaiting_agent";
+            return TaskTrackSaveAgentChannel(task_path, channel, error);
         }
     }
 
@@ -347,6 +391,7 @@ inline bool TaskTrackQueueAgentRequest(const String& task_path, const String& ta
     request.created_at = TaskTrackNowIso();
     request_id = request.id;
     channel.requests.Add(pick(request));
+    channel.interaction_state = "awaiting_agent";
     return TaskTrackSaveAgentChannel(task_path, channel, error);
 }
 
@@ -378,6 +423,7 @@ inline bool TaskTrackResolveAgentRequest(const String& task_path, const String& 
         request.clarification = TrimBoth(clarification);
         request.status = "answered";
         request.answered_at = TaskTrackNowIso();
+        channel.interaction_state = TaskTrackAgentEffectiveInteractionState(channel);
         return TaskTrackSaveAgentChannel(task_path, channel, error);
     }
 
@@ -437,11 +483,7 @@ inline ValueArray TaskTrackPendingAgentRequestsValue(const TaskTrackAgentChannel
 
 inline int TaskTrackPendingAgentRequestCount(const TaskTrackAgentChannel& channel)
 {
-    int count = 0;
-    for(const TaskTrackAgentRequest& request : channel.requests)
-        if(request.status == "pending")
-            ++count;
-    return count;
+    return TaskTrackAgentPendingCountRaw(channel);
 }
 
 } // namespace Upp
