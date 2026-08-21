@@ -19,26 +19,112 @@ UiLabel::Style AgentProgressStyle()
     return style;
 }
 
-bool AgentItemNeedsRoom(const TaskTrackItem& item)
+int AgentItemEstimatedHeight(const TaskTrackItem& item)
 {
+    int h = DPI(112);
     switch(item.type) {
-    case TaskTrackItemType::ListSelect:
+    case TaskTrackItemType::Confirm:
+    case TaskTrackItemType::Text:
+    case TaskTrackItemType::Select:
+    case TaskTrackItemType::Number:
+    case TaskTrackItemType::Amount:
+    case TaskTrackItemType::Rating:
+        h = DPI(112);
+        break;
+    case TaskTrackItemType::SingleChoice:
+    case TaskTrackItemType::MultiChoice: {
+        int rows = max(1, (item.choices.GetCount() + 3) / 4);
+        h = DPI(102 + min(rows, 5) * 25);
+        break;
+    }
     case TaskTrackItemType::Notes:
+        h = DPI(190);
+        break;
+    case TaskTrackItemType::Range:
+        h = DPI(165);
+        break;
+    case TaskTrackItemType::Color:
+    case TaskTrackItemType::Gradient:
+    case TaskTrackItemType::Position:
+    case TaskTrackItemType::Direction:
+        h = DPI(178);
+        break;
+    case TaskTrackItemType::ListSelect:
+    case TaskTrackItemType::RankOrder:
+    case TaskTrackItemType::HierarchySelect:
+        h = DPI(225);
+        break;
+    case TaskTrackItemType::Curve:
+        h = DPI(240);
+        break;
+    }
+
+    if(item.instruction.GetCount() > 120)
+        h += DPI(24);
+    return h;
+}
+
+int AgentItemEstimatedWidth(const TaskTrackItem& item)
+{
+    int w = DPI(700); // enough room for the question header assistance actions
+    if(item.title.GetCount() > 72 || item.instruction.GetCount() > 100)
+        w = DPI(740);
+
+    switch(item.type) {
+    case TaskTrackItemType::Notes:
+    case TaskTrackItemType::ListSelect:
     case TaskTrackItemType::Range:
     case TaskTrackItemType::Color:
     case TaskTrackItemType::Gradient:
     case TaskTrackItemType::Position:
     case TaskTrackItemType::Direction:
+        w = max(w, DPI(740));
+        break;
     case TaskTrackItemType::RankOrder:
     case TaskTrackItemType::HierarchySelect:
     case TaskTrackItemType::Curve:
-        return true;
-    case TaskTrackItemType::MultiChoice:
+        w = max(w, DPI(780));
+        break;
     case TaskTrackItemType::SingleChoice:
-        return item.choices.GetCount() > 6;
+    case TaskTrackItemType::MultiChoice:
+        if(item.choices.GetCount() > 8)
+            w = max(w, DPI(760));
+        break;
     default:
-        return false;
+        break;
     }
+    return w;
+}
+
+void EstimateAgentDialog(const TaskTrackDocument& doc, Size& size, Size& min_size,
+                         int& task_min_height)
+{
+    int item_height = 0;
+    int target_width = DPI(700);
+    for(const TaskTrackItem& item : doc.items) {
+        item_height += AgentItemEstimatedHeight(item);
+        target_width = max(target_width, AgentItemEstimatedWidth(item));
+    }
+
+    const int count = doc.items.GetCount();
+    if(count > 1)
+        item_height += DPI(8) * (count - 1);
+    if(count >= 3)
+        target_width = max(target_width, DPI(760));
+    if(count >= 6)
+        target_width = max(target_width, DPI(900));
+
+    // Chrome estimate covers compact header, optional category strip, footer,
+    // margins and layout gaps. The question estimate then determines how much
+    // real task area is worth showing before scrolling becomes preferable.
+    int chrome = DPI(count <= 1 ? 178 : 205);
+    int target_height = chrome + item_height;
+    target_height = max(DPI(330), min(DPI(720), target_height));
+    target_width = max(DPI(700), min(DPI(1080), target_width));
+
+    size = Size(target_width, target_height);
+    min_size = Size(min(target_width, DPI(620)), min(target_height, DPI(310)));
+    task_min_height = max(DPI(165), min(DPI(430), item_height));
 }
 
 } // namespace
@@ -79,7 +165,6 @@ void TaskTrackWindow::ApplyAgentCompactLayout()
 {
     const int count = document_.items.GetCount();
     const bool one_item = count == 1;
-    const bool roomy_one_item = one_item && AgentItemNeedsRoom(document_.items[0]);
 
     // The footer is the single progress authority in the compact dialog.
     state_label_.Hide();
@@ -136,35 +221,19 @@ void TaskTrackWindow::ApplyAgentCompactLayout()
 
     Size size;
     Size min_size;
-    int task_min_height;
-    if(one_item && !roomy_one_item) {
-        size = Size(DPI(660), DPI(350));
-        min_size = Size(DPI(580), DPI(320));
-        task_min_height = DPI(180);
-    }
-    else if(one_item) {
-        size = Size(DPI(720), DPI(440));
-        min_size = Size(DPI(620), DPI(380));
-        task_min_height = DPI(250);
-    }
-    else if(count <= 4) {
-        size = Size(DPI(880), DPI(560));
-        min_size = Size(DPI(720), DPI(460));
-        task_min_height = DPI(300);
-    }
-    else {
-        size = Size(DPI(1080), DPI(720));
-        min_size = Size(DPI(760), DPI(540));
-        task_min_height = DPI(300);
-    }
+    int task_min_height = DPI(180);
+    EstimateAgentDialog(document_, size, min_size, task_min_height);
 
-    // BuildUi gives the general console a generous task-area minimum. Reduce
-    // that only for the deliberately compact agent dialog.
+    // BuildUi gives the general console a generous task-area minimum. Agent
+    // dialogs instead reserve a semantic-model estimate and let scrolling take
+    // over once further growth would make the window excessive.
     main_box_.ItemAt(2).Expand(1).MinMain(task_min_height);
 
     Rect work = Ctrl::GetPrimaryWorkArea();
-    size.cx = min(size.cx, work.Width());
-    size.cy = min(size.cy, work.Height());
+    int max_w = max(DPI(560), work.Width() - DPI(24));
+    int max_h = max(DPI(300), work.Height() - DPI(24));
+    size.cx = min(size.cx, max_w);
+    size.cy = min(size.cy, max_h);
     SetMinSize(Size(min(min_size.cx, size.cx), min(min_size.cy, size.cy)));
     SetRect(work.CenterRect(size));
 
