@@ -2,6 +2,8 @@
 
 TaskTrack MCP is a thin stdio bridge over the durable Core model. `TaskTrackMcp.exe` is an argument-free local stdio server; it runs alongside `TaskTrackGui.exe` (the native human GUI) and launches it with `--task <path>` when a task needs a human.
 
+The normative interaction state machine is documented in `INTERACTION_LIFECYCLE.md`.
+
 ## CLI
 
 ```text
@@ -21,8 +23,8 @@ TaskTrackMcp.exe --oneshot <request.json>   process one MCP JSON-RPC request fil
 ## Tools
 
 - `version` — version/schema/protocol information.
-- `create_task` — durably create structured human input; optionally launch GUI.
-- `get_task` — retrieve state, structured answers, and pending human→agent requests.
+- `create_task` — durably create structured human input and normally keep ownership of the live human interaction.
+- `get_task` — recovery/compatibility retrieval of state, structured answers, and pending human→agent requests.
 - `open_task` — launch GUI for an existing task.
 - `list_tasks` — recent tasks from a store.
 - `close_task` — explicitly close unfinished work.
@@ -36,11 +38,44 @@ TaskTrackMcp.exe --oneshot <request.json>   process one MCP JSON-RPC request fil
 
 For ordinary human verification prefer `confirm` with `choices = ["Pass", "Fail"]` (boolean `answer.data`, optional `answer.note`). The public MCP schema deliberately does **not** advertise V0.1 aliases (e.g. `pass_fail`) even though the persistence loader accepts them for recovery/compatibility.
 
-## Durable asynchronous-by-design workflow
+## Normal live workflow
 
-TaskTrack does not require the original `create_task` invocation to stay alive while a human works. The task file exists before the id/handle is returned. The caller stores `task_id` and polls later.
+Normal `create_task` with GUI launch enabled is a live human interaction:
 
-This is the preferred behaviour even if a host supports very long tool-call timeouts.
+```text
+create_task
+  -> GUI launches
+  -> human works
+  -> completed / closed
+  -> structured result returns to the agent
+```
+
+The human does not announce completion in chat and the agent does not inspect JSON files for the normal result.
+
+`launch=false` is the explicit detached/recovery path.
+
+## Task state vs assistance state
+
+Task completion and human-to-agent assistance are separate concerns.
+
+Only the main task states `completed` and `closed` are terminal.
+
+The assistance channel persists a separate, non-terminal interaction phase:
+
+```text
+awaiting_human -> awaiting_agent -> awaiting_human
+```
+
+When the human presses Suggest, Clarify, or Use judgement, a durable assistance request is queued and the effective interaction state becomes `awaiting_agent`. The GUI remains open. When all pending agent requests are answered, the interaction returns to `awaiting_human`.
+
+MCP status exposes `interaction_state` and `task_terminal`. An assistance checkpoint must therefore be interpreted as:
+
+```text
+interaction_state: awaiting_agent
+task_terminal: false
+```
+
+not as task completion.
 
 ## Protocol eras
 
@@ -50,9 +85,26 @@ The server supports:
 - the `io.modelcontextprotocol/tasks` extension when the modern client declares it;
 - conservative legacy `initialize` / `notifications/initialized` behaviour for hosts that still use older MCP revisions.
 
-Modern task-capable clients receive a task handle from `create_task` and can call `tasks/get`. Other clients receive an ordinary tool result containing the same stable TaskTrack task id.
+For a modern host that advertises the required sampling/MRTR capability, Suggest/Clarify can be serviced as an in-call `input_required` round and the same `create_task` interaction resumes afterwards.
+
+## Compatibility continuation when sampling is unavailable
+
+Some hosts, including tested Codex configurations, may support TaskTrack MCP while not advertising sampling. The model must then be given a turn in order to fulfil a human→agent request.
+
+TaskTrack returns an explicit compatibility continuation containing the pending requests. This protocol round is not the TaskTrack task ending. The structured status states that the task is non-terminal and the agent must continue.
+
+The agent must:
+
+1. call `respond_to_request` for every pending request;
+2. observe the interaction returning to `awaiting_human`;
+3. call `get_task(task_id, include_items=true, wait_ms=300000)`;
+4. remain in the workflow until `completed`, `closed`, or another `awaiting_agent` round occurs.
+
+The human must not need to send “done”, “check TaskTrack”, or similar merely to wake the agent.
 
 ## Polling
+
+`get_task` is primarily a recovery/compatibility operation. A bounded `wait_ms` lets the agent remain blocked while the human is working after an assistance round.
 
 `get_task` and `tasks/get` may update a separate poll marker when `nudge_on_agent_poll` is enabled. This marker is not human evidence and does not change task state. The GUI may use it to ask an inactive human whether they are still working.
 
@@ -73,6 +125,14 @@ pending -> answered -> (cancelled)
 ```
 
 An answered request is not a resolved human question. Agent responses are advisory and never write `TaskTrackAnswer`; only explicit human action creates `answer.data`.
+
+## Dialog sizing
+
+The native GUI remains a separate executable, but agent-launched windows are sized from the semantic question model rather than a fixed workspace size. Item count, type, choice count and richer controls contribute to an estimated useful dialog size. The result is clamped to the desktop work area, with scrolling preferred over an unnecessarily large window.
+
+## Durable storage
+
+`.tasktrack.json` and `.agent.json` are durability/recovery state, not normal answer transport.
 
 ## Result authority
 
