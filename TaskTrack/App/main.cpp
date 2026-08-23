@@ -1,4 +1,5 @@
 #include "TaskTrackApp.h"
+#include <TaskTrack/Core/TaskTrackBuild.h>
 
 using namespace Upp;
 
@@ -44,7 +45,8 @@ GUI_APP_MAIN
         PromptOK(GuiHelpText());
         return;
     case TaskTrackGuiCommand::Version:
-        PromptOK(String("TaskTrack GUI\nTaskTrack version ") + TaskTrackVersion());
+        PromptOK(String("TaskTrack GUI\nRelease version ") + TaskTrackVersion() +
+                 "\nValidation build " + TaskTrackBuildVersion());
         return;
     default:
         PromptOK(String("Unknown arguments.\n\n") + GuiHelpText());
