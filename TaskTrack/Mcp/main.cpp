@@ -34,6 +34,7 @@ Value ServerInfoValue()
     ValueMap info;
     info.Add("name", "tasktrack_mcp");
     info.Add("version", TaskTrackVersion());
+    info.Add("buildVersion", TaskTrackBuildVersion());
     info.Add("description", "Durable structured human input for AI-assisted workflows.");
     return Value(info);
 }
@@ -826,7 +827,7 @@ Value ExecuteTool(const String& name, const Value& args, const Value& request)
     bool task_capability = ClientSupportsTasks(request);
 
     if(name == "version") {
-        ValueMap v; v.Add("ok", true); v.Add("version", TaskTrackVersion()); v.Add("schema_version", 2);
+        ValueMap v; v.Add("ok", true); v.Add("version", TaskTrackVersion()); v.Add("build_version", TaskTrackBuildVersion()); v.Add("schema_version", 2);
         v.Add("question_types", 18); v.Add("current_protocol", CURRENT_PROTOCOL); v.Add("tasks_extension", TASKS_EXTENSION);
         v.Add("live_create_task", true); v.Add("mrtr_assistance", true);
         return BuildCallToolResult(v, false, modern);
@@ -1112,6 +1113,7 @@ Value Request(const String& method, int id, const Value& params)
 
 int RunSelfTest()
 {
+    Cout() << "tasktrack-mcp-selftest build " << TaskTrackBuildVersion() << "\n";
     SelfTest st; bool has = false;
     ValueMap discover_params; discover_params.Add("_meta", ModernMeta(true));
     String discover_json = AsJSON(HandleRequest(Request("server/discover", 1, discover_params), has), false);
@@ -1175,9 +1177,9 @@ int RunSelfTest()
     st.Check(respond_json.Find("\"status\":\"answered\"") >= 0,
              "respond_to_request did not answer propose_answer");
 
-    // Direct MRTR assistance path: create a second detached task only to set up
-    // deterministic durable state, then re-enter create_task with requestState
-    // exactly as a modern client would after the live call observes Suggest.
+    // Direct MRTR assistance path. Keep the phases in lifecycle order:
+    // input_required -> agent response settles sidecar -> awaiting_human ->
+    // human completion -> terminal create_task result.
     String live_task_id = TaskTrackMakeTaskId();
     ValueMap live_args = clone(args);
     live_args.Set("task_id", live_task_id);
@@ -1204,6 +1206,16 @@ int RunSelfTest()
     ValueMap sample_result; sample_result.Add("role", "assistant"); sample_result.Add("content", sample_text); sample_result.Add("model", "selftest");
     ValueMap live_responses; live_responses.Add(live_request_id, sample_result);
 
+    String live_apply_error;
+    st.Check(ApplyTaskInputResponses(live_task_id, live_path, live_responses, live_apply_error),
+             "live create_task sampling response application failed: " + live_apply_error);
+    TaskTrackAgentChannel live_channel;
+    st.Check(TaskTrackLoadAgentChannel(live_path, live_task_id, live_channel, error) &&
+             !TaskTrackAgentHasPending(live_channel, "visual", "propose_answer") &&
+             TaskTrackAgentLatestRecommendation(live_channel, "visual") == "Pass" &&
+             TaskTrackAgentEffectiveInteractionState(live_channel) == "awaiting_human",
+             "live create_task sampling response did not return assistance to awaiting_human");
+
     TaskTrackDocument live_doc;
     if(TaskTrackLoad(live_path, live_doc, error)) {
         live_doc.items[0].answer.answered = true;
@@ -1219,15 +1231,9 @@ int RunSelfTest()
 
     ValueMap live_final = live_create;
     live_final.Add("requestState", InteractiveState(live_task_id));
-    live_final.Add("inputResponses", live_responses);
     String live_final_json = AsJSON(HandleRequest(Request("tools/call", 72, live_final), has), false);
     st.Check(live_final_json.Find("direct_create_task_result") >= 0 && live_final_json.Find("\"data\":\"Pass\"") >= 0,
              "live create_task did not return terminal human evidence directly");
-    TaskTrackAgentChannel live_channel;
-    st.Check(TaskTrackLoadAgentChannel(live_path, live_task_id, live_channel, error) &&
-             !TaskTrackAgentHasPending(live_channel, "visual", "propose_answer") &&
-             TaskTrackAgentLatestRecommendation(live_channel, "visual") == "Pass",
-             "live create_task retry did not apply sampling response to advisory channel");
 
     // Keep Tasks extension behavior as recovery compatibility.
     String task_input_id;
@@ -1357,6 +1363,7 @@ CONSOLE_APP_MAIN
     case TaskTrackMcpCommand::Version:
         Cout() << "TaskTrack MCP\n"
                << "TaskTrack version " << TaskTrackVersion() << "\n"
+               << "validation build " << TaskTrackBuildVersion() << "\n"
                << "schema version " << 2 << "\n"
                << "MCP protocol " << CURRENT_PROTOCOL << "\n";
         SetExitCode(0);
