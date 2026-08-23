@@ -18,6 +18,14 @@
 
 namespace Upp {
 
+// Validation/build identity for host smoke tests. This is intentionally
+// independent of the durable schema version so Gary can prove which binary
+// generation a live MCP result came from before the final release bump.
+inline String TaskTrackMcpCandidateVersion()
+{
+    return "0.2.1-rc1";
+}
+
 inline Value TaskTrackMcpAgentStringSchema(const String& description)
 {
     ValueMap s;
@@ -79,6 +87,7 @@ inline Value TaskTrackMcpAugmentAgentStatus(const Value& status, const String& t
                                             const String& task_id)
 {
     ValueMap out = status;
+    out.Add("candidate_version", TaskTrackMcpCandidateVersion());
     String task_state = TrimBoth(AsString(out["state"]));
     bool terminal = task_state == "completed" || task_state == "closed";
     if(terminal) {
@@ -165,11 +174,7 @@ inline Value TaskTrackMcpRespondAgentRequest(const Value& args, bool& ok, String
         ValueMap out; out.Add("ok", false); out.Add("message", error);
         return Value(out);
     }
-    if(doc.state == TaskTrackState::Completed || doc.state == TaskTrackState::Closed) {
-        error_code = "TASK_TERMINAL";
-        ValueMap out; out.Add("ok", false); out.Add("message", "TaskTrack task is already terminal; assistance requests cannot be answered after completion/close.");
-        return Value(out);
-    }
+    bool terminal = doc.state == TaskTrackState::Completed || doc.state == TaskTrackState::Closed;
 
     TaskTrackAgentChannel channel;
     if(!TaskTrackLoadAgentChannel(task_path, task_id, channel, error)) {
@@ -206,6 +211,10 @@ inline Value TaskTrackMcpRespondAgentRequest(const Value& args, bool& ok, String
         return Value(out);
     }
 
+    // A response that was already in flight may arrive just after the human
+    // independently completes/closes the task. Settle that sidecar request so
+    // it cannot remain pending forever, but never alter TaskTrackAnswer or
+    // resurrect agent_action_required on the terminal task.
     if(!TaskTrackResolveAgentRequest(task_path, task_id, request_id, recommended, clarification, error)) {
         error_code = "REQUEST_UPDATE_FAILED";
         ValueMap out; out.Add("ok", false); out.Add("message", error);
@@ -217,16 +226,19 @@ inline Value TaskTrackMcpRespondAgentRequest(const Value& args, bool& ok, String
     int pending_count = TaskTrackPendingAgentRequestCount(updated);
     ValueMap result;
     result.Add("ok", true);
+    result.Add("candidate_version", TaskTrackMcpCandidateVersion());
     result.Add("task_id", task_id);
     result.Add("request_id", request_id);
     result.Add("status", "answered");
-    result.Add("interaction_state", TaskTrackAgentEffectiveInteractionState(updated));
-    result.Add("task_terminal", false);
-    result.Add("agent_action_required", pending_count > 0);
+    result.Add("interaction_state", terminal ? TaskTrackStateName(doc.state)
+                                             : TaskTrackAgentEffectiveInteractionState(updated));
+    result.Add("task_terminal", terminal);
+    result.Add("agent_action_required", terminal ? false : pending_count > 0);
     result.Add("pending_count", pending_count);
     result.Add("human_followup_required", false);
-    result.Add("next_action",
-               "If pending_count>0, resolve remaining requests immediately. Otherwise the interaction is awaiting_human: call get_task(task_id, include_items=true, wait_ms=300000) and remain in the TaskTrack workflow until completed/closed or another assistance request appears.");
+    result.Add("next_action", terminal
+               ? Value("TaskTrack task is already terminal. The late advisory response was settled only; continue from the terminal human result and do not request more human input.")
+               : Value("If pending_count>0, resolve remaining requests immediately. Otherwise the interaction is awaiting_human: call get_task(task_id, include_items=true, wait_ms=300000) and remain in the TaskTrack workflow until completed/closed or another assistance request appears."));
     ok = true;
     error_code.Clear();
     return Value(result);
