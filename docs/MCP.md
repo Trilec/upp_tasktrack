@@ -10,19 +10,30 @@ The normative interaction state machine is documented in `INTERACTION_LIFECYCLE.
 TaskTrackGui.exe                choose an existing task
 TaskTrackGui.exe --task <path>  open a specific task
 TaskTrackGui.exe --help         GUI usage dialog
-TaskTrackGui.exe --version      version dialog
+TaskTrackGui.exe --version      release + validation-build identity
 
 TaskTrackMcp.exe                run the stdio MCP server (no stdout banner)
 TaskTrackMcp.exe --help         MCP usage
-TaskTrackMcp.exe --version      version/schema/protocol summary
+TaskTrackMcp.exe --version      release/schema/protocol summary
 TaskTrackMcp.exe --selftest     deterministic MCP self-test
 TaskTrackMcp.exe --oneshot <request.json>   process one MCP JSON-RPC request file and exit
                                          (diagnostic/test utility)
 ```
 
+## Release version vs validation build
+
+TaskTrack keeps two identities during an acceptance cycle:
+
+- `TaskTrackVersion()` is the accepted release line;
+- `TaskTrackBuildVersion()` is the exact supervisor validation candidate.
+
+The validation build changes whenever a new executable candidate is handed to Windows/Codex acceptance. `TaskTrackGui.exe --version` shows both values. Normal MCP task/status and assistance responses include `build_version`, so a live host transcript can prove which candidate binary actually answered the request.
+
+A candidate such as `0.2.1-rc1` does not become release `0.2.1` until the acceptance gate passes. This prevents an unvalidated build from masquerading as a finished release while still making stale-binary mistakes obvious.
+
 ## Tools
 
-- `version` — version/schema/protocol information.
+- `version` — release/schema/protocol information.
 - `create_task` — durably create structured human input and normally keep ownership of the live human interaction.
 - `get_task` — recovery/compatibility retrieval of state, structured answers, and pending human→agent requests.
 - `open_task` — launch GUI for an existing task.
@@ -76,6 +87,8 @@ task_terminal: false
 ```
 
 not as task completion.
+
+A response that was already in flight may arrive just after the human independently completes or closes the task. TaskTrack is allowed to settle that advisory sidecar request so it does not remain pending forever. The terminal main task still wins: the late response never changes `answer.data`, never reopens the GUI, and never resurrects `agent_action_required`.
 
 ## Protocol eras
 
