@@ -227,7 +227,7 @@ inline Value TaskTrackMcpRespondAgentRequest(const Value& args, bool& ok, String
                                              : TaskTrackAgentEffectiveInteractionState(updated));
     result.Add("task_terminal", terminal);
     result.Add("agent_action_required", terminal ? false : pending_count > 0);
-    result.Add("pending_count", pending_count);
+    result.Add("pending_count", terminal ? 0 : pending_count);
     result.Add("human_followup_required", false);
     result.Add("next_action", terminal
                ? Value("TaskTrack task is already terminal. The late advisory response was settled only; continue from the terminal human result and do not request more human input.")
