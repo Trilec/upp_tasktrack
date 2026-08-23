@@ -87,6 +87,10 @@ The deterministic MRTR selftest was still ordering the phases incorrectly: it ma
 
 `0.2.1-rc2` corrects the deterministic test to validate those phases in lifecycle order, while retaining separate support for a genuinely late in-flight advisory response after terminal human completion. It also makes the validation build visible through CLI, MCP metadata/results and selftest output so the exact executable under test can be confirmed before interpreting failures.
 
+A later Windows report at repository SHA `f364c70def2e0a0394466669a0e14193a9309ee8` still executed a binary whose `--version` output did not contain `validation build 0.2.1-rc2` and whose selftest emitted the pre-rc2 failures. The source at that SHA does contain both the build-version output and corrected selftest. Therefore that result is classified as **stale/different binary evidence, not an rc2 source validation**.
+
+`verify.ps1` is now fail-safe for this case: it removes each old target before building, fails if Windows has the target locked, prints the exact MCP path/timestamp/size/SHA-256, executes `--version`, and requires the validation build read from `TaskTrack/Core/TaskTrackBuild.h` before any deterministic selftest is accepted.
+
 ## Validation state
 
 **IMPLEMENTATION COMPLETE — PLATFORM VALIDATION PENDING**
@@ -94,9 +98,9 @@ The deterministic MRTR selftest was still ordering the phases incorrectly: it ma
 Next gate:
 
 1. Refresh exact current `main` and record SHA.
-2. Build Release `TaskTrackGui`, `TaskTrackMcp`, `TaskTrackTests`.
-3. Before selftest, run the exact just-built `TaskTrackMcp.exe --version` and require validation build `0.2.1-rc2`.
-4. Run `TaskTrackTests` and the same executable's `--selftest`; both must pass and selftest must print `tasktrack-mcp-selftest build 0.2.1-rc2`.
+2. Run the repository `verify.ps1` rather than relying on an unrelated/stale output copy.
+3. Require the freshly-linked `build/TaskTrackMcp.exe --version` to contain `validation build 0.2.1-rc2`.
+4. Require `TaskTrackTests` to pass and the same executable's selftest to print `tasktrack-mcp-selftest build 0.2.1-rc2` and finish `tasktrack-mcp-selftest: ok`.
 5. Quick Debug/BLITZ compile for GUI + MCP.
 6. Restart Codex only after that gate passes.
 7. Direct Submit test: no Suggest, answer + Submit, GUI closes, original interaction returns human evidence without JSON/manual poll/human wake-up.
