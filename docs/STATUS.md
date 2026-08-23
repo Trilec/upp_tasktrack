@@ -9,12 +9,14 @@ Current objective: finish the live TaskTrack human↔agent lifecycle and close t
 ### Version identity
 
 - Accepted release line: `0.2.0`, schema 2.
-- Current validation build: `0.2.1-rc1`.
+- Current validation build: `0.2.1-rc2`.
 - `TaskTrackGui.exe --version` shows both the release and validation-build identities.
-- Normal MCP task/status and assistance responses expose `build_version` so live transcripts can prove which binary candidate handled the interaction.
+- `TaskTrackMcp.exe --version` reports the validation build explicitly.
+- MCP `version`, server metadata, task/status and assistance responses expose the build identity so live transcripts can prove which binary candidate handled the interaction.
+- MCP selftest prints its build identity before running checks.
 - Only after live acceptance passes is the release version promoted to `0.2.1`.
 
-This distinction exists specifically to prevent stale binaries from being mistaken for the current validation candidate.
+This distinction exists specifically to prevent stale binaries or a different output copy from being mistaken for the current validation candidate.
 
 ## Accepted foundation
 
@@ -70,18 +72,20 @@ The agent must immediately resolve `pending_requests` using `respond_to_request`
 
 ## Agent dialog sizing
 
-Agent-launched windows now estimate useful size from the actual semantic question model instead of a fixed 1/4/many preset. Question count, semantic type, choice count, instruction length and naturally taller controls contribute to the estimate. The dialog is clamped to the current desktop work area and prefers scrolling over an unnecessarily large window.
+Agent-launched windows estimate useful size from the actual semantic question model instead of a fixed 1/4/many preset. Question count, semantic type, choice count, instruction length and naturally taller controls contribute to the estimate. The dialog is clamped to the current desktop work area and prefers scrolling over an unnecessarily large window.
 
 ## Latest validation history
 
-At `ce051094a0d08f25df40688c6d11834d2764f097` Windows builds and TaskTrackTests passed, but MCP selftest stopped with:
+At `ce051094a0d08f25df40688c6d11834d2764f097`, and again from the binary reported while the repository was at `41f45d711561cc4a54419b4cf2fc136a691d4d60`, MCP selftest reported:
 
 ```text
 live create_task did not return terminal human evidence directly
 live create_task retry did not apply sampling response to advisory channel
 ```
 
-Supervisor diagnosis: the deterministic selftest deliberately completed the human task while a previously-issued sampling response was still in flight. The newly-added terminal guard rejected that late advisory response. The correct race semantics are to settle the already-issued sidecar response while preserving terminal human authority. The MCP assistance boundary has been corrected accordingly; the next validation must rerun the selftest before any live GUI test.
+The deterministic MRTR selftest was still ordering the phases incorrectly: it marked the human task `completed` before applying the pending sampling response. The normal lifecycle is `input_required -> apply agent response -> awaiting_human -> human completion -> terminal create_task result`.
+
+`0.2.1-rc2` corrects the deterministic test to validate those phases in lifecycle order, while retaining separate support for a genuinely late in-flight advisory response after terminal human completion. It also makes the validation build visible through CLI, MCP metadata/results and selftest output so the exact executable under test can be confirmed before interpreting failures.
 
 ## Validation state
 
@@ -91,10 +95,10 @@ Next gate:
 
 1. Refresh exact current `main` and record SHA.
 2. Build Release `TaskTrackGui`, `TaskTrackMcp`, `TaskTrackTests`.
-3. Run `TaskTrackTests` and `TaskTrackMcp.exe --selftest`; both must pass.
-4. Confirm GUI reports validation build `0.2.1-rc1` and a normal MCP task/status response reports `build_version: 0.2.1-rc1`.
+3. Before selftest, run the exact just-built `TaskTrackMcp.exe --version` and require validation build `0.2.1-rc2`.
+4. Run `TaskTrackTests` and the same executable's `--selftest`; both must pass and selftest must print `tasktrack-mcp-selftest build 0.2.1-rc2`.
 5. Quick Debug/BLITZ compile for GUI + MCP.
-6. Restart Codex with fresh MCP binary.
+6. Restart Codex only after that gate passes.
 7. Direct Submit test: no Suggest, answer + Submit, GUI closes, original interaction returns human evidence without JSON/manual poll/human wake-up.
 8. Suggest test: GUI stays open in `awaiting_agent`; agent compatibility/MRTR response returns proposal; phase returns `awaiting_human`; Accept auto-completes; agent receives terminal result without a human wake-up message.
 9. Quick multi-question sizing check.
