@@ -15,16 +15,9 @@
 */
 
 #include <TaskTrack/Core/TaskTrackAgent.h>
+#include <TaskTrack/Core/TaskTrackBuild.h>
 
 namespace Upp {
-
-// Validation/build identity for host smoke tests. This is intentionally
-// independent of the durable schema version so Gary can prove which binary
-// generation a live MCP result came from before the final release bump.
-inline String TaskTrackMcpCandidateVersion()
-{
-    return "0.2.1-rc1";
-}
 
 inline Value TaskTrackMcpAgentStringSchema(const String& description)
 {
@@ -87,7 +80,7 @@ inline Value TaskTrackMcpAugmentAgentStatus(const Value& status, const String& t
                                             const String& task_id)
 {
     ValueMap out = status;
-    out.Add("candidate_version", TaskTrackMcpCandidateVersion());
+    out.Add("build_version", TaskTrackBuildVersion());
     String task_state = TrimBoth(AsString(out["state"]));
     bool terminal = task_state == "completed" || task_state == "closed";
     if(terminal) {
@@ -226,7 +219,7 @@ inline Value TaskTrackMcpRespondAgentRequest(const Value& args, bool& ok, String
     int pending_count = TaskTrackPendingAgentRequestCount(updated);
     ValueMap result;
     result.Add("ok", true);
-    result.Add("candidate_version", TaskTrackMcpCandidateVersion());
+    result.Add("build_version", TaskTrackBuildVersion());
     result.Add("task_id", task_id);
     result.Add("request_id", request_id);
     result.Add("status", "answered");
