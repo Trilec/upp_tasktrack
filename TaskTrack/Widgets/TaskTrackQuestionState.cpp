@@ -176,14 +176,14 @@ void TaskTrackQuestionCtrl::EnsureRecommendationHeader()
         .SetInset(0)
         .SetAlignItems(UiCrossAlign::Center);
 
-    recommendation_header_label_.SetAlign(UiAlign::RIGHT, UiAlign::CENTER);
+    recommendation_header_label_.SetAlign(UiAlign::LEFT, UiAlign::CENTER);
     recommendation_accept_.SetContentInset(DPI(2));
     recommendation_help_.SetCustomStyle(MakeStateButtonStyle(VISUAL_SUGGESTED));
     recommendation_help_.SetText("?").SetContentInset(DPI(1));
     recommendation_judgement_.SetCustomStyle(MakeStateButtonStyle(VISUAL_SUGGESTED));
     recommendation_judgement_.SetText("Use judgement").SetContentInset(DPI(2));
 
-    recommendation_header_.Add(recommendation_header_label_).Fit().MinMain(DPI(58)).MinCross(DPI(23));
+    recommendation_header_.Add(recommendation_header_label_).Expand(1).MinMain(DPI(72)).MinCross(DPI(23));
     recommendation_header_.Add(recommendation_accept_).Fixed(DPI(58)).MinCross(DPI(23));
     recommendation_header_.Add(recommendation_help_).Fixed(DPI(26)).MinCross(DPI(23));
     recommendation_header_.Add(recommendation_judgement_).Fixed(DPI(96)).MinCross(DPI(23));
@@ -323,11 +323,11 @@ void TaskTrackQuestionCtrl::ApplyRecommendationPresentation()
             }
             else {
                 if(proposal_pending_)
-                    recommendation_header_label_.SetText("Request sent — waiting for agent");
+                    recommendation_header_label_.SetText("Waiting for agent");
                 else if(clarification_pending_)
-                    recommendation_header_label_.SetText("Clarification requested — waiting for agent");
+                    recommendation_header_label_.SetText("Waiting for clarification");
                 else if(judgement_pending_)
-                    recommendation_header_label_.SetText("Delegation sent — waiting for agent");
+                    recommendation_header_label_.SetText("Waiting for judgement");
                 else
                     recommendation_header_label_.SetText(state == VISUAL_ATTENTION ? "Required" : "Needs decision");
                 recommendation_accept_.SetText(proposal_pending_ ? "…" : "Suggest");
@@ -344,7 +344,7 @@ void TaskTrackQuestionCtrl::ApplyRecommendationPresentation()
         else {
             if(item.recommended.IsEmpty()) {
                 if(clarification_pending_)
-                    recommendation_header_label_.SetText("Clarification requested — waiting for agent");
+                    recommendation_header_label_.SetText("Waiting for clarification");
                 else
                     recommendation_header_label_.SetText(item.required ? "Needs decision" : "Optional");
                 recommendation_header_.ItemAt(1).Fixed(0).MinMain(0);
@@ -362,10 +362,14 @@ void TaskTrackQuestionCtrl::ApplyRecommendationPresentation()
         }
     }
 
+    // Workflow state/actions are question content, not title chrome. Keeping
+    // this row below the response leaves the title/subtitle completely free
+    // and gives status text an explicit, non-overlapping layout slot.
+    if(recommendation_header_attached_ && content_.FindItem(recommendation_header_) < 0)
+        recommendation_header_attached_ = false;
     if(!recommendation_header_attached_) {
         recommendation_header_attached_ = true;
-        SetHeaderContent(recommendation_header_);
-        SetHeaderContentAlign(UiAlign::RIGHT, UiAlign::CENTER);
+        content_.Add(recommendation_header_).Fit().MinCross(DPI(23)).AlignSelf(UiBoxLayout::Align::Stretch);
     }
 
     if(!recommendation_body_collapsed_) {
