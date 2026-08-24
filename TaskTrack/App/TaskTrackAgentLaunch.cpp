@@ -38,24 +38,24 @@ int AgentItemEstimatedHeight(const TaskTrackItem& item)
         break;
     }
     case TaskTrackItemType::Notes:
-        h = DPI(190);
+        h = DPI(150);
         break;
     case TaskTrackItemType::Range:
-        h = DPI(165);
+        h = DPI(150);
         break;
     case TaskTrackItemType::Color:
     case TaskTrackItemType::Gradient:
     case TaskTrackItemType::Position:
     case TaskTrackItemType::Direction:
-        h = DPI(178);
+        h = DPI(170);
         break;
     case TaskTrackItemType::ListSelect:
     case TaskTrackItemType::RankOrder:
     case TaskTrackItemType::HierarchySelect:
-        h = DPI(225);
+        h = DPI(205);
         break;
     case TaskTrackItemType::Curve:
-        h = DPI(240);
+        h = DPI(225);
         break;
     }
 
@@ -66,7 +66,7 @@ int AgentItemEstimatedHeight(const TaskTrackItem& item)
 
 int AgentItemEstimatedWidth(const TaskTrackItem& item)
 {
-    int w = DPI(700); // enough room for the question header assistance actions
+    int w = DPI(700); // two compact question columns plus gutters
     if(item.title.GetCount() > 72 || item.instruction.GetCount() > 100)
         w = DPI(740);
 
@@ -96,35 +96,50 @@ int AgentItemEstimatedWidth(const TaskTrackItem& item)
     return w;
 }
 
+int AgentPackedItemHeight(const TaskTrackDocument& doc, int columns)
+{
+    columns = max(1, columns);
+    int total = 0;
+    for(int i = 0; i < doc.items.GetCount(); i += columns) {
+        int row_height = 0;
+        for(int c = 0; c < columns && i + c < doc.items.GetCount(); ++c)
+            row_height = max(row_height, AgentItemEstimatedHeight(doc.items[i + c]));
+        if(total > 0)
+            total += DPI(10); // matches the task-flow vertical gutter
+        total += row_height;
+    }
+    return total;
+}
+
 void EstimateAgentDialog(const TaskTrackDocument& doc, Size& size, Size& min_size,
                          int& task_min_height)
 {
-    int item_height = 0;
     int target_width = DPI(700);
-    for(const TaskTrackItem& item : doc.items) {
-        item_height += AgentItemEstimatedHeight(item);
+    for(const TaskTrackItem& item : doc.items)
         target_width = max(target_width, AgentItemEstimatedWidth(item));
-    }
 
     const int count = doc.items.GetCount();
-    if(count > 1)
-        item_height += DPI(8) * (count - 1);
     if(count >= 3)
         target_width = max(target_width, DPI(760));
     if(count >= 6)
         target_width = max(target_width, DPI(900));
-
-    // Chrome estimate covers compact header, optional category strip, footer,
-    // margins and layout gaps. The question estimate then determines how much
-    // real task area is worth showing before scrolling becomes preferable.
-    int chrome = DPI(count <= 1 ? 178 : 205);
-    int target_height = chrome + item_height;
-    target_height = max(DPI(330), min(DPI(720), target_height));
     target_width = max(DPI(700), min(DPI(1080), target_width));
+
+    // TaskTrackQuestionFlow uses 350px columns with a 10px gutter. Estimate
+    // the same packed rows rather than summing every question vertically.
+    // This keeps three-question requests compact while preserving space for
+    // genuinely tall semantic controls.
+    int columns = count > 1 && target_width >= DPI(720) ? 2 : 1;
+    int item_height = AgentPackedItemHeight(doc, columns);
+
+    bool category_strip = TaskTrackCategories(doc).GetCount() > 1;
+    int chrome = DPI(category_strip ? 205 : 140);
+    int target_height = chrome + item_height;
+    target_height = max(DPI(330), min(DPI(680), target_height));
 
     size = Size(target_width, target_height);
     min_size = Size(min(target_width, DPI(620)), min(target_height, DPI(310)));
-    task_min_height = max(DPI(165), min(DPI(430), item_height));
+    task_min_height = max(DPI(150), min(DPI(390), item_height));
 }
 
 } // namespace
@@ -183,9 +198,7 @@ void TaskTrackWindow::ApplyAgentCompactLayout()
     header_layout_.ItemAt(6).Fixed(0).MinMain(0).MinCross(0);
     header_layout_.ItemAt(7).Fixed(0).MinMain(0).MinCross(0);
 
-    exit_button_.SetText("×").Tip("Close task");
     complete_button_.SetText("Submit");
-    header_layout_.ItemAt(8).Fixed(DPI(32)).MinMain(DPI(32));
 
     if(one_item) {
         // A single decision should look and behave like a dialog, not a full
@@ -202,6 +215,21 @@ void TaskTrackWindow::ApplyAgentCompactLayout()
         header_layout_.ItemAt(5).Fixed(DPI(100)).MinMain(DPI(100));
     }
 
+    // The small header X was ambiguous beside Pause/reminder controls. Reuse
+    // the same semantic exit action in the footer with an explicit label.
+    int header_exit = header_layout_.FindItem(exit_button_);
+    if(header_exit >= 0)
+        header_layout_.RemoveItem(header_exit);
+    int footer_exit = footer_layout_.FindItem(exit_button_);
+    if(footer_exit >= 0)
+        footer_layout_.RemoveItem(footer_exit);
+    int footer_complete = footer_layout_.FindItem(complete_button_);
+    if(footer_complete >= 0)
+        footer_layout_.RemoveItem(footer_complete);
+    exit_button_.SetText("Cancel task").Tip("Close this task without completing it");
+    footer_layout_.Add(exit_button_).Fixed(DPI(96)).MinCross(DPI(28));
+    footer_layout_.Add(complete_button_).Fixed(DPI(92)).MinCross(DPI(28));
+
     // Export/save is useful in the standalone console, but it is noise in the
     // ordinary agent dialog. TaskTrack still autosaves every human edit.
     save_button_.Hide();
@@ -217,7 +245,6 @@ void TaskTrackWindow::ApplyAgentCompactLayout()
     else {
         footer_layout_.ItemAt(2).Fixed(DPI(132)).MinMain(DPI(132));
     }
-    footer_layout_.ItemAt(3).Fixed(DPI(92)).MinMain(DPI(92));
 
     Size size;
     Size min_size;
@@ -225,8 +252,8 @@ void TaskTrackWindow::ApplyAgentCompactLayout()
     EstimateAgentDialog(document_, size, min_size, task_min_height);
 
     // BuildUi gives the general console a generous task-area minimum. Agent
-    // dialogs instead reserve a semantic-model estimate and let scrolling take
-    // over once further growth would make the window excessive.
+    // dialogs instead reserve the packed semantic-model estimate and let
+    // scrolling take over once further growth would make the window excessive.
     main_box_.ItemAt(2).Expand(1).MinMain(task_min_height);
 
     Rect work = Ctrl::GetPrimaryWorkArea();
