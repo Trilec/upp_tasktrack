@@ -1,6 +1,6 @@
 # TaskTrack Status
 
-## Current recovery state — 2026-08-23
+## Current recovery state — 2026-08-24
 
 TaskTrack development is directly on `main`; remote GitHub is authoritative and no feature/review/checkpoint branch is used.
 
@@ -14,7 +14,7 @@ Current objective: finish the live TaskTrack human↔agent lifecycle and close t
 - `TaskTrackMcp.exe --version` reports the validation build explicitly.
 - MCP `version`, server metadata, task/status and assistance responses expose the build identity so live transcripts can prove which binary candidate handled the interaction.
 - MCP selftest prints its build identity before running checks.
-- Only after live acceptance passes is the release version promoted to `0.2.1`.
+- Only after final live acceptance passes is the release version promoted to `0.2.1`.
 
 This distinction exists specifically to prevent stale binaries or a different output copy from being mistaken for the current validation candidate.
 
@@ -31,7 +31,7 @@ This distinction exists specifically to prevent stale binaries or a different ou
 
 ## Live interaction lifecycle
 
-Real Codex dogfood established that human task completion and human→agent assistance must be separate state concepts.
+Human task completion and human→agent assistance are separate state concepts.
 
 Only main task states `completed` and `closed` are terminal.
 
@@ -49,7 +49,7 @@ awaiting_human -> awaiting_agent -> awaiting_human
 - Ordinary text editing does not auto-complete while the human types; Submit remains its explicit final action.
 - Terminal task state outranks sidecar state: stale pending requests cannot resurrect `agent_action_required` after completion/close.
 
-A legitimate race is also supported: an assistance response already in flight may arrive just after the human independently completes/closes. TaskTrack may settle that advisory sidecar request, but it cannot change `answer.data`, reopen the task, or make a terminal task non-terminal.
+A legitimate race is supported: an assistance response already in flight may arrive just after the human independently completes/closes. TaskTrack may settle that advisory sidecar request, but it cannot change `answer.data`, reopen the task, or make a terminal task non-terminal.
 
 Normative detail: `docs/INTERACTION_LIFECYCLE.md` and `docs/MCP.md`.
 
@@ -59,16 +59,7 @@ Normal launched `create_task` owns the live human interaction until terminal hum
 
 When a modern host advertises the required sampling/MRTR capability, Suggest/Clarify may use `input_required` and retry the same interaction with `requestState` + `inputResponses`.
 
-Tested Codex configurations have not advertised sampling. In that case TaskTrack returns a non-terminal compatibility checkpoint:
-
-```text
-interaction_state: awaiting_agent
-task_terminal: false
-agent_action_required: true
-human_followup_required: false
-```
-
-The agent must immediately resolve `pending_requests` using `respond_to_request`, then block in `get_task(..., wait_ms=300000)` until the human completes/closes or requests further assistance. The human must not need to type “done”, “check TaskTrack”, or any other wake-up message.
+When the host does not expose that capability, TaskTrack uses the structured non-terminal compatibility continuation and the agent resolves pending requests then waits on `get_task(..., wait_ms=300000)` without requiring a human wake-up message.
 
 ## Agent dialog sizing
 
@@ -76,35 +67,53 @@ Agent-launched windows estimate useful size from the actual semantic question mo
 
 ## Latest validation history
 
-At `ce051094a0d08f25df40688c6d11834d2764f097`, and again from the binary reported while the repository was at `41f45d711561cc4a54419b4cf2fc136a691d4d60`, MCP selftest reported:
+Earlier builds reported two MCP self-test failures:
 
 ```text
 live create_task did not return terminal human evidence directly
 live create_task retry did not apply sampling response to advisory channel
 ```
 
-The deterministic MRTR selftest was still ordering the phases incorrectly: it marked the human task `completed` before applying the pending sampling response. The normal lifecycle is `input_required -> apply agent response -> awaiting_human -> human completion -> terminal create_task result`.
+`0.2.1-rc2` corrected the deterministic MRTR test order and added explicit binary identity. A later repeated failure was traced to a stale/different executable: the repository source contained rc2 identity and corrected tests while the executed binary did not. `verify.ps1` was hardened to remove old targets, fail on locked outputs, print the exact MCP identity, require the validation build, then run deterministic tests.
 
-`0.2.1-rc2` corrects the deterministic test to validate those phases in lifecycle order, while retaining separate support for a genuinely late in-flight advisory response after terminal human completion. It also makes the validation build visible through CLI, MCP metadata/results and selftest output so the exact executable under test can be confirmed before interpreting failures.
+### Verified Windows binary gate
 
-A later Windows report at repository SHA `f364c70def2e0a0394466669a0e14193a9309ee8` still executed a binary whose `--version` output did not contain `validation build 0.2.1-rc2` and whose selftest emitted the pre-rc2 failures. The source at that SHA does contain both the build-version output and corrected selftest. Therefore that result is classified as **stale/different binary evidence, not an rc2 source validation**.
+At repository SHA `ee277b19606db4750fd7f3299b0dd371b4a62066` with `upp_Ui` SHA `537ad1d7e102d43f5ed8e7f80492d3075aa6583f`:
 
-`verify.ps1` is now fail-safe for this case: it removes each old target before building, fails if Windows has the target locked, prints the exact MCP path/timestamp/size/SHA-256, executes `--version`, and requires the validation build read from `TaskTrack/Core/TaskTrackBuild.h` before any deterministic selftest is accepted.
+- `verify.ps1`: PASS.
+- `TaskTrackTests`: 142 passed, 0 failed.
+- `TaskTrackMcp.exe --version`: validation build `0.2.1-rc2`.
+- MCP selftest identified itself as `0.2.1-rc2` and finished `tasktrack-mcp-selftest: ok`.
+- Verified MCP SHA-256: `B7C8C6CCE2DAD87C9EE2B2D68FCB25849796F26743E58C99E4472C3CCCE38D89`.
+
+### Verified Codex live flow
+
+Using that verified rc2 binary:
+
+1. **Direct Submit — PASS**
+   - one required text question;
+   - no Suggest/Clarify/Use judgement;
+   - human submitted `RC-direct-rc2`;
+   - original `create_task` returned `delivery: direct_create_task_result` with `RC-direct-rc2`;
+   - no polling, JSON inspection, compatibility continuation, or second human chat message was required.
+
+2. **Suggest / Accept — PASS**
+   - human requested Suggest from the open TaskTrack GUI;
+   - agent assistance round-trip completed automatically;
+   - proposal `RC2-final` returned to the still-live task;
+   - human explicitly accepted it;
+   - task state became `completed`, answer status `accepted`, returned answer `RC2-final`;
+   - no additional human chat message was required.
+
+These two passes establish the primary live TaskTrack lifecycle: direct human completion and non-terminal human→agent assistance both return control to Codex automatically.
 
 ## Validation state
 
-**IMPLEMENTATION COMPLETE — PLATFORM VALIDATION PENDING**
+**LIVE FLOW ACCEPTED — FINAL SANITY PENDING**
 
-Next gate:
+Remaining checks before promoting `0.2.1-rc2` to release `0.2.1`:
 
-1. Refresh exact current `main` and record SHA.
-2. Run the repository `verify.ps1` rather than relying on an unrelated/stale output copy.
-3. Require the freshly-linked `build/TaskTrackMcp.exe --version` to contain `validation build 0.2.1-rc2`.
-4. Require `TaskTrackTests` to pass and the same executable's selftest to print `tasktrack-mcp-selftest build 0.2.1-rc2` and finish `tasktrack-mcp-selftest: ok`.
-5. Quick Debug/BLITZ compile for GUI + MCP.
-6. Restart Codex only after that gate passes.
-7. Direct Submit test: no Suggest, answer + Submit, GUI closes, original interaction returns human evidence without JSON/manual poll/human wake-up.
-8. Suggest test: GUI stays open in `awaiting_agent`; agent compatibility/MRTR response returns proposal; phase returns `awaiting_human`; Accept auto-completes; agent receives terminal result without a human wake-up message.
-9. Quick multi-question sizing check.
+1. Close an unanswered one-question task with the window close control. Require terminal `closed`, no human evidence, Codex resumes automatically, and no later reminder appears.
+2. Create a small mixed 3-question task and confirm adaptive dialog sizing is sensible: no clipped controls, no excessive empty space, and scrolling is preferred when content exceeds the work area.
 
-After PASS: promote release version to `0.2.1`, record final Windows/Codex acceptance, publish final release checkpoint, and freeze further feature expansion unless a real workflow need appears.
+After PASS: promote release version to `0.2.1`, record final Windows/Codex acceptance, publish the final release checkpoint, and freeze further feature expansion unless a real workflow need appears.
