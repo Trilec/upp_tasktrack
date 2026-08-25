@@ -87,7 +87,13 @@ inline Value TaskTrackMcpAugmentAgentStatus(const Value& status, const String& t
         out.Add("interaction_state", task_state);
         out.Add("task_terminal", true);
         out.Add("agent_action_required", false);
+        out.Add("agent_must_continue", true);
+        out.Add("agent_response_required", true);
+        out.Add("human_followup_required", false);
         out.Add("pending_requests", ValueArray());
+        out.Add("next_action", task_state == "completed"
+                ? Value("Continue the originating workflow now and send a concise user-visible acknowledgement that TaskTrack completed, summarizing the returned human evidence. Do not end the turn with only the tool result and do not ask the human to wake you.")
+                : Value("Continue the originating workflow now and send a concise user-visible acknowledgement that TaskTrack was closed/cancelled with no additional human evidence. Do not end the turn with only the tool result and do not ask the human to wake you."));
         return Value(out);
     }
 
