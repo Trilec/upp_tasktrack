@@ -71,15 +71,15 @@ Task completion and human-to-agent assistance are separate concerns.
 
 Only the main task states `completed` and `closed` are terminal.
 
-The assistance channel persists a separate, non-terminal interaction phase:
+The assistance channel persists a separate live interaction phase:
 
 ```text
 awaiting_human -> awaiting_agent -> awaiting_human
 ```
 
-When the human presses Suggest, Clarify, or Use judgement, a durable assistance request is queued and the effective interaction state becomes `awaiting_agent`. The GUI remains open. When all pending agent requests are answered, the interaction returns to `awaiting_human`.
+When the human presses Suggest, Clarify, or Use judgement, a durable assistance request is queued and the effective interaction state becomes `awaiting_agent`. The GUI remains open while the request is pending. When all pending agent requests are answered, the interaction normally returns to `awaiting_human`.
 
-MCP status exposes `interaction_state` and `task_terminal`. An assistance checkpoint must therefore be interpreted as:
+MCP status exposes `interaction_state` and `task_terminal`. A pending assistance checkpoint must therefore be interpreted as:
 
 ```text
 interaction_state: awaiting_agent
@@ -87,6 +87,20 @@ task_terminal: false
 ```
 
 not as task completion.
+
+`continue_with_judgement` is the deliberate exception after acknowledgement: it records explicit human authority for the agent to decide that item. If every still-required unanswered item is covered by an answered `continue_with_judgement`, the GUI closes automatically and the main task becomes `closed`. No human `answer.data` is created for delegated items.
+
+The delegated terminal result exposes:
+
+```text
+state: closed
+delegated_to_agent: true
+closure_reason: agent_judgement
+delegated_item_ids: [...]
+human_followup_required: false
+```
+
+The agent must continue under its own judgement for those item ids and must not represent the resulting judgement as a human answer.
 
 A response that was already in flight may arrive just after the human independently completes or closes the task. TaskTrack is allowed to settle that advisory sidecar request so it does not remain pending forever. The terminal main task still wins: the late response never changes `answer.data`, never reopens the GUI, and never resurrects `agent_action_required`.
 
@@ -98,7 +112,7 @@ The server supports:
 - the `io.modelcontextprotocol/tasks` extension when the modern client declares it;
 - conservative legacy `initialize` / `notifications/initialized` behaviour for hosts that still use older MCP revisions.
 
-For a modern host that advertises the required sampling/MRTR capability, Suggest/Clarify can be serviced as an in-call `input_required` round and the same `create_task` interaction resumes afterwards.
+For a modern host that advertises the required sampling/MRTR capability, Suggest/Clarify/Use judgement can be serviced as an in-call `input_required` round and the same `create_task` interaction resumes afterwards.
 
 ## Compatibility continuation when sampling is unavailable
 
@@ -109,11 +123,14 @@ TaskTrack returns an explicit compatibility continuation containing the pending 
 The agent must:
 
 1. call `respond_to_request` for every pending request;
-2. observe the interaction returning to `awaiting_human`;
-3. call `get_task(task_id, include_items=true, wait_ms=300000)`;
-4. remain in the workflow until `completed`, `closed`, or another `awaiting_agent` round occurs.
+2. call `get_task(task_id, include_items=true, wait_ms=300000)`;
+3. remain in the workflow until `completed`, `closed`, or another `awaiting_agent` round occurs.
+
+For Suggest/Clarify, the answered request normally returns the GUI to `awaiting_human`. For Use judgement, the answered request may cause automatic delegated closure when no further required human work remains.
 
 The human must not need to send “done”, “check TaskTrack”, or similar merely to wake the agent.
+
+A compatibility fallback that completes automatically without another human chat message is an accepted host path. Native MRTR/sampling support is preferable when available, but its absence is not itself a TaskTrack failure if the documented fallback remains seamless to the human.
 
 ## Polling
 
@@ -137,11 +154,25 @@ Request lifecycle:
 pending -> answered -> (cancelled)
 ```
 
-An answered request is not a resolved human question. Agent responses are advisory and never write `TaskTrackAnswer`; only explicit human action creates `answer.data`.
+An answered Suggest/Clarify request is not a resolved human question. Agent responses remain advisory and never write `TaskTrackAnswer`; only explicit human answer/acceptance creates `answer.data`.
+
+An answered `continue_with_judgement` is different: it is durable acknowledgement that the agent received the human's delegation. It can satisfy the need for further **human** input on that item, while still leaving `answer.data` empty.
+
+## Terminal result acknowledgement
+
+Terminal results expose `agent_must_continue=true`, `agent_response_required=true`, and `human_followup_required=false`.
+
+The host agent must always continue the originating turn visibly:
+
+- completed → acknowledge/summarize the returned human evidence;
+- ordinary closed/cancelled → acknowledge closure and do not invent missing evidence;
+- delegated closed → acknowledge the delegation and continue using agent judgement for `delegated_item_ids`.
+
+The TaskTrack tool card alone is never the intended final visible response.
 
 ## Dialog sizing
 
-The native GUI remains a separate executable, but agent-launched windows are sized from the semantic question model rather than a fixed workspace size. Item count, type, choice count and richer controls contribute to an estimated useful dialog size. The result is clamped to the desktop work area, with scrolling preferred over an unnecessarily large window.
+The native GUI remains a separate executable, but agent-launched windows are sized from the semantic question model rather than a fixed workspace size. Item count, type, choice count and richer controls contribute to an estimated useful dialog size. One-question dialogs keep a compact width but reserve enough height for group-panel and workflow chrome. The result is clamped to the desktop work area, with scrolling preferred over an unnecessarily large window.
 
 ## Durable storage
 
@@ -149,4 +180,6 @@ The native GUI remains a separate executable, but agent-launched windows are siz
 
 ## Result authority
 
-On completion, use `items[].answer.data` as structured evidence. `answer.value` is a compact display/log representation; `answer.note` is optional supporting human evidence; Markdown is a derived export.
+On completion, use `items[].answer.data` as structured human answer evidence. `answer.value` is a compact display/log representation; `answer.note` is optional supporting human evidence; Markdown is a derived export.
+
+On delegated closure, `delegated_to_agent=true` and `delegated_item_ids` authorize the agent to decide those items. That authorization is durable human input, but the agent's eventual judgement is not human `answer.data`.
