@@ -89,6 +89,7 @@ private:
     // completion/closure is exposed to the agent only through MCP task state.
     void CompleteAgentTaskAndClose();
     void CloseAgentTaskAndExit();
+    void CloseAgentTaskAfterDelegation();
     void ArmAgentReminderGrace();
     void BringAgentWindowForward();
     void ApplyAgentCompactLayout();
