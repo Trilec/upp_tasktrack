@@ -45,6 +45,8 @@ After calling `create_task`:
 4. If it returns `input_required`, let the MCP multi-round-trip complete and continue the same TaskTrack interaction.
 5. If it returns `interaction_state=awaiting_agent`, `task_terminal=false`, `compatibility_fallback`, `interaction_blocked=true`, or `agent_action_required=true`, **the task is still open**. Do not stop the turn and do not ask the human to wake you. Run the compatibility continuation below immediately.
 
+A terminal TaskTrack result is not permission to end the assistant turn silently. After `completed`, always send a concise user-visible acknowledgement that TaskTrack completed and summarize or act on the returned human evidence. After `closed`, always send a concise user-visible acknowledgement that the task was cancelled/closed and that no additional human evidence was supplied. Never leave the user with only a TaskTrack tool card as the final visible output.
+
 JSON files are durability/recovery storage only. Never inspect `.tasktrack.json` or `.agent.json` to obtain the normal human answer.
 
 ## Compatibility continuation — mandatory when sampling/MRTR is unavailable
@@ -63,8 +65,8 @@ After resolving all pending requests, TaskTrack should report `interaction_state
 
 Then:
 
-- if completed: consume `items[].answer.data` and continue;
-- if closed: continue with no human evidence;
+- if completed: consume `items[].answer.data`, continue the originating work, and acknowledge completion visibly;
+- if closed: continue with no human evidence and acknowledge the cancellation visibly;
 - if new `interaction_state=awaiting_agent` / `agent_action_required=true`: resolve the new pending requests and call `get_task(..., wait_ms=300000)` again;
 - if still `awaiting_human`: remain in the wait loop;
 - if the wait times out while the durable task remains active: call `get_task(..., wait_ms=300000)` again when continued waiting is still appropriate.
