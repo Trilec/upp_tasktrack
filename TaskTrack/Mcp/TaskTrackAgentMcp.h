@@ -76,16 +76,30 @@ inline bool TaskTrackMcpRecommendationValid(TaskTrackItem& item, const String& r
     return valid;
 }
 
-inline ValueArray TaskTrackMcpDelegatedItemIds(const TaskTrackAgentChannel& channel)
+inline bool TaskTrackMcpHasAnsweredDelegation(const TaskTrackAgentChannel& channel,
+                                              const String& item_id)
+{
+    for(int i = channel.requests.GetCount() - 1; i >= 0; --i) {
+        const TaskTrackAgentRequest& request = channel.requests[i];
+        if(request.item_id == item_id && request.action == "continue_with_judgement" &&
+           request.status == "answered")
+            return true;
+    }
+    return false;
+}
+
+inline ValueArray TaskTrackMcpResolvedDelegatedItemIds(const TaskTrackDocument& doc,
+                                                       const TaskTrackAgentChannel& channel)
 {
     ValueArray out;
-    Index<String> seen;
-    for(const TaskTrackAgentRequest& request : channel.requests) {
-        if(request.action != "continue_with_judgement" || request.status != "answered" ||
-           request.item_id.IsEmpty() || seen.Find(request.item_id) >= 0)
+    for(const TaskTrackItem& item : doc.items) {
+        if(!item.required || item.answer.answered)
             continue;
-        seen.Add(request.item_id);
-        out.Add(request.item_id);
+        if(!TaskTrackMcpHasAnsweredDelegation(channel, item.id)) {
+            out.Clear();
+            return out;
+        }
+        out.Add(item.id);
     }
     return out;
 }
@@ -101,10 +115,12 @@ inline Value TaskTrackMcpAugmentAgentStatus(const Value& status, const String& t
         bool delegated_to_agent = false;
         ValueArray delegated_items;
         if(task_state == "closed") {
+            TaskTrackDocument terminal_doc;
             TaskTrackAgentChannel terminal_channel;
             String terminal_error;
-            if(TaskTrackLoadAgentChannel(task_path, task_id, terminal_channel, terminal_error)) {
-                delegated_items = TaskTrackMcpDelegatedItemIds(terminal_channel);
+            if(TaskTrackLoad(task_path, terminal_doc, terminal_error) &&
+               TaskTrackLoadAgentChannel(task_path, task_id, terminal_channel, terminal_error)) {
+                delegated_items = TaskTrackMcpResolvedDelegatedItemIds(terminal_doc, terminal_channel);
                 delegated_to_agent = !delegated_items.IsEmpty();
             }
         }
@@ -126,7 +142,7 @@ inline Value TaskTrackMcpAugmentAgentStatus(const Value& status, const String& t
                 ? Value("Continue the originating workflow now and send a concise user-visible acknowledgement that TaskTrack completed, summarizing the returned human evidence. Do not end the turn with only the tool result and do not ask the human to wake you.")
                 : delegated_to_agent
                     ? Value("The human delegated the listed item(s) to agent judgement. Continue the originating workflow now using your own judgement for those items. Do not fabricate human answer.data. Send a concise user-visible acknowledgement of the delegated decision and do not ask the human to close TaskTrack or wake you.")
-                    : Value("Continue the originating workflow now and send a concise user-visible acknowledgement that TaskTrack was closed/cancelled with no additional human evidence. Do not end the turn with only the tool result and do not ask the human to wake you."));
+                    : Value("Continue the originating workflow now and send a concise user-visible acknowledgement that TaskTrack was closed/cancelled. Use any already-recorded human evidence, but do not invent missing answers. Do not end the turn with only the tool result and do not ask the human to wake you."));
         return Value(out);
     }
 
@@ -243,6 +259,8 @@ inline Value TaskTrackMcpRespondAgentRequest(const Value& args, bool& ok, String
         return Value(out);
     }
 
+    bool delegation_request = request->action == "continue_with_judgement";
+
     // A response that was already in flight may arrive just after the human
     // independently completes/closes the task. Settle that sidecar request so
     // it cannot remain pending forever, but never alter TaskTrackAnswer or
@@ -268,9 +286,13 @@ inline Value TaskTrackMcpRespondAgentRequest(const Value& args, bool& ok, String
     result.Add("agent_action_required", terminal ? false : pending_count > 0);
     result.Add("pending_count", terminal ? 0 : pending_count);
     result.Add("human_followup_required", false);
+    if(delegation_request)
+        result.Add("delegation_acknowledged", true);
     result.Add("next_action", terminal
                ? Value("TaskTrack task is already terminal. The late advisory response was settled only; continue from the terminal human result and do not request more human input.")
-               : Value("If pending_count>0, resolve remaining requests immediately. Otherwise the interaction is awaiting_human: call get_task(task_id, include_items=true, wait_ms=300000) and remain in the TaskTrack workflow until completed/closed or another assistance request appears."));
+               : delegation_request && pending_count == 0
+                   ? Value("Delegation acknowledged. TaskTrack GUI will close automatically when no other required human input remains; call get_task(task_id, include_items=true, wait_ms=300000) and continue under your own judgement when delegated_to_agent=true is returned.")
+                   : Value("If pending_count>0, resolve remaining requests immediately. Otherwise the interaction is awaiting_human: call get_task(task_id, include_items=true, wait_ms=300000) and remain in the TaskTrack workflow until completed/closed or another assistance request appears."));
     ok = true;
     error_code.Clear();
     return Value(result);
