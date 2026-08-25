@@ -21,7 +21,7 @@ UiLabel::Style AgentProgressStyle()
 
 int AgentItemEstimatedHeight(const TaskTrackItem& item)
 {
-    int h = DPI(112);
+    int h = DPI(100);
     switch(item.type) {
     case TaskTrackItemType::Confirm:
     case TaskTrackItemType::Text:
@@ -29,46 +29,46 @@ int AgentItemEstimatedHeight(const TaskTrackItem& item)
     case TaskTrackItemType::Number:
     case TaskTrackItemType::Amount:
     case TaskTrackItemType::Rating:
-        h = DPI(112);
+        h = DPI(100);
         break;
     case TaskTrackItemType::SingleChoice:
     case TaskTrackItemType::MultiChoice: {
         int rows = max(1, (item.choices.GetCount() + 3) / 4);
-        h = DPI(102 + min(rows, 5) * 25);
+        h = DPI(88 + min(rows, 5) * 22);
         break;
     }
     case TaskTrackItemType::Notes:
-        h = DPI(150);
+        h = DPI(132);
         break;
     case TaskTrackItemType::Range:
-        h = DPI(150);
+        h = DPI(135);
         break;
     case TaskTrackItemType::Color:
     case TaskTrackItemType::Gradient:
     case TaskTrackItemType::Position:
     case TaskTrackItemType::Direction:
-        h = DPI(170);
+        h = DPI(155);
         break;
     case TaskTrackItemType::ListSelect:
     case TaskTrackItemType::RankOrder:
     case TaskTrackItemType::HierarchySelect:
-        h = DPI(205);
+        h = DPI(190);
         break;
     case TaskTrackItemType::Curve:
-        h = DPI(225);
+        h = DPI(210);
         break;
     }
 
     if(item.instruction.GetCount() > 120)
-        h += DPI(24);
+        h += DPI(18);
     return h;
 }
 
 int AgentItemEstimatedWidth(const TaskTrackItem& item)
 {
-    int w = DPI(700); // two compact question columns plus gutters
+    int w = DPI(620);
     if(item.title.GetCount() > 72 || item.instruction.GetCount() > 100)
-        w = DPI(740);
+        w = DPI(680);
 
     switch(item.type) {
     case TaskTrackItemType::Notes:
@@ -78,17 +78,17 @@ int AgentItemEstimatedWidth(const TaskTrackItem& item)
     case TaskTrackItemType::Gradient:
     case TaskTrackItemType::Position:
     case TaskTrackItemType::Direction:
-        w = max(w, DPI(740));
+        w = max(w, DPI(660));
         break;
     case TaskTrackItemType::RankOrder:
     case TaskTrackItemType::HierarchySelect:
     case TaskTrackItemType::Curve:
-        w = max(w, DPI(780));
+        w = max(w, DPI(720));
         break;
     case TaskTrackItemType::SingleChoice:
     case TaskTrackItemType::MultiChoice:
         if(item.choices.GetCount() > 8)
-            w = max(w, DPI(760));
+            w = max(w, DPI(700));
         break;
     default:
         break;
@@ -114,32 +114,35 @@ int AgentPackedItemHeight(const TaskTrackDocument& doc, int columns)
 void EstimateAgentDialog(const TaskTrackDocument& doc, Size& size, Size& min_size,
                          int& task_min_height)
 {
-    int target_width = DPI(700);
+    int target_width = DPI(620);
     for(const TaskTrackItem& item : doc.items)
         target_width = max(target_width, AgentItemEstimatedWidth(item));
 
     const int count = doc.items.GetCount();
+    if(count >= 2)
+        target_width = max(target_width, DPI(700));
     if(count >= 3)
         target_width = max(target_width, DPI(760));
     if(count >= 6)
         target_width = max(target_width, DPI(900));
-    target_width = max(DPI(700), min(DPI(1080), target_width));
+    target_width = max(DPI(620), min(DPI(1080), target_width));
 
     // TaskTrackQuestionFlow uses 350px columns with a 10px gutter. Estimate
     // the same packed rows rather than summing every question vertically.
-    // This keeps three-question requests compact while preserving space for
-    // genuinely tall semantic controls.
-    int columns = count > 1 && target_width >= DPI(720) ? 2 : 1;
+    // One-question dialogs also keep a narrower width and a much smaller task
+    // area instead of inheriting workspace-sized empty space.
+    int columns = count > 1 && target_width >= DPI(700) ? 2 : 1;
     int item_height = AgentPackedItemHeight(doc, columns);
 
     bool category_strip = TaskTrackCategories(doc).GetCount() > 1;
-    int chrome = DPI(category_strip ? 205 : 140);
+    int chrome = DPI(category_strip ? 170 : (count <= 1 ? 105 : 110));
     int target_height = chrome + item_height;
-    target_height = max(DPI(330), min(DPI(680), target_height));
+    int min_height = count <= 1 ? DPI(260) : DPI(310);
+    target_height = max(min_height, min(DPI(640), target_height));
 
     size = Size(target_width, target_height);
-    min_size = Size(min(target_width, DPI(620)), min(target_height, DPI(310)));
-    task_min_height = max(DPI(150), min(DPI(390), item_height));
+    min_size = Size(min(target_width, DPI(560)), min(target_height, DPI(250)));
+    task_min_height = max(DPI(100), min(DPI(350), item_height));
 }
 
 } // namespace
@@ -248,7 +251,7 @@ void TaskTrackWindow::ApplyAgentCompactLayout()
 
     Size size;
     Size min_size;
-    int task_min_height = DPI(180);
+    int task_min_height = DPI(120);
     EstimateAgentDialog(document_, size, min_size, task_min_height);
 
     // BuildUi gives the general console a generous task-area minimum. Agent
@@ -257,8 +260,8 @@ void TaskTrackWindow::ApplyAgentCompactLayout()
     main_box_.ItemAt(2).Expand(1).MinMain(task_min_height);
 
     Rect work = Ctrl::GetPrimaryWorkArea();
-    int max_w = max(DPI(560), work.Width() - DPI(24));
-    int max_h = max(DPI(300), work.Height() - DPI(24));
+    int max_w = max(DPI(520), work.Width() - DPI(24));
+    int max_h = max(DPI(260), work.Height() - DPI(24));
     size.cx = min(size.cx, max_w);
     size.cy = min(size.cy, max_h);
     SetMinSize(Size(min(min_size.cx, size.cx), min(min_size.cy, size.cy)));
