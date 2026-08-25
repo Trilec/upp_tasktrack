@@ -1,6 +1,6 @@
 # TaskTrack Status
 
-## Current recovery state — 2026-08-24
+## Current recovery state — 2026-08-25
 
 TaskTrack development is directly on `main`; remote GitHub is authoritative and no feature/review/checkpoint branch is used.
 
@@ -9,7 +9,7 @@ Current objective: finish the live TaskTrack human↔agent lifecycle and close t
 ### Version identity
 
 - Accepted release line: `0.2.0`, schema 2.
-- Current validation build: `0.2.1-rc3`.
+- Current validation build: `0.2.1-rc4`.
 - `TaskTrackGui.exe --version` shows both the release and validation-build identities.
 - `TaskTrackMcp.exe --version` reports the validation build explicitly.
 - MCP `version`, server metadata, task/status and assistance responses expose the build identity so live transcripts can prove which binary candidate handled the interaction.
@@ -61,6 +61,8 @@ When a modern host advertises the required sampling/MRTR capability, Suggest/Cla
 
 When the host does not expose that capability, TaskTrack uses the structured non-terminal compatibility continuation and the agent resolves pending requests then waits on `get_task(..., wait_ms=300000)` without requiring a human wake-up message.
 
+A terminal MCP result must also continue the originating agent turn. `completed` and `closed` results now explicitly require a concise user-visible acknowledgement so a host agent does not leave only the TaskTrack tool card visible after Submit/Cancel. Completed results summarize or act on returned human evidence; closed results state that the task ended with no additional human evidence.
+
 ## Verified rc2 acceptance
 
 At repository SHA `ee277b19606db4750fd7f3299b0dd371b4a62066` with `upp_Ui` SHA `537ad1d7e102d43f5ed8e7f80492d3075aa6583f`:
@@ -80,38 +82,36 @@ Codex live-flow acceptance on that verified rc2 binary:
 
 These passes establish the primary TaskTrack lifecycle and no-evidence close semantics.
 
-## rc3 visual polish
+## rc3 visual/runtime findings
 
-The final rc2 three-question visual check exposed presentation issues rather than transport defects:
+`0.2.1-rc3` fixed the title/subtitle/status collision and moved the ambiguous compact header close action into the footer as `Cancel task`. The three-question dialog also became materially shorter.
 
-- the workflow status (`Needs decision`) competed with the question title/subtitle header;
-- the adaptive dialog height still summed questions too much and left a large unused lower area despite the two-column flow;
-- the compact header `×` beside Pause/reminder controls was visually ambiguous.
+Live screenshots then exposed two remaining acceptance issues:
 
-`0.2.1-rc3` addresses only that presentation slice:
+1. The one-question and three-question windows still retained more unused vertical space than the rendered controls required, especially the one-question cancellation dialog.
+2. After both Submit and Cancel, the original `create_task` call finished but Codex sometimes ended the turn with only the TaskTrack tool card visible. No normal assistant acknowledgement reported the returned answers or the closed/no-evidence result. This is distinct from transport failure: the same fresh session successfully reported TaskTrack `0.2.1-rc3`, deterministic verification passed, and the GUI terminal actions completed.
 
-- workflow status and Suggest/Clarify/Use judgement actions now have a dedicated full-width row below the question response rather than occupying group-panel title chrome; the status label expands into reserved space and waiting labels are shorter;
-- dialog height estimation now models the actual two-column question packing (maximum height per visual row plus the real gutter) instead of summing every question vertically; tall semantic-control estimates and chrome caps were tightened, while scrolling remains the fallback for larger tasks;
-- the agent-mode header `×` is removed and the existing exit action is reparented into the footer as the explicit `Cancel task` button beside `Submit`; the native titlebar close control retains the same close semantics.
+## rc4 candidate
 
-Production diff from accepted rc2 presentation checkpoint `8c5891423b1d2176c2b84a3295c8c84618311f71` to rc3 candidate touches only:
+`0.2.1-rc4` is intentionally bounded to those two findings:
 
-- `TaskTrack/Widgets/TaskTrackQuestionState.cpp`
-- `TaskTrack/App/TaskTrackAgentLaunch.cpp`
-- `TaskTrack/Core/TaskTrackBuild.h`
+- agent dialog estimates are tightened again: simple controls, notes and choice rows reserve less vertical space; one-question windows can use a narrower 620px target; task-area and chrome minimums are reduced while tall semantic types and desktop clamps remain protected; two-column packing remains authoritative for multi-question height;
+- terminal MCP statuses explicitly expose `agent_must_continue=true`, `agent_response_required=true`, `human_followup_required=false`, plus a concrete `next_action` requiring the agent to continue the originating workflow and emit a concise user-visible acknowledgement after either `completed` or `closed`;
+- the TaskTrack skill repeats that rule: a terminal TaskTrack result must never leave only a tool card as the final visible output.
 
-No human-evidence, MCP transport, or persistence semantics were intentionally changed.
+No answer authority, assistance semantics, persistence format, or task-terminal rules are changed.
 
 ## Validation state
 
-**RC3 VISUAL POLISH — WINDOWS VALIDATION PENDING**
+**RC4 — WINDOWS/CODEX VALIDATION PENDING**
 
 Next gate:
 
-1. Refresh exact current `main` and `upp_Ui`; require clean worktrees.
-2. Run repository `verify.ps1`; require `0.2.1-rc3`, 142/142 TaskTrack tests and MCP selftest PASS.
-3. Restart Codex with the newly-built pair only after deterministic verification passes.
-4. Repeat the three-question text / four-choice / notes visual check. Require no title/subtitle/status collision, materially less unused vertical space, no clipping, and footer `Cancel task` + `Submit` with no compact header `×`.
-5. Smoke `Cancel task` on an unanswered task and normal Submit on the mixed task to confirm the already-accepted terminal/direct-return behaviour remains intact.
+1. Refresh latest `main` and `upp_Ui`; require clean worktrees.
+2. Run repository `verify.ps1`; require validation build `0.2.1-rc4`, 142/142 TaskTrack tests and MCP selftest PASS.
+3. Restart Codex/new session against the freshly-built MCP binary only after deterministic verification passes.
+4. Repeat the three-question text / four-choice / notes visual check. Require no collision/clipping and a tighter useful height with no large unused lower region.
+5. Submit all three. Require Codex to emit a normal visible acknowledgement summarizing the returned answers after the TaskTrack tool call finishes.
+6. Create an unanswered one-question task and press `Cancel task`. Require a tighter one-question dialog, terminal `closed`, no human evidence, and a normal visible Codex acknowledgement that no answer was supplied.
 
-After PASS: promote release version to `0.2.1`, record final Windows/Codex acceptance, publish the final release checkpoint, and freeze further feature expansion unless a real workflow need appears.
+After PASS: promote release version to `0.2.1`, record final Windows/Codex acceptance, publish the release checkpoint, and freeze further feature expansion unless a real workflow need appears.
