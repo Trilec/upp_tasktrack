@@ -19,6 +19,31 @@ UiLabel::Style AgentProgressStyle()
     return style;
 }
 
+bool AgentHasAnsweredDelegation(const TaskTrackAgentChannel& channel, const String& item_id)
+{
+    for(int i = channel.requests.GetCount() - 1; i >= 0; --i) {
+        const TaskTrackAgentRequest& request = channel.requests[i];
+        if(request.item_id == item_id && request.action == "continue_with_judgement" &&
+           request.status == "answered")
+            return true;
+    }
+    return false;
+}
+
+bool AgentDelegationResolvesHumanWork(const TaskTrackDocument& doc,
+                                      const TaskTrackAgentChannel& channel)
+{
+    bool has_delegation = false;
+    for(const TaskTrackItem& item : doc.items) {
+        if(!item.required || item.answer.answered)
+            continue;
+        if(!AgentHasAnsweredDelegation(channel, item.id))
+            return false;
+        has_delegation = true;
+    }
+    return has_delegation;
+}
+
 int AgentItemEstimatedHeight(const TaskTrackItem& item)
 {
     int h = DPI(100);
@@ -129,20 +154,23 @@ void EstimateAgentDialog(const TaskTrackDocument& doc, Size& size, Size& min_siz
 
     // TaskTrackQuestionFlow uses 350px columns with a 10px gutter. Estimate
     // the same packed rows rather than summing every question vertically.
-    // One-question dialogs also keep a narrower width and a much smaller task
-    // area instead of inheriting workspace-sized empty space.
+    // One-question dialogs keep the narrow rc4 width but reserve a little more
+    // height so group-panel chrome and the workflow row cannot clip.
     int columns = count > 1 && target_width >= DPI(700) ? 2 : 1;
     int item_height = AgentPackedItemHeight(doc, columns);
+    if(count <= 1)
+        item_height = max(item_height, DPI(112));
 
     bool category_strip = TaskTrackCategories(doc).GetCount() > 1;
     int chrome = DPI(category_strip ? 170 : (count <= 1 ? 105 : 110));
     int target_height = chrome + item_height;
-    int min_height = count <= 1 ? DPI(260) : DPI(310);
+    int min_height = count <= 1 ? DPI(285) : DPI(310);
     target_height = max(min_height, min(DPI(640), target_height));
 
     size = Size(target_width, target_height);
-    min_size = Size(min(target_width, DPI(560)), min(target_height, DPI(250)));
-    task_min_height = max(DPI(100), min(DPI(350), item_height));
+    min_size = Size(min(target_width, DPI(560)), min(target_height, DPI(270)));
+    task_min_height = count <= 1 ? max(DPI(112), min(DPI(350), item_height))
+                                 : max(DPI(100), min(DPI(350), item_height));
 }
 
 } // namespace
@@ -162,12 +190,27 @@ void TaskTrackWindow::PrepareAgentLaunch()
     exit_button_.WhenAction = [=] { CloseAgentTaskAndExit(); };
     complete_button_.WhenAction = [=] { CompleteAgentTaskAndClose(); };
 
-    // Accepting the only required recommendation is itself an explicit human
-    // finalization action. Do not make the human press Submit as a second step.
+    // This watcher handles the two explicit one-step finalization paths:
+    // accepting the only required recommendation, and acknowledged delegation
+    // of every still-unanswered required item. Delegation ends the human task
+    // without manufacturing answer.data.
     KillTimeCallback(TASKTRACK_AGENT_COMPLETE_TIMER_ID);
     Ptr<TaskTrackWindow> self = this;
     SetTimeCallback(-150, [self] {
-        if(!self || self->closing_ || !self->loaded_ || self->document_.items.GetCount() != 1)
+        if(!self || self->closing_ || !self->loaded_)
+            return;
+
+        TaskTrackAgentChannel channel;
+        String channel_error;
+        if(TaskTrackLoadAgentChannel(self->task_path_, self->document_.task_id,
+                                     channel, channel_error) &&
+           AgentDelegationResolvesHumanWork(self->document_, channel)) {
+            self->KillTimeCallback(TASKTRACK_AGENT_COMPLETE_TIMER_ID);
+            self->CloseAgentTaskAfterDelegation();
+            return;
+        }
+
+        if(self->document_.items.GetCount() != 1)
             return;
         const TaskTrackItem& item = self->document_.items[0];
         if(item.answer.answered && item.answer.status == "accepted" && TaskTrackCanComplete(self->document_)) {
@@ -357,6 +400,36 @@ void TaskTrackWindow::CompleteAgentTaskAndClose()
     KillTimeCallback(TASKTRACK_AGENT_COMPLETE_TIMER_ID);
 
     // Keep the acknowledgement visible briefly without requiring another click.
+    Ptr<TaskTrackWindow> self = this;
+    SetTimeCallback(160, [self] {
+        if(!self || self->closing_)
+            return;
+        self->closing_ = true;
+        self->Close();
+    }, TASKTRACK_AGENT_COMPLETE_TIMER_ID);
+}
+
+void TaskTrackWindow::CloseAgentTaskAfterDelegation()
+{
+    if(!loaded_ || closing_ || document_.state == TaskTrackState::Completed ||
+       document_.state == TaskTrackState::Closed)
+        return;
+
+    // Delegation is a human authorization, but not a human answer. Close the
+    // human-facing task only after the agent has acknowledged every still-
+    // required delegated item. The sidecar preserves the delegation evidence;
+    // answer.data remains untouched.
+    document_.state = TaskTrackState::Closed;
+    TouchHumanActivity();
+    if(!SaveProgress(false))
+        return;
+
+    progress_label_.SetText("Judgement delegated — returning to agent…");
+    progress_label_.Refresh();
+    KillTimeCallback(TASKTRACK_AGENT_REMINDER_TIMER_ID);
+    KillTimeCallback(TASKTRACK_AGENT_FOREGROUND_TIMER_ID);
+    KillTimeCallback(TASKTRACK_AGENT_COMPLETE_TIMER_ID);
+
     Ptr<TaskTrackWindow> self = this;
     SetTimeCallback(160, [self] {
         if(!self || self->closing_)
