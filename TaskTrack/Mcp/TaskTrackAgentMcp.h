@@ -76,6 +76,20 @@ inline bool TaskTrackMcpRecommendationValid(TaskTrackItem& item, const String& r
     return valid;
 }
 
+inline ValueArray TaskTrackMcpDelegatedItemIds(const TaskTrackAgentChannel& channel)
+{
+    ValueArray out;
+    Index<String> seen;
+    for(const TaskTrackAgentRequest& request : channel.requests) {
+        if(request.action != "continue_with_judgement" || request.status != "answered" ||
+           request.item_id.IsEmpty() || seen.Find(request.item_id) >= 0)
+            continue;
+        seen.Add(request.item_id);
+        out.Add(request.item_id);
+    }
+    return out;
+}
+
 inline Value TaskTrackMcpAugmentAgentStatus(const Value& status, const String& task_path,
                                             const String& task_id)
 {
@@ -84,6 +98,17 @@ inline Value TaskTrackMcpAugmentAgentStatus(const Value& status, const String& t
     String task_state = TrimBoth(AsString(out["state"]));
     bool terminal = task_state == "completed" || task_state == "closed";
     if(terminal) {
+        bool delegated_to_agent = false;
+        ValueArray delegated_items;
+        if(task_state == "closed") {
+            TaskTrackAgentChannel terminal_channel;
+            String terminal_error;
+            if(TaskTrackLoadAgentChannel(task_path, task_id, terminal_channel, terminal_error)) {
+                delegated_items = TaskTrackMcpDelegatedItemIds(terminal_channel);
+                delegated_to_agent = !delegated_items.IsEmpty();
+            }
+        }
+
         out.Add("interaction_state", task_state);
         out.Add("task_terminal", true);
         out.Add("agent_action_required", false);
@@ -91,9 +116,17 @@ inline Value TaskTrackMcpAugmentAgentStatus(const Value& status, const String& t
         out.Add("agent_response_required", true);
         out.Add("human_followup_required", false);
         out.Add("pending_requests", ValueArray());
+        if(task_state == "closed") {
+            out.Add("delegated_to_agent", delegated_to_agent);
+            out.Add("closure_reason", delegated_to_agent ? "agent_judgement" : "human_cancelled");
+            if(delegated_to_agent)
+                out.Add("delegated_item_ids", delegated_items);
+        }
         out.Add("next_action", task_state == "completed"
                 ? Value("Continue the originating workflow now and send a concise user-visible acknowledgement that TaskTrack completed, summarizing the returned human evidence. Do not end the turn with only the tool result and do not ask the human to wake you.")
-                : Value("Continue the originating workflow now and send a concise user-visible acknowledgement that TaskTrack was closed/cancelled with no additional human evidence. Do not end the turn with only the tool result and do not ask the human to wake you."));
+                : delegated_to_agent
+                    ? Value("The human delegated the listed item(s) to agent judgement. Continue the originating workflow now using your own judgement for those items. Do not fabricate human answer.data. Send a concise user-visible acknowledgement of the delegated decision and do not ask the human to close TaskTrack or wake you.")
+                    : Value("Continue the originating workflow now and send a concise user-visible acknowledgement that TaskTrack was closed/cancelled with no additional human evidence. Do not end the turn with only the tool result and do not ask the human to wake you."));
         return Value(out);
     }
 
