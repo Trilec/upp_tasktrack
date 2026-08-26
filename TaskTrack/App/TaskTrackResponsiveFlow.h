@@ -253,7 +253,8 @@ private:
     int ResolveItemWidth(int available, int columns) const
     {
         columns = max(1, columns);
-        return max(1, (available - gap_x_ * max(0, columns - 1)) / columns);
+        int fitted = max(1, (available - gap_x_ * max(0, columns - 1)) / columns);
+        return min(preferred_column_width_, fitted);
     }
 
     int MeasureItemHeight(Ctrl& ctrl, int width)
