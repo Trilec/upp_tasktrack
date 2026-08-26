@@ -1,133 +1,178 @@
-# TaskTrack — Getting Started
+# Getting started with TaskTrack
 
-## Windows/U++ baseline
+## 1. Requirements
 
-The checked-in assembly examples assume:
+TaskTrack is a U++ project. You need:
+
+- U++ / TheIDE with `umk.exe`;
+- `upp_tasktrack`;
+- `upp_Ui`;
+- `upp_animation`.
+
+The easiest layout is to keep the three repositories beside each other:
 
 ```text
-repository:        E:\apps\github\upp_tasktrack
-U++:               E:\upp-18468
-Ui:                E:\apps\github\upp_Ui
-Animation:         E:\apps\github\upp_animation
-StateMachine:      E:\apps\github\upp_statemachine
+C:\dev\upp_tasktrack
+C:\dev\upp_Ui
+C:\dev\upp_animation
 ```
 
-`GitHubOut.var` / `example.var` contain the corresponding assembly/output paths.
+TaskTrack does not require `upp_statemachine`.
 
-## Build and deterministic verification
+## 2. Build and verify
+
+From the TaskTrack repository:
 
 ```powershell
-cd E:\apps\github\upp_tasktrack
-powershell -ExecutionPolicy Bypass -File .\verify.ps1 -UppRoot E:\upp-18468
+powershell -ExecutionPolicy Bypass -File .\verify.ps1 -UppRoot C:\upp
 ```
 
-This builds directly into `build`:
+If `upp_Ui` and `upp_animation` are not siblings, pass them explicitly:
 
-- `TaskTrackGui.exe` — native human GUI
-- `TaskTrackMcp.exe` — stdio MCP server
-- `TaskTrackTests.exe`
-- `TaskTrackExample.exe`
+```powershell
+powershell -ExecutionPolicy Bypass -File .\verify.ps1 `
+  -UppRoot C:\upp `
+  -UiRoot C:\src\upp_Ui `
+  -AnimationRoot C:\src\upp_animation
+```
 
-and runs `TaskTrackTests.exe` plus `TaskTrackMcp.exe --selftest`.
+`-UppRoot` can be omitted when `UPP_ROOT` is set or `umk.exe` is already on `PATH`.
 
-Do not run the wrapper while `TaskTrackGui.exe` from the same build path is still open on Windows; the running executable may prevent `ld.lld` from replacing it.
+The wrapper produces:
 
-## CLI
+```text
+build\TaskTrackGui.exe
+build\TaskTrackMcp.exe
+build\TaskTrackTests.exe
+build\TaskTrackExample.exe
+```
+
+It then runs `TaskTrackTests.exe` and `TaskTrackMcp.exe --selftest`.
+
+On Windows, close a running `TaskTrackGui.exe` or `TaskTrackMcp.exe` before rebuilding the same output path; Windows may otherwise keep the executable locked.
+
+### TheIDE
+
+Create an assembly containing:
+
+```text
+<tasktrack repo>
+<upp_Ui repo>
+<upp_animation repo>
+<U++ root>\uppsrc
+```
+
+Build `TaskTrack/App` for the GUI and `TaskTrack/Mcp` for the MCP server. `examples/TaskTrackExample` and `tests/TaskTrackTests` are useful first validation packages.
+
+## 3. Command line
 
 ```text
 TaskTrackGui.exe                choose an existing task
 TaskTrackGui.exe --task <path>  open a specific task
 TaskTrackGui.exe --help         show GUI usage
-TaskTrackGui.exe --version      show version
+TaskTrackGui.exe --version      show version information
 
 TaskTrackMcp.exe                run the stdio MCP server
 TaskTrackMcp.exe --help         show MCP usage
 TaskTrackMcp.exe --version      show version/schema/protocol
-TaskTrackMcp.exe --selftest     run deterministic MCP self-test
-TaskTrackMcp.exe --oneshot <request.json>   process one MCP JSON-RPC request file and exit
-                                         (diagnostic/test utility; not needed for host registration)
+TaskTrackMcp.exe --selftest     run the MCP self-test
+TaskTrackMcp.exe --oneshot <request.json>
+                                process one request file and exit (diagnostic)
 ```
 
-Both executables should normally be placed in the same directory. `TaskTrackMcp.exe` launches `TaskTrackGui.exe --task <path>` beside itself.
+`TaskTrackGui.exe` and `TaskTrackMcp.exe` should normally live in the same directory.
 
-## Generate the 18-type demo
+## 4. Register the MCP server
+
+Register only:
+
+```text
+C:\path\to\TaskTrackMcp.exe
+```
+
+as a **local STDIO** MCP server with no arguments. The server finds the GUI beside itself and launches it with `--task <path>` when human input is required.
+
+After replacing the MCP executable, restart the host before testing so the old process is not still connected.
+
+### Codex
+
+Add a custom local MCP named `tasktrack` using STDIO and the full path to `TaskTrackMcp.exe`. No arguments or wrapper command are required.
+
+The optional Agent Skill lives at `skills/tasktrack/SKILL.md`. It is workflow guidance, not transport: MCP remains the actual connection.
+
+### OpenCode
+
+Current OpenCode releases support local stdio MCP servers in `opencode.jsonc`:
+
+```jsonc
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "servers": {
+      "tasktrack": {
+        "type": "local",
+        "command": ["C:\\path\\to\\TaskTrackMcp.exe"]
+      }
+    }
+  }
+}
+```
+
+This is enough for TaskTrack itself. OpenCode does not need the Codex plugin metadata.
+
+## 5. First smoke test
+
+Generate the example task:
 
 ```powershell
 .\build\TaskTrackExample.exe
 ```
 
-The example prints a durable `.tasktrack.json` path. Open it with:
+It prints the path to a `.tasktrack.json` file containing one example of each canonical question type. Open it with:
 
 ```powershell
 .\build\TaskTrackGui.exe --task "<printed path>"
 ```
 
-The task contains exactly one canonical V0.2 question of each type and is the preferred first visual/interaction acceptance surface.
+For an MCP smoke test, first run:
 
-## MCP live workflow
-
-`build\TaskTrackMcp.exe` is an argument-free local stdio MCP server.
-
-Normal launched work is live:
-
-1. agent calls `create_task`;
-2. TaskTrack persists the task and launches the GUI;
-3. the initiating interaction stays owned while the person answers;
-4. final human evidence returns through MCP;
-5. the agent continues without requiring the person to send another chat message.
-
-`launch=false` is the explicit detached/recovery mode.
-
-### Human → agent assistance
-
-If the person presses Suggest/Clarify while a host exposes the required modern MCP capability, TaskTrack uses the in-call multi-round-trip path.
-
-Some hosts do not expose that capability. TaskTrack then returns a structured compatibility result with pending assistance requests. The agent must immediately:
-
-1. resolve every pending request with `respond_to_request`;
-2. call `get_task(task_id, include_items=true, wait_ms=300000)`;
-3. remain in that loop until the human completes/closes the task or asks for more assistance.
-
-The person should never need to type “done”, “I submitted”, “check TaskTrack”, or similar merely to wake the agent.
-
-Task JSON and `.agent.json` are durability/recovery state only, not the routine answer transport.
-
-Read `docs/AGENT_GUIDE.md` before authoring real requests.
-
-## Host registration
-
-Register only the MCP executable:
-
-```text
-E:\apps\github\upp_tasktrack\build\TaskTrackMcp.exe
+```powershell
+.\build\TaskTrackMcp.exe --version
+.\build\TaskTrackMcp.exe --selftest
 ```
 
-`TaskTrackGui.exe` must sit beside it. No wrapper or GUI registration is required.
+Then start a fresh host session and ask it to create one simple TaskTrack decision.
 
-After rebuilding the MCP binary, fully restart the host so it loads the fresh executable and fresh tool descriptions.
+## 6. Normal live behaviour
 
-## Codex workflow plugin (recommended)
+With `launch=true` (the default):
 
-TaskTrack also ships a small workflow plugin/skill under:
+1. `create_task` validates and persists the complete task;
+2. the GUI opens;
+3. the initiating tool interaction remains owned while the person works;
+4. completion, cancellation or delegation returns a terminal structured result;
+5. the agent continues without asking the person to send another message.
 
-```text
-.codex-plugin/plugin.json
-skills/tasktrack/SKILL.md
-```
+Task JSON is durability and recovery storage. It is not the normal answer transport.
 
-The skill does not replace the MCP server. It teaches Codex the TaskTrack invocation boundary and, importantly, tells it to drive the compatibility fallback automatically when the host does not expose MCP sampling/multi-round-trip support.
+### Suggest and Clarify
 
-Using the current Codex Git-marketplace pattern, installation is expected to be equivalent to:
+These are advisory. If the host can service the request inside the live MCP call, TaskTrack uses that path. Otherwise it exposes a compatibility request that the agent resolves with `respond_to_request` before continuing to wait on `get_task`.
 
-```text
-codex plugin marketplace add Trilec/upp_tasktrack
-codex plugin add tasktrack@tasktrack
-```
+### Use judgement
 
-If the installed Codex version exposes different plugin commands, inspect `codex plugin --help` and use the equivalent marketplace/local-install commands rather than guessing.
+This is explicit delegation. The agent acknowledges the delegation; if no other required human input remains, TaskTrack closes automatically. The terminal result reports `delegated_to_agent=true`, while human `answer.data` remains empty for the delegated item.
 
-Restart Codex after installing/updating the plugin and use a fresh session for acceptance.
+## Troubleshooting
 
-## OpenCode
+**The host says the MCP transport closed after a rebuild**  
+Restart the host and open a fresh session. An existing session may still own the old stdio process.
 
-The MCP server remains independently usable without the Codex plugin. Before documenting exact OpenCode commands, inspect the installed version and `opencode mcp --help`; register `TaskTrackMcp.exe` as the local stdio server with no arguments and validate the same human lifecycle.
+**The linker cannot replace TaskTrackGui.exe or TaskTrackMcp.exe**  
+Close the running executable and rebuild.
+
+**The GUI is missing**  
+Keep `TaskTrackGui.exe` beside `TaskTrackMcp.exe`.
+
+**The agent stops after Suggest / Clarify / Use judgement**  
+Install/use the TaskTrack skill where supported, or make sure the host follows the compatibility continuation documented in `docs/MCP.md`.
