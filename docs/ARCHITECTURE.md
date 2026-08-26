@@ -1,105 +1,110 @@
-# TaskTrack Architecture
+# TaskTrack architecture
 
-## Principle
+TaskTrack treats a human as a structured decision source rather than a second chat channel. The caller describes the meaning of the decision; TaskTrack chooses the native control, persists the interaction, and returns typed evidence.
 
-TaskTrack models a human as a structured decision/observation source, not as a generic chat box. The caller sends a compact inspection/decision protocol; the human returns typed evidence.
-
-Task completion and agent assistance are deliberately separate state machines. See `INTERACTION_LIFECYCLE.md` for the normative lifecycle.
-
-## Package boundary
+## Packages
 
 ### `TaskTrack/Core`
 
-GUI- and MCP-independent authority for:
+Core is GUI- and MCP-independent. It owns:
 
-- semantic task/question model;
-- V1→V2 compatibility;
-- validation;
+- the task and answer model;
+- the 18 semantic question types;
+- validation and schema migration;
 - JSON serialization;
-- atomic persistence and `.bak` recovery;
+- verified atomic save and `.bak` recovery;
 - stable task-id lookup;
-- bounded terminal history;
-- Markdown export;
-- polling reminder marker;
-- durable human→agent assistance sidecar.
+- result/export helpers;
+- the durable agent-assistance sidecar.
 
-The main task JSON remains the human-evidence authority. The separate `.agent.json` channel stores advisory assistance traffic and a non-terminal interaction phase (`awaiting_human` / `awaiting_agent`).
+The main `.tasktrack.json` document is the authority for human answers. `<task>.agent.json` stores assistance and delegation traffic separately so an agent response cannot accidentally become human evidence.
 
 ### `TaskTrack/Widgets`
 
-Semantic renderer over the existing U++ `Ui` package.
+Widgets maps semantic question types onto U++ `Ui` controls. The MCP contract never names GUI classes.
 
-`TaskTrackQuestionCtrl` is a restrained `UiGroupPanel`: question title in the panel title, concrete instruction in the subtitle, and exactly one response composition in its content area.
-
-The renderer owns presentation heuristics. Agents never name U++ controls.
-
-Existing Ui controls cover most semantics. Four small TaskTrack-specific controls cover genuinely spatial/visual interactions not represented directly by one Ui control:
-
-- 3×3 position selector;
-- 8-way direction selector;
-- dual-thumb range selector;
-- gradient option selector.
+Most questions use existing controls from `upp_Ui`. A few compact TaskTrack-specific controls cover interactions such as 3×3 position, 8-way direction, dual-ended range selection and gradient choice.
 
 ### `TaskTrack/App`
 
-Owns only application composition and lifecycle:
+The native GUI owns presentation and human interaction:
 
-- compact TaskTrack/project header;
-- objective + progress;
-- conditional wrapped category strip;
-- responsive wrapped question-card area;
-- small Save / Submit footer;
-- pause/resume;
-- debounced autosave;
-- reminder prompt;
-- export actions;
-- agent-launched foreground/close behaviour;
-- semantic-model-based dialog sizing.
+- header and objective context;
+- optional category strip;
+- responsive question cards;
+- autosave, pause and reminders;
+- Submit / Cancel;
+- Suggest, Clarify and Use judgement presentation;
+- agent-launched foreground and close behaviour.
 
-Agent-launched windows estimate useful size from item count, semantic type, choice count and naturally taller editors. They grow only as much as the requested interaction warrants, then prefer scrolling over an oversized workspace. The result is clamped to the primary desktop work area.
+#### Measured dialog sizing
+
+Agent-launched windows do not keep a table of guessed heights for different question types.
+
+Questions are assembled first. `TaskTrackQuestionFlow` then chooses the card packing, lays each real card out at its assigned width, and measures its actual `UiGroupPanel` body and content. The same flow rules are used for preferred size and live layout. Header, footer, categories and scroll-panel gutter are measured as well.
+
+While the result fits the desktop, the window uses the measured size. If it does not fit, the task viewport is shortened and the scroll panel owns the overflow.
+
+This is the same algorithm whether there is one question or many.
 
 ### `TaskTrack/Mcp`
 
-Thin stdio transport. It advertises the 18 semantic types and returns durable task ids/results. It contains no GUI logic and does not reinterpret agent recommendations as human evidence.
+The MCP package is a thin local stdio server over Core. It:
 
-The MCP process and GUI remain separate executables. Process separation is not the interaction boundary: the durable task/assistance model is the shared authority between them.
+- advertises the semantic question schema;
+- creates and locates durable tasks;
+- launches `TaskTrackGui.exe` beside itself;
+- owns the normal live `create_task` interaction;
+- returns structured terminal results;
+- exposes recovery and assistance tools.
 
-## Live interaction lifecycle
+The MCP process contains no GUI rendering logic.
 
-Normal launched `create_task` owns the human interaction until the main task reaches a terminal state:
+## Two executables
 
-1. validate request;
-2. generate/validate stable task id;
-3. persist the complete task;
-4. register its independent locator;
-5. launch the GUI;
-6. wait for human completion/close;
-7. return structured human evidence directly when the task terminates.
+TaskTrack intentionally ships as a pair:
 
-`launch=false` is the explicit detached/recovery path.
+```text
+TaskTrackMcp.exe   agent-facing stdio process
+TaskTrackGui.exe   native human interface
+```
 
-Only `completed` and `closed` are task-terminal.
+Keeping them separate prevents GUI concerns from contaminating the stdio protocol, while the durable Core model provides the shared authority between processes.
 
-Human assistance is non-terminal:
+## Task state and assistance state
+
+These are separate concepts.
+
+Main task states include `awaiting_human`, `in_progress`, `paused`, `completed` and `closed`. Only `completed` and `closed` are terminal.
+
+Assistance has a smaller live phase:
 
 ```text
 awaiting_human -> awaiting_agent -> awaiting_human
 ```
 
-Suggest/Clarify/Use judgement create pending sidecar requests and move the effective interaction to `awaiting_agent`. Agent response moves it back to `awaiting_human`; the GUI remains open throughout.
+Suggest and Clarify return advice to the open human task. Use judgement is different: it records explicit human delegation. Once all remaining required items are delegated and the agent acknowledges them, the main task may close without creating human answers for those items.
 
-For MRTR/sampling-capable hosts this may happen inside the same modern MCP interaction. For hosts without sampling, TaskTrack returns a compatibility continuation so the model can fulfil the request, but the structured status explicitly says `task_terminal=false`. The agent must resolve the request and resume waiting for the human; that checkpoint is not task completion.
+See `INTERACTION_LIFECYCLE.md` for the full state flow.
 
-## Durability
+## Persistence and recovery
 
-`.tasktrack.json` and `.agent.json` make the interaction restartable and auditable, but they are not the normal answer transport. Normal delivery is GUI → MCP lifecycle → agent.
+A save is validated before installation, written through a temporary file, verified, and preserves the previous primary as `.bak`. Each task has an independent locator rather than one shared registry document.
 
-## Pause/reminders
+Durable files make a task restartable and auditable, but the normal runtime path remains:
 
-Pause is explicit durable state. It never implies expiry.
+```text
+GUI -> durable Core state -> MCP -> agent
+```
 
-Periodic reminder and agent-poll reminder are UI prompts only. Neither is permitted to complete or close a task automatically. `Close task` is an explicit user choice.
+Agents should not scrape JSON as the routine answer path.
 
-## Compactness
+## Important invariants
 
-TaskTrack avoids one generic note editor on every card. Free-form text is a semantic `notes` question when it is actually useful. This preserves density and teaches agents to ask typed questions rather than falling back to prose.
+1. `items[].answer.data` is human answer authority.
+2. Recommendations and agent assistance are not human answers until the human explicitly accepts a recommendation.
+3. Use judgement records delegation, not an answer.
+4. A pending assistance request is non-terminal.
+5. Terminal task state wins over late assistance responses.
+6. The human should never need to send an extra chat message merely to wake the agent after completing TaskTrack.
+7. Layout is derived from assembled controls, not semantic size guesses.

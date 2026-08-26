@@ -1,41 +1,27 @@
 # Changelog
 
-## Unreleased — 2026-08-12
+## Unreleased
 
-- TT-010-R1: clarified the two-executable roles and added a self-describing CLI. The GUI build output is now `TaskTrackGui.exe` (native human GUI); `TaskTrackMcp.exe` (stdio MCP server) remains separate and launches `TaskTrackGui.exe --task <path>` beside itself (clear error if it is absent). Added concise `--help` / `--version` to both executables; `TaskTrackMcp.exe` also keeps `--selftest` and `--oneshot`, prints no startup banner on stdout in server mode, and rejects unknown arguments on stderr with a non-zero exit. `verify.ps1` now builds/checks `TaskTrackGui.exe`. Shared command classification and the GUI executable name authority live in Core and are covered by tests.
+The current 0.2.1 candidate has completed Windows and live-host acceptance. The final release version stamp is intentionally left to the last clean build checkpoint.
 
-- TT-010: finalized the agent-ready verification workflow. Ordinary human verification now uses `type=confirm` with `choices=["Pass","Fail"]`: Pass renders green / Fail red with accessible text labels, `answer.data` is the boolean verdict authority, and a compact optional verdict Note editor persists through autosave and reopen. `answer.note` survives verdict changes and recommendation acceptance (the shared `TaskTrackApplyRecommendation()` authority now preserves it). No new semantic type; `pass_fail` remains loader-compatibility only; schema V2 unchanged. Agent-facing MCP text, the 18-type example, and all documentation (README, AGENT_GUIDE, QUESTION_TYPES, MCP, GETTING_STARTED, PLAN, STATUS, WINDOWS_ACCEPTANCE, verify.ps1) were synchronized to the current state. Deterministic baseline: 123 passed, 0 failed; MCP selftest ok.
-
-- TT-009-R1: unified the compact human→agent assistance protocol across Core, MCP, Widgets, tests and documentation. The request lifecycle is now `pending → answered → (cancelled)`; legacy TT-009 sidecar status `resolved` migrates to `answered` on load and new sidecars never emit request status `resolved`. Added the exact `continue_with_judgement` action (human delegates judgement back to the agent; no response payload; never writes `answer.data`) with a restrained "Use judgement" GUI control on unresolved human-blocking cards and durable duplicate suppression for all three actions.
-
-- Refreshed TaskTrack against current `upp_Ui/main` and removed the retired `UiCompositeColor` dependency from the question renderer; the custom-colour field delegates to first-class `UiColorMatrix`.
-- Hardened the agent guide around the real operating boundary: ask only for genuinely human-dependent facts, ask the minimum needed to continue, choose types by semantic meaning, avoid GUI/layout instructions, retain `task_id`, and consume structured `answer.data`.
-- Replaced the question workspace's masonry-like natural-width flow with deterministic equal-width responsive columns and stable row alignment.
-- Hardened category reflow, compacted task context into the top header, and moved semantic range rendering to current `UiRangeSliderEdit` while preserving `{low, high}` evidence.
-- Made recommendations actionable through `UiGroupPanel` header content and one shared Core acceptance path that applies only unanswered recommendations, never promotes neutral defaults, and never overwrites human evidence.
-- Strengthened MCP discovery and `create_task` guidance so agents exhaust machine evidence first, ask the minimum human-dependent decisions, and normally supply a defensible `recommended` answer.
-- Added TaskTrack-local resolved/review colour treatment and routing to unresolved required categories after bulk acceptance or blocked submit.
-- Standardized every question body on a shared 8px inset; removed the range field's redundant local inset.
-- TT-008-W1 passed Release/BLITZ, 73/73 tests, MCP selftest, native range presentation, responsive layout and the consistent 8px body-inset acceptance.
-- TT-009 defines the four workflow states precisely: grey = normal agent proposal, orange = required/no proposal, green = human-resolved, red = required item still blocking after attempted continuation. These are TaskTrack-local states, not global `UiRole` remappings.
-- Added a durable `<task>.agent.json` assistance sidecar so human→agent requests survive disconnects without sharing the authoritative human-answer write path.
-- Added compact human→agent actions: `propose_answer` requires `recommended`; `clarify` with `mode=simplify` requires `clarification` and may also return `recommended`.
-- Added MCP `respond_to_request`; `get_task` now exposes `agent_action_required` and compact `pending_requests`. Agent responses are validated against the referenced semantic item and remain advisory until explicit human action.
-- Added per-question `Suggest` and `?` assistance actions. A returned proposal changes the required/no-proposal question back to the normal suggested state; only human acceptance creates `answer.data`. Clarification preserves the original question and adds the latest plain-language explanation.
-- Kept task creation, human answers, polling and assistance durable: the GUI can remain open while the agent responds, and pending assistance survives MCP/client restarts.
+- Live `create_task` now owns the human interaction through completion, cancellation or delegation and returns a terminal structured result without requiring a wake-up chat message.
+- Added durable Suggest, Clarify and Use judgement round-trips. Agent proposals remain advisory; delegation never fabricates human `answer.data`.
+- Use judgement now closes the human-facing task automatically once all remaining required decisions have been delegated and acknowledged.
+- Terminal results explicitly tell the host to continue visibly after completion, cancellation or delegation.
+- Agent-launched window sizing now measures the controls actually assembled. Preferred width, card packing and live layout share one geometry path; overflow scrolls instead of relying on question-type height estimates.
+- Added the Pass/Fail presentation for canonical `confirm`, including an optional durable verdict note.
+- Split distribution cleanly into `TaskTrackGui.exe` and `TaskTrackMcp.exe`, with self-describing CLI/version surfaces and an MCP self-test.
+- Added the optional Agent Skill for hosts that need guidance around assistance fallback and lifecycle ownership.
+- Deterministic Windows baseline: 142 tests passing in Release and Debug/BLITZ, with MCP self-test passing.
 
 ## 0.2.0 — 2026-08-07
 
-- Integrated the TT-001-W1 Windows findings: U++ task-id formatting now uses the escaped literal `T` and `int64` formatter arguments, and JSON numeric Values are accepted correctly during save/load validation.
-- Expanded the public question vocabulary from the V0.1 verification-specific set to 18 semantic human-response types.
-- Added schema V2 structured `answer.data` and V0.1 task-type migration.
-- Added `TaskTrack/Widgets` with a compact `UiGroupPanel` question renderer and four specialist controls for position, direction, range, and gradient selection.
-- Reworked the application into a restrained wrapped card grid with conditional wrapped categories and less redundant chrome.
-- Removed generic per-card note rows; `notes` is now the explicit free-text escape hatch.
-- Expanded MCP schema/descriptions so agents choose semantic response meanings rather than U++ controls.
-- Replaced the example with exactly one question of each canonical type.
-- Added agent/question-type documentation and regression coverage for the Windows defects, V1 migration, structured results, validation and recovery.
+- Expanded the public vocabulary to 18 semantic human-response types.
+- Added schema 2 structured `answer.data` and schema 1 migration.
+- Added the native semantic renderer and specialist position, direction, range and gradient controls.
+- Reworked the application into a compact responsive card layout with conditional categories.
+- Added durable recovery, structured exports, example coverage and deterministic regression tests.
 
 ## 0.1.0 — 2026-08-07
 
-Initial durable TaskTrack implementation with U++ GUI, MCP bridge, persistence/recovery, pause/reminders, exports, tests, and Windows acceptance materials.
+Initial durable TaskTrack implementation with U++ GUI, MCP bridge, persistence/recovery, pause/reminders, exports and tests.

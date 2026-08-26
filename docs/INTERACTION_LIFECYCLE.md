@@ -1,203 +1,110 @@
-# TaskTrack Interaction Lifecycle
+# TaskTrack interaction lifecycle
 
-TaskTrack separates **human answer evidence** from **human-to-agent assistance/delegation**.
+TaskTrack separates **human answers** from **human-to-agent assistance**. That distinction is the main rule behind the live workflow.
 
-This distinction is normative. Suggest/Clarify and a pending Use judgement request are non-terminal assistance. An acknowledged Use judgement request is different: it is explicit human authorization for the agent to decide, and may end the human-facing task without creating human `answer.data`.
+## Terminal task state
 
-## 1. Terminal task states
+Only two main task states are terminal:
 
-Only the main TaskTrack document decides whether the human-facing task has ended.
+- `completed` — required human answers have been explicitly completed;
+- `closed` — the human-facing task has ended without needing more human interaction.
 
-Terminal states:
+`closed` can mean cancellation, or it can mean that the human explicitly delegated the remaining decision to the agent.
 
-- `completed` — required human answer evidence has been explicitly completed;
-- `closed` — the human-facing task ended without requiring more human input. This can be ordinary cancellation/closure, or an acknowledged delegation to agent judgement.
-
-All other task states are non-terminal.
-
-`items[].answer.data` remains the authoritative human **answer** evidence. Agent recommendations and assistance responses never become human answers by themselves. An explicit Use judgement action is preserved separately as durable delegation authority in `.agent.json`.
-
-## 2. Assistance interaction states
-
-The separate `.agent.json` assistance channel carries the live interaction phase:
-
-```text
-awaiting_human
-    |
-    | human presses Suggest / Clarify / Use judgement
-    v
-awaiting_agent
-    |
-    | agent response acknowledges/resolves pending request
-    v
-awaiting_human
-```
-
-The sidecar persists `interaction_state` as either:
-
-- `awaiting_human`
-- `awaiting_agent`
-
-Pending assistance requests are canonical. If any request is pending, the effective state is `awaiting_agent`; once none remain, it is `awaiting_human`. This also migrates legacy sidecars safely.
-
-`awaiting_agent` is **not terminal** and must not close the GUI merely because the agent has not responded yet.
-
-For `propose_answer` and `clarify`, an answered request simply returns control to the human. For `continue_with_judgement`, an answered request means the agent has received the human's delegation. If every still-required unanswered item is now covered by an acknowledged delegation, TaskTrack closes the human-facing task automatically.
-
-## 3. Normal direct human flow
+## Direct answer
 
 ```text
 create_task
     -> GUI opens
-    -> awaiting_human
     -> human answers
     -> Submit
     -> completed
     -> GUI closes
-    -> create_task returns structured human evidence
+    -> structured answer returns to agent
 ```
 
-For the normal live path the agent does not poll JSON or ask the human to announce completion.
+`items[].answer.data` is the human evidence authority.
 
-## 4. Suggest / Clarify flow with MRTR-capable hosts
+## Suggest
 
 ```text
 human presses Suggest
-    -> sidecar request pending
-    -> interaction_state=awaiting_agent
-    -> MCP input_required
-    -> host fulfils agent/model request
-    -> same create_task re-enters with inputResponses
-    -> request becomes answered
-    -> interaction_state=awaiting_human
-    -> proposal appears in open GUI
+    -> assistance request pending
+    -> awaiting_agent
+    -> agent returns recommendation
+    -> awaiting_human
+    -> recommendation appears in GUI
     -> human Accepts
-    -> if all required evidence is complete: completed + GUI closes
+    -> answer.data created
+    -> completed when all required answers are ready
 ```
 
-Clarify follows the same non-terminal round-trip but returns clarification rather than a proposal.
+The recommendation itself is not evidence. **Accept** is the human act that turns it into evidence.
 
-The in-call `input_required` result is an intermediate protocol round, not TaskTrack completion.
+Clarify follows the same round-trip but returns explanation rather than an answer.
 
-## 5. Use judgement delegation
+## Use judgement
 
-Use judgement means: **the human explicitly authorizes the agent to decide this item rather than asking the human for an answer**.
+Use judgement means “I am authorising the agent to decide this instead of asking me again.”
 
 ```text
 human presses Use judgement
     -> continue_with_judgement pending
-    -> interaction_state=awaiting_agent
+    -> awaiting_agent
     -> agent acknowledges delegation
-    -> request becomes answered
     -> no human answer.data is created
-    -> if other required human work remains: awaiting_human, GUI stays open
-    -> if no other required human work remains: main task -> closed, GUI closes
-    -> terminal result exposes delegated_to_agent=true,
-       closure_reason=agent_judgement, delegated_item_ids=[...]
+    -> if other required human work remains: GUI stays open
+    -> otherwise: task closes automatically
+    -> terminal result reports delegated_to_agent=true
     -> agent continues using its own judgement
 ```
 
-Delegation is durable human authorization, but it is not a human answer. The agent must never present its resulting judgement as though it came from the human.
+Delegation is durable human authority, but the resulting decision is still the agent’s judgement. It must not be reported as a human answer.
 
-## 6. Compatibility continuation when host sampling is unavailable
-
-Some hosts do not advertise the MCP sampling capability required for automatic agent assistance inside the same live tool call.
-
-In that case TaskTrack gives the agent a continuation checkpoint so the model can act, while the human task remains open during the pending request.
-
-The structured result exposes:
-
-- `interaction_state=awaiting_agent`
-- `task_terminal=false`
-- `agent_action_required=true`
-- `agent_must_continue=true`
-- `human_followup_required=false`
-- `pending_requests=[...]`
-
-The agent must immediately:
-
-1. resolve every pending request with `respond_to_request`;
-2. call `get_task(task_id, include_items=true, wait_ms=300000)`;
-3. remain in that loop until `completed`, `closed`, or another `awaiting_agent` round occurs.
-
-For Suggest/Clarify, resolving the request normally returns the GUI to `awaiting_human`. For Use judgement, resolving the request may cause the GUI to close automatically if no further required human work remains.
-
-The compatibility tool round being returned to the model does **not** mean the TaskTrack task is complete. It exists only because a non-sampling host needs a model turn in order to fulfil the human's assistance request.
-
-A tested compatibility fallback that runs automatically without another human chat message is an accepted host path, not a TaskTrack failure merely because native MRTR/sampling was unavailable.
-
-## 7. GUI feedback
-
-The GUI should make the current phase obvious:
-
-- normal unresolved question — human decision controls available;
-- request queued — waiting for agent/clarification/judgement;
-- returned proposal — `Suggested: ...` plus `Accept`;
-- accepted final evidence — `Answer saved — returning to agent...`;
-- acknowledged delegation completing the human task — `Judgement delegated — returning to agent...`;
-- ordinary terminal close — `Task closed — returning no human evidence...`.
-
-The dialog remains open throughout a pending `awaiting_agent` phase. It may close after acknowledged delegation when there is no remaining required human work.
-
-## 8. Accept and completion
-
-Accepting an agent proposal is an explicit human act. The proposal is advisory until that action.
-
-For a single required question, if Accept satisfies the final required item, Accept is also the finalization action: TaskTrack completes and closes automatically without requiring a second Submit click.
-
-Ordinary text editing does not auto-complete on first edit because text controls persist incrementally; Submit remains the explicit final action for direct text entry.
-
-Use judgement is not Accept. It does not copy an agent answer into `answer.data`; it records delegation authority and lets the agent continue under its own judgement.
-
-## 9. Durable files
-
-`.tasktrack.json` and `.agent.json` exist for durability, crash recovery, restart recovery, diagnostics, and offline inspection.
-
-They are not the normal answer transport.
-
-Normal delivery is:
+## Cancel
 
 ```text
-TaskTrack GUI -> TaskTrack MCP lifecycle -> agent
+human presses Cancel task
+    -> task state closed
+    -> existing human evidence is preserved
+    -> no missing answer is invented
+    -> GUI closes
+    -> agent continues from the closed result
 ```
 
-## 10. Agent-launched dialog sizing
+## Assistance state
 
-Agent-launched windows use measured control geometry, not a semantic-type or question-count estimate.
+While the task is active, the separate assistance channel has two effective states:
 
-The sizing sequence is normative:
+```text
+awaiting_human -> awaiting_agent -> awaiting_human
+```
 
-1. Construct the actual `TaskTrackQuestionCtrl` instances and their semantic controls first.
-2. Use the same `TaskTrackQuestionFlow` card-width and packing rules for measurement and live layout. Agent dialogs use a canonical preferred card width of 350px, may shrink cards only when constrained by the desktop, and use at most two columns.
-3. Lay each assembled card out at its assigned width before measuring it. `UiGroupPanel::GetBodyRect()` plus the body's real `UiBoxLayout::GetContentSize()` determines the card height, so dynamically attached workflow/status controls are included.
-4. A row is as tall as its tallest measured card. Flow inset and row gaps are exactly the same values used by live layout.
-5. Measure compact header/footer wrapping with `UiBoxLayout::MeasureHeightForWidth()` and include their natural width in shell-width selection.
-6. Measure the actual `UiScrollPanel` viewport loss for the vertical scrollbar rather than carrying a TaskTrack scrollbar guess.
-7. Measure the category panel at the selected shell width when it is present.
-8. Set the window to the measured shell + measured question content. If that exceeds the desktop work area, shorten only the task viewport and let the scroll panel handle overflow.
+A pending request is never terminal merely because control has temporarily moved back to the agent.
 
-There is no separate one-question/multi-question height formula and no per-question-type height lookup. Different requests produce different window sizes only because their assembled controls and packed rows actually require different geometry.
+## Compatibility continuation
 
-The one-question agent composition may hide Pause/reminder controls because they are unnecessary chrome for a single immediate decision. That changes the controls being measured; it does not select a separate sizing algorithm.
+Some MCP hosts can service an assistance request inside the same live call. Others need to return a model turn before the agent can answer Suggest, Clarify or Use judgement.
 
-## 11. Terminal result acknowledgement
+For the latter case TaskTrack exposes pending requests explicitly. The agent resolves them with `respond_to_request` and then waits with `get_task(..., wait_ms=300000)` until the human task reaches a terminal state or requests more assistance.
 
-A terminal TaskTrack tool result must not leave only a tool card visible in the host UI.
+From the human’s point of view the flow should remain continuous. No “done” message should be required just to wake the agent.
 
-- `completed`: agent continues and visibly acknowledges/summarizes the returned human evidence;
-- ordinary `closed`: agent visibly acknowledges that the human task ended and does not invent missing evidence;
-- delegated `closed`: agent visibly acknowledges the delegation and continues using its own judgement for `delegated_item_ids`, without fabricating human answers.
+## Race handling
 
-No terminal path requires the human to send another chat message merely to wake the agent.
+An assistance response can arrive just after the human independently completes or closes the task. The sidecar request may be marked answered so it does not remain pending forever, but terminal main-task state wins:
 
-## 12. Invariants
+- no late response can reopen the task;
+- no late response can alter human `answer.data`;
+- no late response can resurrect `agent_action_required`.
 
-1. Suggest/Clarify never create human evidence and never close the task merely because their request was answered.
-2. A pending `awaiting_agent` request never closes the task or GUI by itself.
-3. Agent response normally returns the assistance phase to `awaiting_human`.
-4. Explicit acknowledged Use judgement may end the human-facing task when every remaining required item is delegated.
-5. Delegation never writes `items[].answer.data` and must never be represented as a human answer.
-6. Agent recommendations remain advisory until explicit human acceptance.
-7. JSON is durability, not normal transport.
-8. Agent dialog sizing is derived from assembled controls and the same live flow geometry; it is not tuned by item count or semantic type.
-9. The human must not need to send a chat message merely to wake the agent after completing, cancelling, or delegating TaskTrack.
+## Invariants
+
+1. Suggest and Clarify never create human evidence by themselves.
+2. A pending `awaiting_agent` request is non-terminal.
+3. Accept is explicit human evidence.
+4. Use judgement is explicit delegation and never writes human `answer.data`.
+5. A fully acknowledged delegation may close the human-facing task when no other required human work remains.
+6. Terminal state outranks stale assistance state.
+7. Durable JSON supports restart and recovery; MCP remains the normal live answer path.
+8. Completion, cancellation and delegation must not require an extra human chat message to resume the agent.

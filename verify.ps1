@@ -1,12 +1,10 @@
-# Windows convenience wrapper for TaskTrack.
-# The normal U++ package build remains authoritative; this script repeats the
-# release builds and runs the deterministic core/MCP checks in one command.
+# Build the distributable TaskTrack pair, tests and example, then run the
+# deterministic Core and MCP checks.
 param(
-    [string]$UppRoot = "E:\upp-18468",
+    [string]$UppRoot = $env:UPP_ROOT,
     [string]$RepoRoot = $PSScriptRoot,
-    [string]$UiRoot = "E:\apps\github\upp_Ui",
-    [string]$StateMachineRoot = "E:\apps\github\upp_statemachine",
-    [string]$AnimationRoot = "E:\apps\github\upp_animation"
+    [string]$UiRoot = "",
+    [string]$AnimationRoot = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -25,7 +23,7 @@ function Run-Step {
     }
 }
 
-function Read-ValidationBuild {
+function Read-BuildVersion {
     $buildHeader = Join-Path $RepoRoot "TaskTrack\Core\TaskTrackBuild.h"
     if(!(Test-Path -LiteralPath $buildHeader)) {
         throw "TaskTrack build header not found: $buildHeader"
@@ -34,7 +32,7 @@ function Read-ValidationBuild {
     $text = Get-Content -LiteralPath $buildHeader -Raw
     $match = [regex]::Match($text, 'return\s+"([^"]+)"\s*;')
     if(!$match.Success) {
-        throw "Unable to read TaskTrack validation build from $buildHeader"
+        throw "Unable to read TaskTrack build version from $buildHeader"
     }
     return $match.Groups[1].Value
 }
@@ -83,16 +81,34 @@ function Show-BinaryIdentity {
     Write-Host "SHA256: $hash"
 }
 
+$repoParent = Split-Path -Parent (Resolve-Path -LiteralPath $RepoRoot).Path
+if([string]::IsNullOrWhiteSpace($UiRoot)) {
+    $UiRoot = Join-Path $repoParent "upp_Ui"
+}
+if([string]::IsNullOrWhiteSpace($AnimationRoot)) {
+    $AnimationRoot = Join-Path $repoParent "upp_animation"
+}
+
+if([string]::IsNullOrWhiteSpace($UppRoot)) {
+    $umkCommand = Get-Command umk.exe -ErrorAction SilentlyContinue
+    if($umkCommand) {
+        $UppRoot = Split-Path -Parent $umkCommand.Source
+    }
+    else {
+        throw "U++ root is unknown. Pass -UppRoot, set UPP_ROOT, or put umk.exe on PATH."
+    }
+}
+
 $umk = Join-Path $UppRoot "umk.exe"
-$assembly = "$RepoRoot,$UiRoot,$StateMachineRoot,$AnimationRoot,$UppRoot\uppsrc"
+$assembly = "$RepoRoot,$UiRoot,$AnimationRoot,$UppRoot\uppsrc"
 $outDir = Join-Path $RepoRoot "out"
 $buildDir = Join-Path $RepoRoot "build"
-$validationBuild = Read-ValidationBuild
+$buildVersion = Read-BuildVersion
 
 if(!(Test-Path -LiteralPath $umk)) {
     throw "umk.exe not found at $umk"
 }
-foreach($path in @($RepoRoot, $UiRoot, $StateMachineRoot, $AnimationRoot, (Join-Path $UppRoot "uppsrc"))) {
+foreach($path in @($RepoRoot, $UiRoot, $AnimationRoot, (Join-Path $UppRoot "uppsrc"))) {
     if(!(Test-Path -LiteralPath $path)) {
         throw "Required assembly path not found: $path"
     }
@@ -101,7 +117,7 @@ foreach($path in @($RepoRoot, $UiRoot, $StateMachineRoot, $AnimationRoot, (Join-
 New-Item -ItemType Directory -Force -Path $buildDir | Out-Null
 New-Item -ItemType Directory -Force -Path $outDir | Out-Null
 
-Write-Host "TaskTrack validation build expected: $validationBuild"
+Write-Host "TaskTrack build expected: $buildVersion"
 
 Run-Step "Build TaskTrack GUI" {
     Build-UppPackage -Package "TaskTrack/App" -Target "TaskTrackGui" -Gui
@@ -134,9 +150,8 @@ Run-Step "MCP binary identity" {
     if($LASTEXITCODE -ne 0) {
         throw "TaskTrackMcp.exe --version failed with exit code $LASTEXITCODE"
     }
-    $required = "validation build $validationBuild"
-    if($versionOutput -notmatch [regex]::Escape($required)) {
-        throw "Fresh MCP binary does not report expected identity '$required'"
+    if($versionOutput -notmatch [regex]::Escape($buildVersion)) {
+        throw "Fresh MCP binary does not report expected build '$buildVersion'"
     }
 }
 
