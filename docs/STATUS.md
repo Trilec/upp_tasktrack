@@ -9,7 +9,7 @@ Current objective: finish the live TaskTrack human↔agent lifecycle and close t
 ### Version identity
 
 - Accepted release line: `0.2.0`, schema 2.
-- Current validation build: `0.2.1-rc6`.
+- Current validation build: `0.2.1-rc7`.
 - `TaskTrackGui.exe --version` shows both the release and validation-build identities.
 - `TaskTrackMcp.exe --version` reports the validation build explicitly.
 - MCP `version`, server metadata, task/status and assistance responses expose the build identity so live transcripts can prove which binary candidate handled the interaction.
@@ -132,14 +132,14 @@ The rc5 source correction remains part of the current candidate:
 
 The accompanying rc5 one-question height allowance was not accepted as the final sizing design. It was a heuristic adjustment and was superseded before Gary validation.
 
-## rc6 deterministic measured sizing
+## rc6 / rc7 deterministic measured sizing
 
-`0.2.1-rc6` replaces the old semantic/count estimator rather than tuning it again.
+`0.2.1-rc6` replaced the old semantic/count estimator rather than tuning it again. `0.2.1-rc7` is the final supervisor consistency pass: preferred shell width selection and live card layout now share the same column-resolution rule, eliminating the last narrow width band where the two paths could choose different column counts.
 
 Sizing now follows one algorithm for every agent-launched task:
 
 1. Questions are fully assembled as real `TaskTrackQuestionCtrl` instances first.
-2. `TaskTrackQuestionFlow` assigns the same canonical card width rule used by live layout: preferred 350px cards, shrinking only when the desktop constraint requires it, with at most two columns in agent dialogs.
+2. `TaskTrackQuestionFlow` uses one shared packing policy for preferred size, measurement and live layout: keep as many columns as fit at the 280px floor, prefer 350px cards, and shrink those columns only when the desktop work area cannot provide their preferred width. Agent dialogs cap the flow at two columns.
 3. Each assembled card is temporarily laid out at its assigned width. The actual `UiGroupPanel` body rectangle and the actual `UiBoxLayout::GetContentSize()` determine the required card height, including the dynamically attached workflow/status row. There is no question-type height table.
 4. Row height is the measured maximum card height in that actual row; row gaps and flow inset are the same values used by live layout.
 5. The compact header and footer are measured with `UiBoxLayout::MeasureHeightForWidth()` and their natural widths participate in shell width selection.
@@ -155,14 +155,14 @@ No new public question type or main task state is introduced. No recommendation 
 
 ## Validation state
 
-**RC6 — SOURCE REVIEW COMPLETE / WINDOWS VALIDATION PENDING**
+**RC7 — SUPERVISOR IMPLEMENTATION/REVIEW COMPLETE / WINDOWS VALIDATION PENDING**
 
 Next gate:
 
 1. Refresh latest `main` and `upp_Ui`; require clean worktrees.
-2. Run repository `verify.ps1`; require validation build `0.2.1-rc6`, TaskTrack tests and MCP selftest PASS.
+2. Run repository `verify.ps1`; require validation build `0.2.1-rc7`, TaskTrack tests and MCP selftest PASS.
 3. Restart Codex/new session against the freshly-built MCP binary only after deterministic verification passes.
-4. Visually compare one-, three-, and a taller semantic-control task. Require cards to retain a consistent canonical width, no clipping, and the dialog to fit measured content without unexplained empty height; desktop overflow must scroll.
+4. Visually compare one-, three-, and a taller semantic-control task. Require cards to retain the shared packing rule, no clipping, and the dialog to fit measured content without unexplained empty height; desktop overflow must scroll.
 5. One required text question: press Use judgement and send no further human chat message. Require automatic agent acknowledgement, no human `answer.data`, automatic GUI close, terminal `closed` with `delegated_to_agent=true` / `closure_reason=agent_judgement`, and visible Codex continuation under agent judgement.
 6. Quick Suggest/Accept smoke to ensure the accepted rc4 path remains intact.
 
