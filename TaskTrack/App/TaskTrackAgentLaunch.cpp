@@ -118,9 +118,9 @@ void TaskTrackWindow::ApplyAgentCompactLayout()
     complete_button_.SetText("Submit");
 
     if(one_item) {
-        // A single decision should look and behave like a dialog, not a full
-        // workspace. Reminder behaviour still runs in the background if the
-        // task genuinely remains open for its configured interval.
+        // A single decision does not need pause/reminder chrome. This is a
+        // composition choice only; dialog sizing below follows the same measured
+        // geometry path for every question count.
         pause_button_.Hide();
         reminder_dropdown_.Hide();
         header_layout_.ItemAt(4).Fixed(0).MinMain(0).MinCross(0);
@@ -171,21 +171,42 @@ void TaskTrackWindow::ApplyAgentCompactLayout()
 
     Rect work = Ctrl::GetPrimaryWorkArea();
     const int outer_margin = DPI(24);
-    const int shell_inset = DPI(7);       // BuildUi main_box_ inset
-    const int section_gap = DPI(6);       // BuildUi main_box_ gap
-    const int scroll_reserve = DPI(16);   // vertical scroll bar + breathing room
+    const int shell_inset = DPI(7); // BuildUi main_box_ inset
+    const int section_gap = DPI(6); // BuildUi main_box_ gap
     int max_w = max(DPI(360), work.Width() - outer_margin);
     int max_h = max(DPI(240), work.Height() - outer_margin);
 
-    int flow_max_w = max(1, max_w - shell_inset * 2 - scroll_reserve);
-    int task_preferred_w = task_flow_.PreferredWidthForItems(flow_max_w);
-    int target_w = min(max_w, task_preferred_w + scroll_reserve + shell_inset * 2);
-    int inner_w = max(1, target_w - shell_inset * 2);
-    int task_view_w = max(1, inner_w - scroll_reserve);
+    // Measure UiScrollPanel's actual vertical gutter instead of carrying a
+    // guessed scrollbar allowance in TaskTrack. The scroll mode always owns
+    // the vertical bar; its style decides the exact viewport loss.
+    Rect old_scroll = task_scroll_.GetRect();
+    int scroll_probe_w = min(max_w, DPI(800));
+    task_scroll_.SetRect(0, 0, scroll_probe_w, DPI(160));
+    task_scroll_.Layout();
+    int scroll_gutter = max(0, scroll_probe_w - task_scroll_.GetViewportRect().GetWidth());
+    task_scroll_.SetRect(old_scroll);
 
-    // Measure the real assembled shell at the selected width. Header/footer
-    // wrapping is therefore part of the calculation rather than hidden inside
-    // another fixed chrome allowance.
+    // Width is the maximum natural requirement of the already-assembled shell
+    // and the canonical question grid. This prevents a single card from forcing
+    // unrelated header/footer wrapping, while spare shell width never stretches
+    // the card beyond its canonical width.
+    int flow_max_w = max(1, max_w - shell_inset * 2 - scroll_gutter);
+    int task_preferred_w = task_flow_.PreferredWidthForItems(flow_max_w) + scroll_gutter;
+    int shell_preferred_w = max(header_layout_.GetPreferredSize().cx,
+                                footer_layout_.GetPreferredSize().cx);
+    int target_w = min(max_w, max(task_preferred_w, shell_preferred_w) + shell_inset * 2);
+    int inner_w = max(1, target_w - shell_inset * 2);
+
+    // Probe the final scroll-panel width once so card measurement uses the
+    // exact viewport width that the live panel will expose at this shell size.
+    old_scroll = task_scroll_.GetRect();
+    task_scroll_.SetRect(0, 0, inner_w, DPI(160));
+    task_scroll_.Layout();
+    int task_view_w = max(1, task_scroll_.GetViewportRect().GetWidth());
+    task_scroll_.SetRect(old_scroll);
+
+    // Header/footer are width-dependent layouts too, so measure their actual
+    // wrapped heights at the selected shell width instead of adding fixed chrome.
     int header_h = header_layout_.MeasureHeightForWidth(inner_w);
     int footer_h = footer_layout_.MeasureHeightForWidth(inner_w);
     int category_h = 0;
@@ -198,16 +219,17 @@ void TaskTrackWindow::ApplyAgentCompactLayout()
     int task_h = task_flow_.DesiredHeightForWidth(task_view_w);
 
     // main_box_ always owns four slots (header, categories, task, footer).
-    // Hidden categories are a zero-height slot, while the three configured
-    // section gaps remain deterministic in UiBoxLayout.
+    // Hidden categories are a zero-height slot, while the configured section
+    // gaps remain deterministic in UiBoxLayout.
     int non_task_h = shell_inset * 2 + header_h + category_h + footer_h + section_gap * 3;
     int desired_h = non_task_h + task_h;
     int target_h = min(max_h, desired_h);
     int task_slot_h = max(1, target_h - non_task_h);
 
-    // When the measured content exceeds the work area, only the task slot is
-    // reduced; UiScrollPanel then provides the overflow path. Otherwise the
-    // task slot is exactly the measured packed-card height.
+    // When measured content exceeds the work area, only the task viewport is
+    // shortened; UiScrollPanel is the explicit overflow path. Otherwise the
+    // task slot is exactly the packed-card height reported by the same flow
+    // that performs the live layout.
     main_box_.ItemAt(2).Expand(1).MinMain(min(task_h, task_slot_h));
 
     Size size(target_w, target_h);
