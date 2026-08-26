@@ -172,19 +172,17 @@ public:
         return *this;
     }
 
-    // Preferred width is a design rule, not a semantic guess: cards use the
-    // same 350px column width and the available work area decides how many
-    // columns fit. Agent dialogs cap this flow at two columns.
+    // Preferred width and live layout deliberately share ResolveColumns(). We
+    // keep as many columns as fit at the 280px floor, request the canonical
+    // 350px width when possible, and shrink only when the outer work area truly
+    // cannot provide that preferred width. Agent dialogs cap this at two columns.
     int PreferredWidthForItems(int maximum_width) const
     {
-        int count = max(1, GetItemCount());
         int available_max = max(1, maximum_width - inset_ * 2);
-        int columns = min(max_columns_, count);
-        while(columns > 1 &&
-              columns * preferred_column_width_ + (columns - 1) * gap_x_ > available_max)
-            --columns;
-        int inner = min(available_max,
-                        columns * preferred_column_width_ + (columns - 1) * gap_x_);
+        int columns = ResolveColumns(available_max);
+        int preferred_inner = columns * preferred_column_width_
+                            + max(0, columns - 1) * gap_x_;
+        int inner = min(available_max, preferred_inner);
         return inset_ * 2 + max(1, inner);
     }
 
