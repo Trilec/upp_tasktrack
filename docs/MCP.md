@@ -172,7 +172,18 @@ The TaskTrack tool card alone is never the intended final visible response.
 
 ## Dialog sizing
 
-The native GUI remains a separate executable, but agent-launched windows are sized from the semantic question model rather than a fixed workspace size. Item count, type, choice count and richer controls contribute to an estimated useful dialog size. One-question dialogs keep a compact width but reserve enough height for group-panel and workflow chrome. The result is clamped to the desktop work area, with scrolling preferred over an unnecessarily large window.
+The native GUI remains a separate executable, but agent-launched dialog size is derived from the controls that were actually assembled, not from question-count/type estimates.
+
+TaskTrack uses one geometry path for one or many questions:
+
+- question cards have a canonical preferred width of 350px and may shrink only under desktop constraint;
+- the agent dialog uses at most two card columns;
+- each real assembled card is laid out at its assigned width and measured from its `UiGroupPanel` body plus actual `UiBoxLayout` content extent, including the workflow/status row;
+- row heights and gaps are then produced by the same `TaskTrackQuestionFlow` rules used for the live layout;
+- compact header/footer wrapping, category height, and the actual `UiScrollPanel` scrollbar gutter are measured from their controls rather than guessed;
+- the resulting measured shell is used directly while it fits the desktop; when it does not, only the task viewport is shortened and scrolling provides overflow.
+
+There is no per-semantic-type height table and no separate one-question/multi-question sizing formula.
 
 ## Durable storage
 
