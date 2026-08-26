@@ -1,6 +1,6 @@
 # TaskTrack Status
 
-## Current recovery state — 2026-08-25
+## Current recovery state — 2026-08-26
 
 TaskTrack development is directly on `main`; remote GitHub is authoritative and no feature/review/checkpoint branch is used.
 
@@ -9,7 +9,7 @@ Current objective: finish the live TaskTrack human↔agent lifecycle and close t
 ### Version identity
 
 - Accepted release line: `0.2.0`, schema 2.
-- Current validation build: `0.2.1-rc5`.
+- Current validation build: `0.2.1-rc6`.
 - `TaskTrackGui.exe --version` shows both the release and validation-build identities.
 - `TaskTrackMcp.exe --version` reports the validation build explicitly.
 - MCP `version`, server metadata, task/status and assistance responses expose the build identity so live transcripts can prove which binary candidate handled the interaction.
@@ -120,30 +120,50 @@ Live rc4 results:
    - visible Codex acknowledgement occurred;
    - but the TaskTrack GUI returned to `awaiting_human` and remained open, forcing the human to close it manually even though the human had explicitly delegated the decision.
 
-The rc4 screenshot also showed the one-question dialog had been tightened slightly too far: the question panel needed a small additional vertical allowance to avoid bottom clipping.
+The rc4 screenshot also exposed that the sizing implementation was still being tuned through semantic/count estimates rather than derived from the assembled controls. That approach was rejected before rc5 was sent to Windows validation.
 
-## rc5 candidate
+## rc5 lifecycle implementation — superseded before validation
 
-`0.2.1-rc5` is bounded to those final two findings:
+The rc5 source correction remains part of the current candidate:
 
 - agent-launch GUI watches the durable assistance channel; once every still-required unanswered item has an **answered** `continue_with_judgement`, it closes the human-facing task automatically as `closed` without writing `answer.data`;
 - terminal MCP status distinguishes this from ordinary cancellation with `delegated_to_agent=true`, `closure_reason=agent_judgement`, and `delegated_item_ids`, and instructs the agent to continue under its own judgement;
-- one-question dialog width remains compact, but its minimum/task-area height receives a small allowance so group-panel and workflow chrome do not clip;
 - the TaskTrack skill, MCP contract and interaction-lifecycle docs define acknowledged delegation as a terminal human-interaction outcome while preserving the human-answer evidence boundary.
+
+The accompanying rc5 one-question height allowance was not accepted as the final sizing design. It was a heuristic adjustment and was superseded before Gary validation.
+
+## rc6 deterministic measured sizing
+
+`0.2.1-rc6` replaces the old semantic/count estimator rather than tuning it again.
+
+Sizing now follows one algorithm for every agent-launched task:
+
+1. Questions are fully assembled as real `TaskTrackQuestionCtrl` instances first.
+2. `TaskTrackQuestionFlow` assigns the same canonical card width rule used by live layout: preferred 350px cards, shrinking only when the desktop constraint requires it, with at most two columns in agent dialogs.
+3. Each assembled card is temporarily laid out at its assigned width. The actual `UiGroupPanel` body rectangle and the actual `UiBoxLayout::GetContentSize()` determine the required card height, including the dynamically attached workflow/status row. There is no question-type height table.
+4. Row height is the measured maximum card height in that actual row; row gaps and flow inset are the same values used by live layout.
+5. The compact header and footer are measured with `UiBoxLayout::MeasureHeightForWidth()` and their natural widths participate in shell width selection.
+6. The vertical scrollbar gutter is measured from the real `UiScrollPanel` viewport rather than reserved by a guessed constant.
+7. Categories, when present, are measured at the selected shell width.
+8. The window becomes exactly the measured shell + measured question grid while it fits the desktop. If it does not fit, only the task viewport is shortened and `UiScrollPanel` provides overflow.
+
+There is no separate one-question versus multi-question height formula, and no per-semantic-type size lookup. A one-question task is smaller only because its measured assembly contains less content. A multi-question task grows because the same measured packing algorithm produces more rows/columns.
+
+The one-item branch that hides Pause/reminder controls remains a composition decision, not a sizing heuristic; once those controls are hidden, the same shell measurement algorithm determines the resulting window.
 
 No new public question type or main task state is introduced. No recommendation is promoted to human evidence. The schema remains 2.
 
 ## Validation state
 
-**RC5 — WINDOWS/CODEX VALIDATION PENDING**
+**RC6 — SOURCE REVIEW COMPLETE / WINDOWS VALIDATION PENDING**
 
 Next gate:
 
 1. Refresh latest `main` and `upp_Ui`; require clean worktrees.
-2. Run repository `verify.ps1`; require validation build `0.2.1-rc5`, TaskTrack tests and MCP selftest PASS.
+2. Run repository `verify.ps1`; require validation build `0.2.1-rc6`, TaskTrack tests and MCP selftest PASS.
 3. Restart Codex/new session against the freshly-built MCP binary only after deterministic verification passes.
-4. One required text question: visually confirm the card no longer clips while the dialog remains compact.
-5. Press Use judgement and send no further human chat message. Require automatic agent acknowledgement, no human `answer.data`, automatic GUI close, terminal `closed` with `delegated_to_agent=true` / `closure_reason=agent_judgement`, and visible Codex continuation under agent judgement.
+4. Visually compare one-, three-, and a taller semantic-control task. Require cards to retain a consistent canonical width, no clipping, and the dialog to fit measured content without unexplained empty height; desktop overflow must scroll.
+5. One required text question: press Use judgement and send no further human chat message. Require automatic agent acknowledgement, no human `answer.data`, automatic GUI close, terminal `closed` with `delegated_to_agent=true` / `closure_reason=agent_judgement`, and visible Codex continuation under agent judgement.
 6. Quick Suggest/Accept smoke to ensure the accepted rc4 path remains intact.
 
 After PASS: promote release version to `0.2.1`, record final Windows/Codex acceptance, publish the release checkpoint, and freeze further feature expansion unless a real workflow need appears.
