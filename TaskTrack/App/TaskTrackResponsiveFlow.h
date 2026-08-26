@@ -133,10 +133,10 @@ private:
     mutable int settled_body_height_ = DPI(30);
 };
 
-// Responsive question workspace. Every row is an ordered grid-like flow with
-// one deterministic card width, at most three columns, and equal row height.
-// The last partial row keeps the same column width instead of stretching into
-// unrelated masonry widths.
+// Responsive question workspace. Every row uses one canonical card width and
+// equal row height. Height is measured from the fully assembled controls, not
+// inferred from question type. This keeps the dialog and the actual card layout
+// on one deterministic geometry path.
 class TaskTrackQuestionFlow : public UiBoxLayout {
 public:
     TaskTrackQuestionFlow(UiDirection d = UiDirection::H)
@@ -165,20 +165,77 @@ public:
         return *this;
     }
 
+    TaskTrackQuestionFlow& SetMaxColumns(int columns)
+    {
+        max_columns_ = max(1, columns);
+        RefreshLayout();
+        return *this;
+    }
+
+    // Preferred width is a design rule, not a semantic guess: cards use the
+    // same 350px column width and the available work area decides how many
+    // columns fit. Agent dialogs cap this flow at two columns.
+    int PreferredWidthForItems(int maximum_width) const
+    {
+        int count = max(1, GetItemCount());
+        int available_max = max(1, maximum_width - inset_ * 2);
+        int columns = min(max_columns_, count);
+        while(columns > 1 &&
+              columns * preferred_column_width_ + (columns - 1) * gap_x_ > available_max)
+            --columns;
+        int inner = min(available_max,
+                        columns * preferred_column_width_ + (columns - 1) * gap_x_);
+        return inset_ * 2 + max(1, inner);
+    }
+
+    // Measures the exact current card assembly at the same widths Layout()
+    // will assign. The card is briefly laid out against a large probe height;
+    // its real body content extent plus real GroupPanel chrome determine the
+    // required height. This deliberately avoids question-type height tables.
+    int DesiredHeightForWidth(int total_width)
+    {
+        int count = GetItemCount();
+        if(count <= 0)
+            return 0;
+
+        int available = max(1, total_width - inset_ * 2);
+        int columns = ResolveColumns(available);
+        int width = ResolveItemWidth(available, columns);
+        int total = inset_ * 2;
+        int row_height = 0;
+        int index = 0;
+
+        for(Ctrl *q = GetFirstChild(); q && index < count; q = q->GetNext(), ++index) {
+            row_height = max(row_height, MeasureItemHeight(*q, width));
+            bool row_end = ((index + 1) % columns) == 0 || index + 1 == count;
+            if(row_end) {
+                if(total > inset_ * 2)
+                    total += gap_y_;
+                total += row_height;
+                row_height = 0;
+            }
+        }
+        return total;
+    }
+
     void Layout() override
     {
         if(!adapting_ && GetItemCount() > 0) {
             int available = max(1, GetSize().cx - inset_ * 2);
-            int minimum = DPI(280);
-            int columns = min(3, max(1, (available + gap_x_) / (minimum + gap_x_)));
-            int width = columns > 0 ? (available - gap_x_ * max(0, columns - 1)) / columns : minimum;
-            width = max(DPI(220), width);
+            int columns = ResolveColumns(available);
+            int width = ResolveItemWidth(available, columns);
 
             adapting_ = true;
             PauseLayout();
             UiBoxLayout::SetFixedColumn(0);
-            for(int i = 0; i < GetItemCount(); ++i)
-                ItemAt(i).MinMaxMain(width, width).Fit().MinCross(DPI(92)).AlignSelf(UiCrossAlign::Stretch);
+            int index = 0;
+            for(Ctrl *q = GetFirstChild(); q && index < GetItemCount(); q = q->GetNext(), ++index) {
+                int height = MeasureItemHeight(*q, width);
+                ItemAt(index).MinMaxMain(width, width)
+                             .Fit()
+                             .MinMaxCross(height, height)
+                             .AlignSelf(UiCrossAlign::Stretch);
+            }
             ResumeLayout(false);
             adapting_ = false;
         }
@@ -186,9 +243,46 @@ public:
     }
 
 private:
+    int ResolveColumns(int available) const
+    {
+        int count = max(1, GetItemCount());
+        int by_width = max(1, (available + gap_x_) / (minimum_column_width_ + gap_x_));
+        return min(count, min(max_columns_, by_width));
+    }
+
+    int ResolveItemWidth(int available, int columns) const
+    {
+        columns = max(1, columns);
+        return max(1, (available - gap_x_ * max(0, columns - 1)) / columns);
+    }
+
+    int MeasureItemHeight(Ctrl& ctrl, int width)
+    {
+        Rect old = ctrl.GetRect();
+        const int probe_height = DPI(4096);
+        ctrl.SetRect(0, 0, max(1, width), probe_height);
+
+        int measured = max(1, ctrl.GetMinSize().cy);
+        if(UiGroupPanel *panel = dynamic_cast<UiGroupPanel *>(&ctrl)) {
+            panel->Layout();
+            Rect body = panel->GetBodyRect();
+            if(UiBoxLayout *content = dynamic_cast<UiBoxLayout *>(panel->GetContent())) {
+                content->Layout();
+                int bottom_chrome = max(0, probe_height - body.bottom);
+                measured = max(1, body.top + content->GetContentSize().cy + bottom_chrome);
+            }
+        }
+
+        ctrl.SetRect(old);
+        return measured;
+    }
+
     int gap_x_ = DPI(10);
     int gap_y_ = DPI(10);
     int inset_ = 0;
+    int preferred_column_width_ = DPI(350);
+    int minimum_column_width_ = DPI(280);
+    int max_columns_ = 3;
     bool adapting_ = false;
 };
 
