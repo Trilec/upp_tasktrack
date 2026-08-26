@@ -44,135 +44,6 @@ bool AgentDelegationResolvesHumanWork(const TaskTrackDocument& doc,
     return has_delegation;
 }
 
-int AgentItemEstimatedHeight(const TaskTrackItem& item)
-{
-    int h = DPI(100);
-    switch(item.type) {
-    case TaskTrackItemType::Confirm:
-    case TaskTrackItemType::Text:
-    case TaskTrackItemType::Select:
-    case TaskTrackItemType::Number:
-    case TaskTrackItemType::Amount:
-    case TaskTrackItemType::Rating:
-        h = DPI(100);
-        break;
-    case TaskTrackItemType::SingleChoice:
-    case TaskTrackItemType::MultiChoice: {
-        int rows = max(1, (item.choices.GetCount() + 3) / 4);
-        h = DPI(88 + min(rows, 5) * 22);
-        break;
-    }
-    case TaskTrackItemType::Notes:
-        h = DPI(132);
-        break;
-    case TaskTrackItemType::Range:
-        h = DPI(135);
-        break;
-    case TaskTrackItemType::Color:
-    case TaskTrackItemType::Gradient:
-    case TaskTrackItemType::Position:
-    case TaskTrackItemType::Direction:
-        h = DPI(155);
-        break;
-    case TaskTrackItemType::ListSelect:
-    case TaskTrackItemType::RankOrder:
-    case TaskTrackItemType::HierarchySelect:
-        h = DPI(190);
-        break;
-    case TaskTrackItemType::Curve:
-        h = DPI(210);
-        break;
-    }
-
-    if(item.instruction.GetCount() > 120)
-        h += DPI(18);
-    return h;
-}
-
-int AgentItemEstimatedWidth(const TaskTrackItem& item)
-{
-    int w = DPI(620);
-    if(item.title.GetCount() > 72 || item.instruction.GetCount() > 100)
-        w = DPI(680);
-
-    switch(item.type) {
-    case TaskTrackItemType::Notes:
-    case TaskTrackItemType::ListSelect:
-    case TaskTrackItemType::Range:
-    case TaskTrackItemType::Color:
-    case TaskTrackItemType::Gradient:
-    case TaskTrackItemType::Position:
-    case TaskTrackItemType::Direction:
-        w = max(w, DPI(660));
-        break;
-    case TaskTrackItemType::RankOrder:
-    case TaskTrackItemType::HierarchySelect:
-    case TaskTrackItemType::Curve:
-        w = max(w, DPI(720));
-        break;
-    case TaskTrackItemType::SingleChoice:
-    case TaskTrackItemType::MultiChoice:
-        if(item.choices.GetCount() > 8)
-            w = max(w, DPI(700));
-        break;
-    default:
-        break;
-    }
-    return w;
-}
-
-int AgentPackedItemHeight(const TaskTrackDocument& doc, int columns)
-{
-    columns = max(1, columns);
-    int total = 0;
-    for(int i = 0; i < doc.items.GetCount(); i += columns) {
-        int row_height = 0;
-        for(int c = 0; c < columns && i + c < doc.items.GetCount(); ++c)
-            row_height = max(row_height, AgentItemEstimatedHeight(doc.items[i + c]));
-        if(total > 0)
-            total += DPI(10); // matches the task-flow vertical gutter
-        total += row_height;
-    }
-    return total;
-}
-
-void EstimateAgentDialog(const TaskTrackDocument& doc, Size& size, Size& min_size,
-                         int& task_min_height)
-{
-    int target_width = DPI(620);
-    for(const TaskTrackItem& item : doc.items)
-        target_width = max(target_width, AgentItemEstimatedWidth(item));
-
-    const int count = doc.items.GetCount();
-    if(count >= 2)
-        target_width = max(target_width, DPI(700));
-    if(count >= 3)
-        target_width = max(target_width, DPI(760));
-    if(count >= 6)
-        target_width = max(target_width, DPI(900));
-    target_width = max(DPI(620), min(DPI(1080), target_width));
-
-    // TaskTrackQuestionFlow uses 350px columns with a 10px gutter. Estimate
-    // the same packed rows rather than summing every question vertically.
-    // One-question dialogs keep the narrow rc4 width but reserve a little more
-    // height so group-panel chrome and the workflow row cannot clip.
-    int columns = count > 1 && target_width >= DPI(700) ? 2 : 1;
-    int item_height = AgentPackedItemHeight(doc, columns);
-    if(count <= 1)
-        item_height = max(item_height, DPI(112));
-
-    bool category_strip = TaskTrackCategories(doc).GetCount() > 1;
-    int chrome = DPI(category_strip ? 170 : (count <= 1 ? 105 : 110));
-    int target_height = chrome + item_height;
-    int min_height = count <= 1 ? DPI(285) : DPI(310);
-    target_height = max(min_height, min(DPI(640), target_height));
-
-    size = Size(target_width, target_height);
-    min_size = Size(min(target_width, DPI(560)), min(target_height, DPI(270)));
-    task_min_height = count <= 1 ? max(DPI(112), min(DPI(350), item_height))
-                                 : max(DPI(100), min(DPI(350), item_height));
-}
-
 } // namespace
 
 void TaskTrackWindow::PrepareAgentLaunch()
@@ -292,26 +163,60 @@ void TaskTrackWindow::ApplyAgentCompactLayout()
         footer_layout_.ItemAt(2).Fixed(DPI(132)).MinMain(DPI(132));
     }
 
-    Size size;
-    Size min_size;
-    int task_min_height = DPI(120);
-    EstimateAgentDialog(document_, size, min_size, task_min_height);
-
-    // BuildUi gives the general console a generous task-area minimum. Agent
-    // dialogs instead reserve the packed semantic-model estimate and let
-    // scrolling take over once further growth would make the window excessive.
-    main_box_.ItemAt(2).Expand(1).MinMain(task_min_height);
+    // Agent dialogs use the same card geometry regardless of item count. The
+    // flow has one canonical 350px card width and at most two compact columns;
+    // every card height is measured from its fully assembled controls. There
+    // are no per-question-type or one-vs-many size guesses in this path.
+    task_flow_.SetMaxColumns(2);
 
     Rect work = Ctrl::GetPrimaryWorkArea();
-    int max_w = max(DPI(520), work.Width() - DPI(24));
-    int max_h = max(DPI(260), work.Height() - DPI(24));
-    size.cx = min(size.cx, max_w);
-    size.cy = min(size.cy, max_h);
-    SetMinSize(Size(min(min_size.cx, size.cx), min(min_size.cy, size.cy)));
+    const int outer_margin = DPI(24);
+    const int shell_inset = DPI(7);       // BuildUi main_box_ inset
+    const int section_gap = DPI(6);       // BuildUi main_box_ gap
+    const int scroll_reserve = DPI(16);   // vertical scroll bar + breathing room
+    int max_w = max(DPI(360), work.Width() - outer_margin);
+    int max_h = max(DPI(240), work.Height() - outer_margin);
+
+    int flow_max_w = max(1, max_w - shell_inset * 2 - scroll_reserve);
+    int task_preferred_w = task_flow_.PreferredWidthForItems(flow_max_w);
+    int target_w = min(max_w, task_preferred_w + scroll_reserve + shell_inset * 2);
+    int inner_w = max(1, target_w - shell_inset * 2);
+    int task_view_w = max(1, inner_w - scroll_reserve);
+
+    // Measure the real assembled shell at the selected width. Header/footer
+    // wrapping is therefore part of the calculation rather than hidden inside
+    // another fixed chrome allowance.
+    int header_h = header_layout_.MeasureHeightForWidth(inner_w);
+    int footer_h = footer_layout_.MeasureHeightForWidth(inner_w);
+    int category_h = 0;
+    if(categories_group_.IsShown()) {
+        Rect old_category = categories_group_.GetRect();
+        categories_group_.SetRect(0, 0, inner_w, DPI(1024));
+        category_h = categories_group_.GetMinSize().cy;
+        categories_group_.SetRect(old_category);
+    }
+    int task_h = task_flow_.DesiredHeightForWidth(task_view_w);
+
+    // main_box_ always owns four slots (header, categories, task, footer).
+    // Hidden categories are a zero-height slot, while the three configured
+    // section gaps remain deterministic in UiBoxLayout.
+    int non_task_h = shell_inset * 2 + header_h + category_h + footer_h + section_gap * 3;
+    int desired_h = non_task_h + task_h;
+    int target_h = min(max_h, desired_h);
+    int task_slot_h = max(1, target_h - non_task_h);
+
+    // When the measured content exceeds the work area, only the task slot is
+    // reduced; UiScrollPanel then provides the overflow path. Otherwise the
+    // task slot is exactly the measured packed-card height.
+    main_box_.ItemAt(2).Expand(1).MinMain(min(task_h, task_slot_h));
+
+    Size size(target_w, target_h);
+    SetMinSize(size);
     SetRect(work.CenterRect(size));
 
     header_layout_.RefreshLayout();
     footer_layout_.RefreshLayout();
+    task_flow_.RefreshLayout();
     main_box_.RefreshLayout();
 }
 
