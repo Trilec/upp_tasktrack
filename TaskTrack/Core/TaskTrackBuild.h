@@ -9,7 +9,7 @@ namespace Upp {
 // TaskTrackVersion(): the release version is promoted only after acceptance.
 inline String TaskTrackBuildVersion()
 {
-    return "0.2.1-rc6";
+    return "0.2.1-rc7";
 }
 
 } // namespace Upp
