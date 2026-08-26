@@ -163,17 +163,22 @@ TaskTrack GUI -> TaskTrack MCP lifecycle -> agent
 
 ## 10. Agent-launched dialog sizing
 
-Agent-launched windows are sized from the semantic question model rather than a fixed workspace size.
+Agent-launched windows use measured control geometry, not a semantic-type or question-count estimate.
 
-The estimator considers:
+The sizing sequence is normative:
 
-- number of items;
-- item type;
-- choice count;
-- long instructions/titles;
-- controls that naturally need vertical room such as notes, list selection, rank order, hierarchy, range and curve editors.
+1. Construct the actual `TaskTrackQuestionCtrl` instances and their semantic controls first.
+2. Use the same `TaskTrackQuestionFlow` card-width and packing rules for measurement and live layout. Agent dialogs use a canonical preferred card width of 350px, may shrink cards only when constrained by the desktop, and use at most two columns.
+3. Lay each assembled card out at its assigned width before measuring it. `UiGroupPanel::GetBodyRect()` plus the body's real `UiBoxLayout::GetContentSize()` determines the card height, so dynamically attached workflow/status controls are included.
+4. A row is as tall as its tallest measured card. Flow inset and row gaps are exactly the same values used by live layout.
+5. Measure compact header/footer wrapping with `UiBoxLayout::MeasureHeightForWidth()` and include their natural width in shell-width selection.
+6. Measure the actual `UiScrollPanel` viewport loss for the vertical scrollbar rather than carrying a TaskTrack scrollbar guess.
+7. Measure the category panel at the selected shell width when it is present.
+8. Set the window to the measured shell + measured question content. If that exceeds the desktop work area, shorten only the task viewport and let the scroll panel handle overflow.
 
-Short one-question tasks stay dialog-sized but reserve enough height for the group-panel border and workflow row. Richer or multi-question tasks grow only as needed, then use scrolling rather than expanding beyond a sensible desktop working area. The result is clamped to the primary work area with a small margin.
+There is no separate one-question/multi-question height formula and no per-question-type height lookup. Different requests produce different window sizes only because their assembled controls and packed rows actually require different geometry.
+
+The one-question agent composition may hide Pause/reminder controls because they are unnecessary chrome for a single immediate decision. That changes the controls being measured; it does not select a separate sizing algorithm.
 
 ## 11. Terminal result acknowledgement
 
@@ -194,4 +199,5 @@ No terminal path requires the human to send another chat message merely to wake 
 5. Delegation never writes `items[].answer.data` and must never be represented as a human answer.
 6. Agent recommendations remain advisory until explicit human acceptance.
 7. JSON is durability, not normal transport.
-8. The human must not need to send a chat message merely to wake the agent after completing, cancelling, or delegating TaskTrack.
+8. Agent dialog sizing is derived from assembled controls and the same live flow geometry; it is not tuned by item count or semantic type.
+9. The human must not need to send a chat message merely to wake the agent after completing, cancelling, or delegating TaskTrack.
