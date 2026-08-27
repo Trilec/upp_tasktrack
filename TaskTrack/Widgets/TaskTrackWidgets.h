@@ -61,8 +61,8 @@ private:
     String value_;
 };
 
-// Legacy implementation kept source-compatible while the active question
-// renderer uses TaskTrackRangeField/UiRangeSliderEdit.
+// Retained for source compatibility. New range questions use
+// TaskTrackRangeField, which delegates to UiRangeSliderEdit.
 class TaskTrackRangeSelector : public Ctrl {
 public:
     typedef TaskTrackRangeSelector CLASSNAME;
@@ -165,8 +165,7 @@ private:
     String value_;
 };
 
-// UiCompositeColor was retired from upp_Ui. This adapter delegates state and
-// picker behaviour to UiColorMatrix without recreating composite state.
+// Compact TaskTrack colour-field API backed by UiColorMatrix.
 class TaskTrackColorField : public UiColorMatrix {
 public:
     TaskTrackColorField& SetLabelStyle(const UiLabel::Style&) { return *this; }

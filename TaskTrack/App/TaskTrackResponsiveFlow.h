@@ -1,6 +1,18 @@
 #ifndef _TaskTrack_App_TaskTrackResponsiveFlow_h_
 #define _TaskTrack_App_TaskTrackResponsiveFlow_h_
 
+/*
+    TaskTrack responsive flow
+    =========================
+
+    Width-aware category and question-card layout used by the native TaskTrack
+    window. The question flow measures the controls it actually lays out so the
+    window and its cards share one geometry path.
+
+    Copyright (c) 2026 Curtis Edwards
+    Licensed under the Apache License, Version 2.0. See LICENSE.
+*/
+
 #include <Ui/Ui.h>
 
 namespace Upp {
@@ -122,7 +134,7 @@ public:
         int header_height = style.header_inset.top + title_height + style.header_inset.bottom;
         int content_height = header_height + style.header_gap
                            + style.inset.top + body_height + style.inset.bottom
-                           + DPI(8); // explicit lower breathing room inside the rounded frame
+                           + DPI(8); // lower breathing room inside the rounded frame
         Size outer = UiStyledOuterSizeFromContent(Size(DPI(160), content_height),
                                                   style.metrics, style.skin);
         return Size(DPI(160), max(DPI(64), outer.cy));
@@ -172,10 +184,9 @@ public:
         return *this;
     }
 
-    // Preferred width and live layout deliberately share ResolveColumns(). We
-    // keep as many columns as fit at the 280px floor, request the canonical
-    // 350px width when possible, and shrink only when the outer work area truly
-    // cannot provide that preferred width. Agent dialogs cap this at two columns.
+    // Preferred width and live layout share ResolveColumns(): keep as many
+    // columns as fit at the minimum width, prefer the canonical card width,
+    // and shrink only when the available work area requires it.
     int PreferredWidthForItems(int maximum_width) const
     {
         int available_max = max(1, maximum_width - inset_ * 2);
@@ -186,10 +197,9 @@ public:
         return inset_ * 2 + max(1, inner);
     }
 
-    // Measures the exact current card assembly at the same widths Layout()
-    // will assign. The card is briefly laid out against a large probe height;
-    // its real body content extent plus real GroupPanel chrome determine the
-    // required height. This deliberately avoids question-type height tables.
+    // Measure the same assembled card geometry that Layout() will use. Each
+    // card is briefly laid out at its assigned width so its real content and
+    // GroupPanel chrome determine the row height.
     int DesiredHeightForWidth(int total_width)
     {
         int count = GetItemCount();

@@ -102,23 +102,19 @@ The optional Agent Skill lives at `skills/tasktrack/SKILL.md`. It is workflow gu
 
 ### OpenCode
 
-Current OpenCode releases support local stdio MCP servers in `opencode.jsonc`:
+Use OpenCode's own MCP setup command so the installed release writes its preferred configuration format:
 
-```jsonc
-{
-  "$schema": "https://opencode.ai/config.json",
-  "mcp": {
-    "servers": {
-      "tasktrack": {
-        "type": "local",
-        "command": ["C:\\path\\to\\TaskTrackMcp.exe"]
-      }
-    }
-  }
-}
+```text
+opencode mcp add
 ```
 
-This is enough for TaskTrack itself. OpenCode does not need the Codex plugin metadata.
+Choose a local server, name it `tasktrack`, and supply the full path to `TaskTrackMcp.exe` as the command with no arguments. Check the result with:
+
+```text
+opencode mcp list
+```
+
+OpenCode needs only the MCP executable pair; the Codex plugin metadata is not required.
 
 ## 5. First smoke test
 

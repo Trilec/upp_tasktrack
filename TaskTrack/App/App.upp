@@ -1,9 +1,4 @@
 uses
-	Core,
-	Draw,
-	CtrlCore,
-	CtrlLib,
-	Animation,
 	Ui,
 	TaskTrack/Core,
 	TaskTrack/Widgets;
@@ -17,4 +12,3 @@ file
 
 mainconfig
 	"" = "GUI";
-

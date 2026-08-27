@@ -64,23 +64,19 @@ arguments: none
 
 ### OpenCode
 
-OpenCode supports local MCP servers directly. A minimal `opencode.jsonc` entry is:
+OpenCode supports local STDIO MCP servers. The most version-safe setup is:
 
-```jsonc
-{
-  "$schema": "https://opencode.ai/config.json",
-  "mcp": {
-    "servers": {
-      "tasktrack": {
-        "type": "local",
-        "command": ["C:\\path\\to\\TaskTrackMcp.exe"]
-      }
-    }
-  }
-}
+```text
+opencode mcp add
 ```
 
-No TaskTrack-specific OpenCode plugin is required.
+Choose a local server, name it `tasktrack`, and use the full path to `TaskTrackMcp.exe` as the command with no arguments. Then verify the connection with:
+
+```text
+opencode mcp list
+```
+
+This avoids depending on a hand-written config shape, which differs between current OpenCode release lines. No TaskTrack-specific OpenCode plugin is required.
 
 ### Codex / Agent Skills
 

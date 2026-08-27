@@ -2,7 +2,8 @@
 #define _TaskTrack_Mcp_TaskTrackAgentMcp_h_
 
 /*
-    TaskTrack MCP agent-assistance bridge.
+    TaskTrack MCP agent-assistance bridge
+    =====================================
 
     Compact wire contract:
       propose_answer            -> recommended required
@@ -11,7 +12,11 @@
 
     Request lifecycle: pending -> answered -> (cancelled).
     Assistance lifecycle: awaiting_human -> awaiting_agent -> awaiting_human.
-    Agent responses remain advisory. They never write TaskTrackAnswer.
+    Agent responses never write TaskTrackAnswer; accepted suggestions and
+    explicit human answers remain separate from agent assistance.
+
+    Copyright (c) 2026 Curtis Edwards
+    Licensed under the Apache License, Version 2.0. See LICENSE.
 */
 
 #include <TaskTrack/Core/TaskTrackAgent.h>

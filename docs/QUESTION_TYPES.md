@@ -1,8 +1,8 @@
-# TaskTrack Semantic Question Types
+# TaskTrack semantic question types
 
-TaskTrack exposes human **decision semantics**, not GUI widget names. An agent describes what it needs from the human; the renderer decides which U++ control or composition best communicates that request.
+TaskTrack exposes human **decision semantics**, not GUI widget names. An agent describes what it needs from the human; the renderer chooses a compact native control or composition.
 
-## Canonical V0.2 vocabulary
+## Canonical vocabulary
 
 | Type | Use when the human needs to… | Main request fields | Structured `answer.data` |
 | --- | --- | --- | --- |
@@ -25,46 +25,41 @@ TaskTrack exposes human **decision semantics**, not GUI widget names. An agent d
 | `hierarchy_select` | choose one or more nodes in a hierarchy | `hierarchy`, `allow_multiple` | node id or array |
 | `curve` | choose/edit easing, transition or falloff behaviour | optional four-number `default` | `[x1,y1,x2,y2]` |
 
-## Pass/Fail verification fast path
+## Pass/Fail verification
 
-For ordinary human verification prefer a `confirm` item with exactly `choices = ["Pass", "Fail"]`. TaskTrack recognizes this pair and gives it a dedicated local presentation:
+For ordinary human verification, prefer a `confirm` item with exactly `choices=["Pass","Fail"]`.
 
-- Pass renders green, Fail renders red (with accessible text labels; colour is never the only cue);
-- a compact optional **verdict note** editor is available under the verdict;
-- `answer.data` is the boolean authority (`true` Pass / `false` Fail);
-- `answer.value` is the compact display label (`Pass` / `Fail`);
-- `answer.note` is optional supporting human evidence and never answers the question by itself.
+TaskTrack gives this pair a dedicated presentation:
 
-This is presentation sugar over the canonical `confirm` type; it is **not** a new semantic type. Ordinary Yes/No and unrelated custom two-choice confirms remain unchanged.
+- Pass is green and Fail is red, with text labels as well as colour;
+- a compact optional verdict note is available;
+- `answer.data` is boolean (`true` for Pass, `false` for Fail);
+- `answer.value` is the display label;
+- `answer.note` is supporting evidence and never answers the question by itself.
+
+This remains the normal `confirm` type; it is not a nineteenth semantic type.
 
 ## Renderer policy
 
-The renderer is deliberately free to adapt presentation to option count and available width. For example, a small `single_choice` set can use compact pill/radio controls while a larger set can collapse to a dropdown. This is not a schema change: the human decision is still “choose exactly one”.
+Presentation may adapt to the option count and available width without changing the question semantics. A short choice set can use visible controls while a larger set can use a dropdown or list. Range, colour and other visual questions use the existing `upp_Ui` controls where they fit and small TaskTrack adapters where a semantic composition is useful.
 
-The current U++ implementation uses existing Ui controls wherever possible and only introduces four small specialist controls:
+Those renderer classes are implementation details and are not valid MCP question types.
 
-- `TaskTrackPosition9`
-- `TaskTrackDirection8`
-- `TaskTrackRangeSelector`
-- `TaskTrackGradientSelector`
+## Recommendations are advisory
 
-Those class names are implementation details and are not valid MCP question types.
-
-## Recommended is not an answer
-
-`recommended` is a visible agent suggestion. It must never mark a question answered or silently select an option. The human remains the authority for the response.
+`recommended` is an agent suggestion. It must never mark a question answered or silently select an option. The human creates evidence only through an explicit answer or by accepting the suggestion.
 
 ## Required means blocking
 
-Set `required=true` only when the calling workflow genuinely cannot continue without the answer. TaskTrack refuses final submission while any required item remains unanswered.
+Set `required=true` only when the workflow genuinely needs human input before it can continue. A required item blocks normal Submit until it is answered or explicitly delegated through Use judgement.
 
 ## Free text is the escape hatch
 
-Prefer a structured type whenever the answer can be represented precisely. Use `notes` when the useful response is inherently explanatory or exceptional. TaskTrack intentionally does not place a generic notes field under every question because that would consume space and encourage unstructured answers. The narrow optional verdict note on a Pass/Fail verification is a verification affordance, not a general notes row.
+Prefer a structured type whenever the answer can be represented precisely. Use `notes` when the useful response is inherently explanatory or exceptional. TaskTrack intentionally does not put a generic notes editor under every question.
 
 ## Compatibility aliases
 
-Schema V2 writes only the canonical names above. The loader still accepts V0.1 task types and normalizes them in memory:
+Schema 2 writes only the canonical names above. The loader still accepts schema 1 names and normalizes them in memory:
 
 - `check` → `confirm`
 - `choice`, `pass_fail`, `file`, `interaction`, `visual_compare` → `single_choice`
@@ -72,4 +67,4 @@ Schema V2 writes only the canonical names above. The loader still accepts V0.1 t
 - `colour` → `color`
 - `rank` → `rank_order`
 
-Legacy verification types that carried fixed verdict sets receive equivalent choices during migration.
+Older verification types that carried fixed verdict sets receive equivalent choices during migration.
