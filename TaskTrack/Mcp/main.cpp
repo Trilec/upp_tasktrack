@@ -1363,7 +1363,7 @@ CONSOLE_APP_MAIN
     case TaskTrackMcpCommand::Version:
         Cout() << "TaskTrack MCP\n"
                << "TaskTrack version " << TaskTrackVersion() << "\n"
-               << "validation build " << TaskTrackBuildVersion() << "\n"
+               << "build version " << TaskTrackBuildVersion() << "\n"
                << "schema version " << 2 << "\n"
                << "MCP protocol " << CURRENT_PROTOCOL << "\n";
         SetExitCode(0);

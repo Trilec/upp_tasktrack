@@ -1,8 +1,13 @@
 # Changelog
 
-## Unreleased
+## 0.2.1 — 2026-08-27
 
-The 0.2.1 line has completed its functional Windows and live-host acceptance. A final source/repository hygiene build is pending before the release stamp is applied.
+The final Windows release gate passed:
+
+- Release builds: PASS
+- Debug/BLITZ builds: PASS
+- TaskTrackTests: 142 passed, 0 failed
+- MCP selftest: PASS
 
 - Live `create_task` owns the human interaction through completion, cancellation or delegation and returns a terminal structured result without requiring a wake-up chat message.
 - Added durable Suggest, Clarify and Use judgement round-trips. Agent proposals remain advisory; delegation never fabricates human `answer.data`.

@@ -18,7 +18,7 @@ namespace Upp {
 
 inline String TaskTrackBuildVersion()
 {
-    return "0.2.1-rc8";
+    return "0.2.1";
 }
 
 } // namespace Upp

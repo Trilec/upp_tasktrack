@@ -3,7 +3,7 @@ name: tasktrack
 description: Use TaskTrack for durable human decisions, approvals, selections, classifications, preferences, visual or interaction verification, Pass/Fail checks, wording, placement, colour, prioritisation, hierarchy, numeric bounds, and other human evidence the agent cannot establish from available repository, test, tool, or machine evidence. Also use it when the user explicitly asks for TaskTrack. Keep the TaskTrack interaction live until terminal human state. Never require the human to send a follow-up chat message merely to wake the agent. Never read TaskTrack JSON as the normal answer transport.
 license: Apache-2.0
 metadata:
-  version: "0.2"
+  version: "0.2.1"
 ---
 
 # TaskTrack

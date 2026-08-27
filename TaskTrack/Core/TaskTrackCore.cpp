@@ -778,7 +778,7 @@ Value HierarchyToValue(const TaskTrackHierarchyNode& node)
 
 String TaskTrackVersion()
 {
-    return "0.2.0";
+    return "0.2.1";
 }
 
 String TaskTrackNowIso()

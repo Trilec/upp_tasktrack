@@ -1,7 +1,7 @@
 {
   "name": "tasktrack",
   "description": "Use TaskTrack for durable human decisions, approvals, selections, classifications, preferences, visual or interaction verification, Pass/Fail checks, wording, placement, colour, prioritisation, hierarchy, numeric bounds, and other human evidence an agent cannot establish from available machine evidence. Keep the TaskTrack workflow live until the human completes it; never require the human to send a follow-up chat message just to wake the agent.",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "author": {
     "name": "Curtis Edwards"
   },

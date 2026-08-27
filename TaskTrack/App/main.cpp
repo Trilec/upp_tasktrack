@@ -46,7 +46,7 @@ GUI_APP_MAIN
         return;
     case TaskTrackGuiCommand::Version:
         PromptOK(String("TaskTrack GUI\nRelease version ") + TaskTrackVersion() +
-                 "\nValidation build " + TaskTrackBuildVersion());
+                 "\nBuild version " + TaskTrackBuildVersion());
         return;
     default:
         PromptOK(String("Unknown arguments.\n\n") + GuiHelpText());
