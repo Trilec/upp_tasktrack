@@ -59,10 +59,10 @@ function Build-UppPackage {
     Remove-OldTarget -Target $Target
     $targetPath = Join-Path $buildDir $Target
     if($Gui) {
-        & $umk $assembly $Package CLANGx64 --out-dir $outDir -br $targetPath
+        & $umk $assembly $Package CLANGx64 --out-dir $buildDir -br $targetPath
     }
     else {
-        & $umk $assembly $Package CLANGx64 --out-dir $outDir -br +CONSOLE $targetPath
+        & $umk $assembly $Package CLANGx64 --out-dir $buildDir -br +CONSOLE $targetPath
     }
 }
 
@@ -101,7 +101,6 @@ if([string]::IsNullOrWhiteSpace($UppRoot)) {
 
 $umk = Join-Path $UppRoot "umk.exe"
 $assembly = "$RepoRoot,$UiRoot,$AnimationRoot,$UppRoot\uppsrc"
-$outDir = Join-Path $RepoRoot "out"
 $buildDir = Join-Path $RepoRoot "build"
 $buildVersion = Read-BuildVersion
 
@@ -115,7 +114,6 @@ foreach($path in @($RepoRoot, $UiRoot, $AnimationRoot, (Join-Path $UppRoot "upps
 }
 
 New-Item -ItemType Directory -Force -Path $buildDir | Out-Null
-New-Item -ItemType Directory -Force -Path $outDir | Out-Null
 
 Write-Host "TaskTrack build expected: $buildVersion"
 

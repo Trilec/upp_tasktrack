@@ -47,7 +47,7 @@ and runs the deterministic Core tests plus the MCP self-test.
 
 For a normal TheIDE assembly, include the TaskTrack repository, `upp_Ui`, `upp_animation`, and your U++ `uppsrc` directory. The main packages are `TaskTrack/App` and `TaskTrack/Mcp`.
 
-See [GETTING_STARTED.md](GETTING_STARTED.md) for the full setup and host examples.
+The verification wrapper keeps generated build outputs under `build`; the release package is assembled there as well.
 
 ## Connect it to an agent host
 
@@ -119,11 +119,10 @@ tests                deterministic Core regression tests
 skills/tasktrack     optional Agent Skill
 ```
 
-The two distributable executables are `TaskTrackGui.exe` and `TaskTrackMcp.exe`.
+The two distributable executables are `TaskTrackGui.exe` and `TaskTrackMcp.exe`. Keep them together in the same directory; no U++ installation is needed to run a packaged Windows release.
 
 ## Documentation
 
-- [Getting started](GETTING_STARTED.md) — build, CLI and host registration.
 - [Architecture](docs/ARCHITECTURE.md) — package boundaries and design decisions.
 - [MCP contract](docs/MCP.md) — tools, live interaction and fallback behaviour.
 - [Interaction lifecycle](docs/INTERACTION_LIFECYCLE.md) — direct answers, assistance and delegation.
@@ -133,4 +132,4 @@ The two distributable executables are `TaskTrackGui.exe` and `TaskTrackMcp.exe`.
 
 ## License
 
-Apache License 2.0. See [LICENSE](LICENSE).
+GNU General Public License v3.0 only. See [LICENSE](LICENSE).

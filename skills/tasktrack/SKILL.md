@@ -1,7 +1,7 @@
 ---
 name: tasktrack
 description: Use TaskTrack for durable human decisions, approvals, selections, classifications, preferences, visual or interaction verification, Pass/Fail checks, wording, placement, colour, prioritisation, hierarchy, numeric bounds, and other human evidence the agent cannot establish from available repository, test, tool, or machine evidence. Also use it when the user explicitly asks for TaskTrack. Keep the TaskTrack interaction live until terminal human state. Never require the human to send a follow-up chat message merely to wake the agent. Never read TaskTrack JSON as the normal answer transport.
-license: Apache-2.0
+license: GPL-3.0-only
 metadata:
   version: "0.2.1"
 ---
@@ -17,6 +17,14 @@ Invoke TaskTrack when the workflow needs a human decision, approval, selection, 
 Do not invoke TaskTrack for ordinary conversation, explanations, summaries, general opinions, or information requests unless the user explicitly asks for TaskTrack recording.
 
 Ask only the minimum human evidence required to continue. Prefer structured semantic types. For ordinary verification prefer `confirm` with `choices=["Pass","Fail"]`.
+
+## Host setup
+
+Keep `TaskTrackMcp.exe` and `TaskTrackGui.exe` in the same directory. Register only `TaskTrackMcp.exe` as a local STDIO MCP server, with no arguments; the MCP server launches the GUI when a human interaction is needed.
+
+For Codex, install the optional plugin from the release's `.codex-plugin/plugin.json` and `skills/tasktrack/SKILL.md` files. The MCP server remains a normal local STDIO server; the skill supplies the lifecycle guidance for live waits, Suggest / Clarify round-trips, and Use judgement delegation.
+
+For OpenCode, run `opencode mcp add`, choose a local STDIO server named `tasktrack`, and provide the full path to `TaskTrackMcp.exe` with no arguments. Verify the registration with `opencode mcp list`. No TaskTrack-specific OpenCode plugin or wrapper command is required.
 
 ## Lifecycle authority
 

@@ -10,7 +10,7 @@
     the Ui package.
 
     Copyright (c) 2026 Curtis Edwards
-    Licensed under the Apache License, Version 2.0. See LICENSE.
+    Licensed under the GNU General Public License, version 3. See LICENSE.
 */
 
 #include <Ui/Ui.h>

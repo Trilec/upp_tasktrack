@@ -6,7 +6,7 @@
     "name": "Curtis Edwards"
   },
   "repository": "https://github.com/Trilec/upp_tasktrack",
-  "license": "Apache-2.0",
+  "license": "GPL-3.0-only",
   "keywords": [
     "human-in-the-loop",
     "approval",
