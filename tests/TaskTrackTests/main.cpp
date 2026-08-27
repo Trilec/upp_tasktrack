@@ -108,7 +108,7 @@ CONSOLE_APP_MAIN
     String root = AppendFileName(GetFileFolder(GetExeFilePath()), "_tasktrack_tests");
     RealizeDirectory(root);
 
-    // Gary W1 regression: generated id must compile through Upp::Format, contain a literal T,
+    // Regression: generated id must compile through Upp::Format, contain a literal T,
     // and never contain the old <N/A 'dT'> formatting artefact.
     String generated = TaskTrackMakeTaskId();
     t.Check(generated.StartsWith("task-"), "generated task id prefix is wrong");
@@ -183,7 +183,7 @@ CONSOLE_APP_MAIN
     rec_range.answer = TaskTrackAnswer();
     rec_range.recommended.Clear();
 
-    // Gary W1 regression: AsJSON -> ParseJSON represents JSON numbers as generic numeric Values.
+    // Regression: AsJSON -> ParseJSON represents JSON numbers as generic numeric Values.
     // Saving must accept schema_version/reminder/history fields after that round trip.
     String serialized = TaskTrackToJson(doc, true);
     Value parsed_json = ParseJSON(serialized);
@@ -307,7 +307,7 @@ CONSOLE_APP_MAIN
 
     String sidecar = TaskTrackAgentChannelPath(path);
 
-    // TT-010: Pass/Fail is presentation sugar over the canonical confirm type.
+    // Regression: Pass/Fail is presentation sugar over the canonical confirm type.
     TaskTrackItem pf_yn; pf_yn.type = TaskTrackItemType::Confirm; pf_yn.choices = V("Yes", "No");
     t.Check(!TaskTrackIsPassFailConfirm(pf_yn), "ordinary Yes/No confirm was incorrectly specialized");
     TaskTrackItem pf_custom; pf_custom.type = TaskTrackItemType::Confirm; pf_custom.choices = V("Approve", "Deny");
@@ -382,7 +382,7 @@ CONSOLE_APP_MAIN
 
     RemoveTaskArtifacts(pfpath, AsString(pf_args["task_id"]));
 
-    // TT-010-R1: shared CLI classification and the two-executable package names.
+    // Regression: shared CLI classification and the two-executable package names.
     t.Check(TaskTrackClassifyGuiCommand(Vector<String>()) == TaskTrackGuiCommand::Run,
             "GUI no-arg did not select the file-picker run path");
     t.Check(TaskTrackClassifyGuiCommand(V("--task", "x")) == TaskTrackGuiCommand::OpenTask,
@@ -417,7 +417,7 @@ CONSOLE_APP_MAIN
     t.Check(gui_name == "TaskTrackGui.exe", "Windows GUI executable name is not TaskTrackGui.exe");
 #endif
 
-    // TT-009-R1 protocol: propose_answer requires recommended; lifecycle pending -> answered.
+    // Protocol regression: propose_answer requires recommended; lifecycle pending -> answered.
     String req_id, req_err;
     t.Check(TaskTrackQueueAgentRequest(path, task_id, "single", "propose_answer", String(), req_id, req_err),
             "queue propose_answer failed: " + req_err);

@@ -147,7 +147,7 @@ inline bool TaskTrackParseAgentRequest(const Value& raw, TaskTrackAgentRequest& 
     request.created_at = TrimBoth(AsString(raw["created_at"]));
     request.answered_at = TrimBoth(AsString(raw["answered_at"]));
     if(request.answered_at.IsEmpty())
-        request.answered_at = TrimBoth(AsString(raw["resolved_at"])); // legacy TT-009
+        request.answered_at = TrimBoth(AsString(raw["resolved_at"])); // legacy sidecar field
 
     if(request.id.IsEmpty() || request.item_id.IsEmpty()) {
         error = "agent request requires id and item_id.";
@@ -162,7 +162,7 @@ inline bool TaskTrackParseAgentRequest(const Value& raw, TaskTrackAgentRequest& 
         request.mode = "simplify";
     if(request.status.IsEmpty())
         request.status = "pending";
-    if(request.status == "resolved") // legacy TT-009 request answered state
+    if(request.status == "resolved") // legacy sidecar status
         request.status = "answered";
     if(request.status != "pending" && request.status != "answered" && request.status != "cancelled") {
         error = "agent request status is invalid.";
