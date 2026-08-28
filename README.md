@@ -1,6 +1,6 @@
 # TaskTrack
 
-TaskTrack is a small native U++ application for durable human decisions inside agent workflows. It is useful when the machine can do most of the work but a person still needs to judge something: a visual check, approval, wording choice, colour, ranking, numeric preference, interaction result, or another structured decision.
+TaskTrack is a small native U++ application for durable human decisions inside agent workflows. An agent can assemble one task containing one or many questions, including different semantic categories, when the machine can do most of the work but a person still needs to judge something: a visual check, approval, wording choice, colour, ranking, numeric preference, interaction result, or another structured decision.
 
 ![TaskTrack native decision dialog](screenshot.jpg)
 
@@ -9,6 +9,7 @@ The agent talks to `TaskTrackMcp.exe`. When human input is needed, the MCP serve
 ## What it does
 
 - 18 semantic question types, from simple confirmation and text through colour, range, ranking, hierarchy and curve editing.
+- One task can contain multiple questions across different semantic categories in a single measured dialog.
 - Native U++ GUI rather than a browser form.
 - Structured `answer.data` so results remain machine-readable.
 - Durable task files with verified writes and recovery backups.
