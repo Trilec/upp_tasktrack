@@ -1,0 +1,127 @@
+{
+  "schema_version": 1,
+  "dashboard_id": "dashboard-tasktrack-example",
+  "project": "TaskTrack",
+  "title": "Dashboard subsystem ready for native validation",
+  "subtitle": "A semantic project cockpit assembled from independent panels",
+  "phase": "Dashboard integration",
+  "confidence": 88,
+  "revision": 1,
+  "created_at": "2026-09-01T00:00:00Z",
+  "updated_at": "2026-09-01T00:00:00Z",
+  "updated_by": "example",
+  "source_head": "example-head",
+  "panels": [
+    {
+      "id": "project-state",
+      "type": "project_state",
+      "title": "Project state",
+      "category": "Overview",
+      "density": "summary",
+      "preview_limit": 4,
+      "contributes_to_progress": false,
+      "entries": [
+        {"id":"state-now","title":"Now","subtitle":"Dashboard implementation complete","status":"active","detail":"Native project-state presentation is ready for Windows/U++ validation."},
+        {"id":"state-next","title":"Next checkpoint","subtitle":"Native acceptance","status":"next","detail":"Build, open the example, and inspect light/dark plus narrow/wide layouts."},
+        {"id":"state-attention","title":"Main concern","subtitle":"Visual QA pending","status":"attention","attention":true,"detail":"No native visual review has been run in this environment."}
+      ]
+    },
+    {
+      "id": "milestones",
+      "type": "timeline",
+      "title": "Milestone timeline",
+      "category": "Overview",
+      "density": "standard",
+      "preview_limit": 8,
+      "contributes_to_progress": true,
+      "entries": [
+        {"id":"m1","title":"Problem framing","status":"complete","progress":100,"weight":1},
+        {"id":"m2","title":"Dashboard model","status":"complete","progress":100,"weight":1},
+        {"id":"m3","title":"Native controls","status":"complete","progress":100,"weight":1},
+        {"id":"m4","title":"MCP + revisions","status":"complete","progress":100,"weight":1},
+        {"id":"m5","title":"Visual QA","status":"next","progress":0,"weight":1,"attention":true}
+      ]
+    },
+    {
+      "id": "objectives",
+      "type": "progress_list",
+      "title": "Objectives",
+      "category": "Plan",
+      "density": "standard",
+      "preview_limit": 6,
+      "contributes_to_progress": false,
+      "entries": [
+        {"id":"obj1","title":"Deterministic project-state schema","status":"complete","progress":100,"evidence":"DashboardCore validates semantic panels and global entry identity."},
+        {"id":"obj2","title":"Native reusable presentation","status":"complete","progress":100,"evidence":"UiProgressRing plus TaskTrackTimelineRail and semantic group panels."},
+        {"id":"obj3","title":"Native acceptance","status":"next","progress":0,"evidence":"Run verify.ps1 and visual QA on Windows."}
+      ]
+    },
+    {
+      "id": "next-steps",
+      "type": "action_list",
+      "title": "Next steps",
+      "category": "Plan",
+      "density": "standard",
+      "preview_limit": 6,
+      "contributes_to_progress": false,
+      "entries": [
+        {"id":"next1","title":"Run verify.ps1","status":"next","detail":"Build original TaskTrack targets plus dashboard GUI/MCP/tests and run both MCP self-tests."},
+        {"id":"next2","title":"Open the dashboard example","status":"next","detail":"Check overview readability, timeline selection, expansion and history browsing."},
+        {"id":"next3","title":"Inspect theme/responsive behaviour","status":"next","detail":"Review light/dark and narrow/wide window states; fix only observed bounded defects."}
+      ]
+    },
+    {
+      "id": "attention",
+      "type": "attention",
+      "title": "Needs attention",
+      "category": "Attention",
+      "density": "standard",
+      "preview_limit": 8,
+      "contributes_to_progress": false,
+      "entries": [
+        {"id":"attention1","title":"Native visual acceptance has not run yet","status":"attention","attention":true,"detail":"The implementation has a static source gate but requires the Windows U++ assembly for final visual/runtime acceptance."}
+      ]
+    },
+    {
+      "id": "verification",
+      "type": "verification",
+      "title": "Verification",
+      "category": "Quality",
+      "density": "standard",
+      "preview_limit": 8,
+      "contributes_to_progress": false,
+      "entries": [
+        {"id":"verify1","title":"Schema and JSON gate","status":"complete","progress":100,"evidence":"Examples parse and current-state limits are validated."},
+        {"id":"verify2","title":"Concurrency/crash regression coverage","status":"complete","progress":100,"evidence":"Tests cover WRITE_BUSY and incomplete next-revision recovery."},
+        {"id":"verify3","title":"Native Windows build/visual gate","status":"next","progress":0,"attention":true}
+      ]
+    },
+    {
+      "id": "changes",
+      "type": "changes",
+      "title": "Recent changes",
+      "category": "History",
+      "density": "standard",
+      "preview_limit": 8,
+      "contributes_to_progress": false,
+      "entries": [
+        {"id":"change1","title":"Added semantic dashboard companion","status":"complete","timestamp":"2026-09-01T00:00:00Z"},
+        {"id":"change2","title":"Added immutable revisions and optimistic concurrency","status":"complete","timestamp":"2026-09-01T00:00:00Z"}
+      ]
+    },
+    {
+      "id": "project-data",
+      "type": "records",
+      "title": "Project data",
+      "category": "History",
+      "density": "full",
+      "preview_limit": 8,
+      "contributes_to_progress": false,
+      "entries": [
+        {"id":"record1","title":"Authority","status":"info","detail":"Dashboard JSON is AI-authored management/presentation state and never human answer.data."},
+        {"id":"record2","title":"Revision model","status":"info","detail":"Current file plus immutable numbered accepted snapshots."},
+        {"id":"record3","title":"Update rule","status":"info","detail":"Existing dashboards require exact base_revision; conflicts must be re-read and merged."}
+      ]
+    }
+  ]
+}

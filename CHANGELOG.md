@@ -1,5 +1,19 @@
 # Changelog
 
+## Dashboard companion — 2026-09-01
+
+- Added a complete semantic project-dashboard subsystem without changing the accepted human-question lifecycle.
+- Added `TaskTrack/DashboardCore` with strict schema validation, bounded current-state documents, weighted derived progress, attention summaries, atomic current-file recovery, optimistic `base_revision` updates and immutable numbered revision history.
+- Added `TaskTrack/DashboardWidgets`, including a TaskTrack-local `TaskTrackTimelineRail` with theme/custom-style, data, selection, mouse, keyboard and focus behaviour.
+- Uses the existing `UiProgressRing` directly for overall/project-state circular progress.
+- Added `TaskTrackDashboardGui.exe`, a read-only native cockpit with category filtering, compact/full panel inspection, current-state auto-refresh and historical revision browsing.
+- Added `TaskTrackDashboardMcp.exe` with validate/upsert/read/open/list/history tools.
+- Added deterministic DashboardCore regression tests and DashboardMcp self-test coverage.
+- Hardened dashboard writes with a short cross-process writer lock and safe recovery of an incomplete beyond-current next revision after a crashed writer.
+- Added dashboard examples, Agent Skill guidance and full dashboard contract documentation.
+- Extended `verify.ps1` to build and validate both existing TaskTrack executables and the new dashboard companion targets.
+- Existing `TaskTrackMcp.exe`, `TaskTrackGui.exe`, human task schema and authoritative `items[].answer.data` path remain unchanged.
+
 ## 0.2.1 — 2026-08-27
 
 The final Windows release gate passed:

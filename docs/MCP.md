@@ -1,117 +1,88 @@
-# TaskTrack MCP contract
+# TaskTrack MCP contracts
 
-`TaskTrackMcp.exe` is a local STDIO MCP server over `TaskTrack/Core`. It runs beside `TaskTrackGui.exe` and launches the GUI with `--task <path>` when a task needs a person.
+TaskTrack exposes two local STDIO MCP services with deliberately different authority and lifecycle.
 
-## Tools
+## Human-decision MCP
 
-- `version` — TaskTrack version, build and protocol information.
-- `create_task` — create durable structured human input and normally own the live interaction until terminal state.
-- `get_task` — retrieve/recover task state and structured answers; also used by compatibility continuation.
-- `open_task` — reopen the GUI for an existing task.
-- `list_tasks` — list recent durable tasks.
-- `close_task` — explicitly close unfinished work.
-- `respond_to_request` — answer a pending human-to-agent assistance request.
+`TaskTrackMcp.exe` is the established human evidence server. Its tools remain:
 
-## Question vocabulary
+- `version`
+- `create_task`
+- `get_task`
+- `open_task`
+- `list_tasks`
+- `close_task`
+- `respond_to_request`
 
-`create_task.items[].type` accepts the 18 canonical types documented in `QUESTION_TYPES.md`:
+`create_task` normally owns the live interaction until completed/closed or an assistance compatibility checkpoint. Canonical human evidence is `items[].answer.data`. Dashboard work does not alter this contract.
 
-`confirm`, `single_choice`, `multi_choice`, `select`, `list_select`, `text`, `notes`, `number`, `amount`, `range`, `rating`, `color`, `gradient`, `position`, `direction`, `rank_order`, `hierarchy_select`, `curve`.
+See `INTERACTION_LIFECYCLE.md` and `QUESTION_TYPES.md` for the human path.
 
-Agents specify decision meaning, not U++ widget names.
+## Dashboard MCP
 
-For ordinary verification, `confirm` with `choices=["Pass","Fail"]` is the compact fast path. Its `answer.data` is boolean; an optional verdict note is supporting evidence.
+`TaskTrackDashboardMcp.exe` is a separate non-blocking project-state service over DashboardCore.
 
-## Normal live flow
+### Tools
 
-With `launch=true` (the default):
+- `version` — dashboard component/schema/protocol information.
+- `validate_dashboard` — validate a dashboard document without installing it.
+- `upsert_dashboard` — create/update current state and create the next immutable accepted revision.
+- `get_dashboard` — retrieve current state.
+- `open_dashboard` — launch the read-only native viewer for an existing dashboard.
+- `list_dashboards` — list recent current dashboard documents.
+- `list_dashboard_revisions` — list accepted immutable revisions.
+- `get_dashboard_revision` — retrieve a specific accepted historical revision.
 
-```text
-create_task
-  -> validate and persist task
-  -> launch TaskTrackGui.exe
-  -> human works
-  -> completed / closed
-  -> structured terminal result returns
+### Upsert
+
+Create:
+
+```json
+{
+  "dashboard": { "dashboard_id": "my-project", "title": "Project status", "panels": [...] }
+}
 ```
 
-The normal path does not require manual JSON inspection or a second human chat message.
+A new dashboard becomes revision 1. `base_revision` may be omitted or zero.
 
-`launch=false` is the explicit detached/recovery mode.
+Update:
 
-## Human evidence
-
-On normal completion:
-
-- `items[].answer.data` is the canonical structured human answer;
-- `answer.value` is a compact display/log representation;
-- `answer.note` is optional supporting human evidence.
-
-Recommendations and agent responses are advisory until explicitly accepted by the human.
-
-## Assistance lifecycle
-
-The human can request three kinds of agent assistance:
-
-- `propose_answer` — return a responsible recommendation;
-- `clarify` — return a simpler explanation, optionally with a recommendation;
-- `continue_with_judgement` — acknowledge that the human delegates this decision to the agent.
-
-A pending request moves the assistance phase to `awaiting_agent`. This is not task completion.
-
-### Suggest and Clarify
-
-After the agent responds, the task returns to `awaiting_human`. A suggestion is visible but does not create `answer.data`. The human must accept it explicitly.
-
-### Use judgement
-
-Use judgement is explicit delegation, not acceptance of an agent answer. If every still-required unanswered item is covered by an acknowledged `continue_with_judgement`, the human-facing task closes automatically.
-
-The terminal result includes:
-
-```text
-state: closed
-delegated_to_agent: true
-closure_reason: agent_judgement
-delegated_item_ids: [...]
-human_followup_required: false
+```json
+{
+  "dashboard_id": "my-project",
+  "base_revision": 4,
+  "dashboard": { "dashboard_id": "my-project", "title": "Project status", "panels": [...] }
+}
 ```
 
-Delegated items retain empty human `answer.data`.
+Existing dashboards require an exact current `base_revision`.
 
-## Hosts with and without in-call assistance
+- `REVISION_REQUIRED` — update omitted a base revision.
+- `REVISION_CONFLICT` — base revision is stale; re-read/merge/retry.
+- `WRITE_BUSY` — another process currently owns the short dashboard writer lock; retry the normal read/merge/upsert path.
 
-When the host exposes the required modern sampling/multi-round capability, TaskTrack can service assistance inside the live interaction.
+The upsert path serializes writers with a cross-process lock; `WRITE_BUSY` is retryable and must not be bypassed.
 
-When it does not, TaskTrack returns a structured compatibility checkpoint containing pending requests. The agent should:
+### Presentation semantics
 
-1. resolve each pending request with `respond_to_request`;
-2. call `get_task(task_id, include_items=true, wait_ms=300000)`;
-3. continue that loop until the task is `completed`, `closed`, or another assistance request appears.
+Agents send semantic panel/entry data only. Do not send U++ class names, coordinates, widths, colours or other GUI construction instructions. The native app chooses presentation.
 
-This compatibility checkpoint is non-terminal. The human should not have to type “done” or “check TaskTrack” to resume the agent.
+### Open
 
-## Terminal continuation
+`open_dashboard` returns after launching the viewer. Unlike a human TaskTrack question, a dashboard view is informational and does not hold the MCP request open waiting for user evidence.
 
-A terminal result tells the host that the originating agent turn should continue visibly:
+### Authority
 
-- `completed` — use and acknowledge the returned human evidence;
-- ordinary `closed` — acknowledge closure and do not invent missing answers;
-- delegated `closed` — acknowledge delegation and continue using agent judgement for `delegated_item_ids`.
+Dashboard output is useful project state, not human testimony. If an Attention item needs a human decision, create a normal TaskTrack human task and optionally reference its `task_id` from the dashboard entry.
 
-## Persistence
-
-`.tasktrack.json` and `.agent.json` are durability and recovery state. They are not the routine answer transport.
-
-## CLI
+## Dashboard CLI
 
 ```text
-TaskTrackMcp.exe                run stdio server
-TaskTrackMcp.exe --help         usage
-TaskTrackMcp.exe --version      version / schema / protocol
-TaskTrackMcp.exe --selftest     deterministic MCP self-test
-TaskTrackMcp.exe --oneshot <request.json>
-                                diagnostic one-request mode
+TaskTrackDashboardMcp.exe
+TaskTrackDashboardMcp.exe --help
+TaskTrackDashboardMcp.exe --version
+TaskTrackDashboardMcp.exe --selftest
+TaskTrackDashboardMcp.exe --oneshot <request.json>
 ```
 
-For host registration, run the executable with no arguments.
+Register the executable as a local STDIO MCP service with no arguments.

@@ -1,0 +1,4 @@
+description "TaskTrack native project dashboard viewer";
+uses Ui, TaskTrack/DashboardCore, TaskTrack/DashboardWidgets;
+file TaskTrackDashboardApp.h, TaskTrackDashboardApp.cpp, TaskTrackDashboardAppUi.inc, TaskTrackDashboardAppState.inc, TaskTrackDashboardAppPanels.inc, main.cpp;
+mainconfig "" = "GUI";

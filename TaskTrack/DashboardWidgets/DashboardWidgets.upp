@@ -1,0 +1,3 @@
+description "TaskTrack native dashboard presentation controls";
+uses Ui, TaskTrack/DashboardCore;
+file TaskTrackDashboardWidgets.h, TaskTrackDashboardWidgets.cpp, TaskTrackDashboardWidgetsRailA.inc, TaskTrackDashboardWidgetsRailB.inc, TaskTrackDashboardWidgetsBody.inc, TaskTrackDashboardWidgetsPanel.inc;

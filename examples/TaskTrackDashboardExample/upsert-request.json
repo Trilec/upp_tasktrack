@@ -1,0 +1,31 @@
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "tools/call",
+  "params": {
+    "name": "upsert_dashboard",
+    "arguments": {
+      "dashboard": {
+        "schema_version": 1,
+        "dashboard_id": "dashboard-simple-example",
+        "project": "Example Project",
+        "title": "Current project state",
+        "phase": "Implementation",
+        "updated_by": "agent",
+        "panels": [
+          {
+            "id": "milestones",
+            "type": "timeline",
+            "title": "Milestones",
+            "category": "Overview",
+            "entries": [
+              {"id":"architecture","title":"Architecture","status":"complete","progress":100},
+              {"id":"implementation","title":"Implementation","status":"active","progress":60},
+              {"id":"acceptance","title":"Acceptance","status":"next","progress":0}
+            ]
+          }
+        ]
+      }
+    }
+  }
+}

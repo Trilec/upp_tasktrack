@@ -1,0 +1,20 @@
+description "TaskTrack semantic project dashboard model and durable revision store";
+
+uses
+    Core,
+    TaskTrack/Core;
+
+file
+    TaskTrackDashboardCore.h,
+    TaskTrackDashboardCore.cpp,
+    TaskTrackDashboardCoreParseA.inc,
+    TaskTrackDashboardCoreParseB1.inc,
+    TaskTrackDashboardCoreParseB2.inc,
+    TaskTrackDashboardCoreModelA1.inc,
+    TaskTrackDashboardCoreModelA2.inc,
+    TaskTrackDashboardCoreModelB1.inc,
+    TaskTrackDashboardCoreModelB2.inc,
+    TaskTrackDashboardCoreStoreA1.inc,
+    TaskTrackDashboardCoreStoreA2.inc,
+    TaskTrackDashboardCoreStoreB.inc,
+    TaskTrackDashboardCoreSummary.inc;

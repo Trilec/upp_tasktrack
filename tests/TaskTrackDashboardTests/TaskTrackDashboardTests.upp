@@ -1,0 +1,10 @@
+uses
+    Core,
+    TaskTrack/DashboardCore;
+
+file
+    main.cpp,
+    TaskTrackDashboardTestHelpers.inc,
+    TaskTrackDashboardTestCases.inc,
+    TaskTrackDashboardTestRunA.inc,
+    TaskTrackDashboardTestRunB.inc;

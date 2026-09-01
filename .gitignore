@@ -58,3 +58,12 @@ tasktrack_data/
 *.tasktrack.json.tmp
 *.tasktrack.json.poll
 *.agent.json
+
+# TaskTrack Dashboard local test/runtime state
+_tasktrack_dashboard_tests/
+_tasktrack_dashboard_mcp_selftest/
+tasktrack_dashboard_data/
+*.tasktrack-dashboard.json
+*.tasktrack-dashboard.json.bak
+*.tasktrack-dashboard.json.tmp
+*.tasktrack-dashboard.lock

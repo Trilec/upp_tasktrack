@@ -1,39 +1,57 @@
 # TaskTrack
 
-TaskTrack is a small native U++ application for durable human decisions inside agent workflows. An agent can assemble one task containing one or many questions, including different semantic categories, when the machine can do most of the work but a person still needs to judge something: a visual check, approval, wording choice, colour, ranking, numeric preference, interaction result, or another structured decision.
+TaskTrack is a native U++ companion for AI-assisted work. It has two deliberately separate jobs:
+
+1. **Human decisions** — durable structured human evidence when an agent cannot establish the answer from machine evidence.
+2. **Project dashboards** — durable AI-maintained project state that gives a person a quick visual answer to “where are we, what is next, and what needs attention?”
+
+The two models are intentionally separate. Dashboard state is agent-authored presentation/management state; it can link to a TaskTrack human-decision task, but it never becomes `items[].answer.data`.
 
 ![TaskTrack native decision dialog](screenshot.jpg)
 
-The agent talks to `TaskTrackMcp.exe`. When human input is needed, the MCP server persists the task and opens `TaskTrackGui.exe`. The answer comes back through the same workflow, so the person does not have to return to chat and type “done” just to wake the agent.
+## Human decisions
 
-## What it does
+`TaskTrackMcp.exe` persists a decision task, opens `TaskTrackGui.exe`, and returns the structured result through the same workflow. The person does not need to return to chat and type “done” merely to wake the agent.
 
-- 18 semantic question types, from simple confirmation and text through colour, range, ranking, hierarchy and curve editing.
-- One task can contain multiple questions across different semantic categories in a single measured dialog.
-- Native U++ GUI rather than a browser form.
-- Structured `answer.data` so results remain machine-readable.
-- Durable task files with verified writes and recovery backups.
-- Suggestions and clarification without turning agent advice into human evidence.
-- **Use judgement** lets the human explicitly delegate a blocked decision back to the agent without fabricating a human answer.
-- Compact dialogs are measured from the controls that were actually assembled; one question and many questions use the same layout algorithm.
-- A Pass/Fail fast path uses the normal `confirm` type and can carry an optional verdict note.
+- 18 semantic question types.
+- Native U++ controls rather than browser forms.
+- Structured `answer.data` as human evidence.
+- Durable writes with `.bak` recovery.
+- Suggest, Clarify and explicit **Use judgement** delegation.
+- Responsive measured question cards and compact agent-launched dialogs.
+- Pass/Fail fast path with optional verdict note.
 
-## Build
+## Project dashboards
 
-TaskTrack depends on:
+`TaskTrackDashboardMcp.exe` owns the AI-facing dashboard contract and `TaskTrackDashboardGui.exe` is the read-only native project cockpit.
+
+- Eight semantic panel types: project state, timeline, progress/objectives, next actions, attention, verification, changes and generic records.
+- `UiProgressRing` for overall/project-state progress.
+- TaskTrack-local `TaskTrackTimelineRail` with theme/custom-style, data binding, mouse, keyboard and focus support.
+- Category filtering and summary/standard/full density.
+- Double-click panel expansion for detailed evidence without making the first view noisy.
+- Weighted derived completion plus optional explicit management estimate and confidence.
+- Optimistic `base_revision` updates plus a short cross-process writer lock so concurrent agents cannot silently overwrite newer project truth.
+- Immutable numbered revision snapshots plus current-file `.bak` recovery.
+- Read-only viewer auto-refreshes the current revision while allowing historical revision inspection.
+- Explicit panel/entry limits keep current state bounded; old truth belongs in immutable revisions rather than an ever-growing current JSON document.
+
+See [Dashboard contract](docs/DASHBOARD.md).
+
+## Build and verification
+
+Dependencies:
 
 - U++ / TheIDE;
 - [`upp_Ui`](https://github.com/Trilec/upp_Ui);
 - [`upp_animation`](https://github.com/Trilec/upp_animation).
 
-If the three repositories are siblings, the verification wrapper finds `upp_Ui` and `upp_animation` automatically:
+With sibling repositories:
 
 ```powershell
 cd C:\dev\upp_tasktrack
 powershell -ExecutionPolicy Bypass -File .\verify.ps1 -UppRoot C:\upp
 ```
-
-You can also pass `-UiRoot` and `-AnimationRoot` explicitly. `UPP_ROOT` or an `umk.exe` already on `PATH` can be used instead of `-UppRoot`.
 
 The wrapper builds:
 
@@ -42,94 +60,79 @@ build\TaskTrackGui.exe
 build\TaskTrackMcp.exe
 build\TaskTrackTests.exe
 build\TaskTrackExample.exe
+build\TaskTrackDashboardGui.exe
+build\TaskTrackDashboardMcp.exe
+build\TaskTrackDashboardTests.exe
 ```
 
-and runs the deterministic Core tests plus the MCP self-test.
+and runs the deterministic Core tests, main MCP self-test, dashboard Core tests and dashboard MCP self-test.
 
-For a normal TheIDE assembly, include the TaskTrack repository, `upp_Ui`, `upp_animation`, and your U++ `uppsrc` directory. The main packages are `TaskTrack/App` and `TaskTrack/Mcp`.
+For a TheIDE assembly include the TaskTrack repository, `upp_Ui`, `upp_animation`, and U++ `uppsrc`.
 
-The verification wrapper keeps generated build outputs under `build`; the release package is assembled there as well.
+## Connect to an agent host
 
-## Connect it to an agent host
-
-Register **only** `TaskTrackMcp.exe` as a local STDIO MCP server, with no arguments. Keep `TaskTrackGui.exe` beside it; the MCP process launches the GUI when required.
-
-Typical local registration is simply:
+Register the services you need as local STDIO MCP servers with no arguments:
 
 ```text
 name: tasktrack
-transport: stdio
 command: C:\path\to\TaskTrackMcp.exe
-arguments: none
+
+name: tasktrack-dashboard
+command: C:\path\to\TaskTrackDashboardMcp.exe
 ```
 
-### OpenCode
+Keep each GUI executable beside its MCP executable. `TaskTrackMcp.exe` launches `TaskTrackGui.exe`; `TaskTrackDashboardMcp.exe` launches `TaskTrackDashboardGui.exe` when `open_dashboard` is called.
 
-OpenCode supports local STDIO MCP servers. The most version-safe setup is:
+For OpenCode, `opencode mcp add` is the most version-safe registration path. The optional Agent Skills bundle is under `skills/` for hosts that support the format.
+
+## Dashboard workflow
+
+A normal update is intentionally small:
 
 ```text
-opencode mcp add
+get_dashboard
+      ↓
+merge current repository/test/audit truth
+      ↓
+upsert_dashboard(base_revision=current revision)
+      ↓
+current JSON + immutable revision N+1
+      ↓
+open viewer auto-refreshes
 ```
 
-Choose a local server, name it `tasktrack`, and use the full path to `TaskTrackMcp.exe` as the command with no arguments. Then verify the connection with:
+On a revision conflict, read current state again, merge, and retry. Do not blindly overwrite.
 
-```text
-opencode mcp list
-```
-
-This avoids depending on a hand-written config shape, which differs between current OpenCode release lines. No TaskTrack-specific OpenCode plugin is required.
-
-### Codex / Agent Skills
-
-The MCP server works on its own. The repository also contains an optional workflow skill for hosts that support the Agent Skills format:
-
-```text
-.codex-plugin/plugin.json
-skills/tasktrack/SKILL.md
-```
-
-The nested `skills/tasktrack/` directory is intentional: a skill is a folder bundle whose entry point is `SKILL.md`, and the plugin manifest points to the containing `skills/` directory. The skill teaches the host when TaskTrack is appropriate and how to keep Suggest / Clarify / Use judgement round-trips moving on hosts without native in-call sampling.
-
-## How the interaction works
-
-A normal task is deliberately simple:
-
-```text
-agent create_task
-      ↓
-TaskTrack GUI
-      ↓
-human answers / accepts / cancels / delegates
-      ↓
-structured terminal result
-      ↓
-agent continues
-```
-
-Human answers and agent assistance are separate. A returned suggestion is advisory until the human explicitly accepts it. `Use judgement` records delegation authority but leaves human `answer.data` empty.
+The example files are under `examples/TaskTrackDashboardExample/`.
 
 ## Package layout
 
 ```text
-TaskTrack/Core       durable model, validation, persistence and recovery
-TaskTrack/Widgets    semantic question rendering
-TaskTrack/App        native GUI
-TaskTrack/Mcp        local stdio MCP server
-examples             18-type example task
-tests                deterministic Core regression tests
-skills/tasktrack     optional Agent Skill
-```
+TaskTrack/Core              human-decision model, persistence and recovery
+TaskTrack/Widgets           semantic human-question rendering
+TaskTrack/App               human-decision GUI
+TaskTrack/Mcp               human-decision stdio MCP
 
-The two distributable executables are `TaskTrackGui.exe` and `TaskTrackMcp.exe`. Keep them together in the same directory; no U++ installation is needed to run a packaged Windows release.
+TaskTrack/DashboardCore     dashboard model, validation, revisions and recovery
+TaskTrack/DashboardWidgets  dashboard renderers + TaskTrackTimelineRail
+TaskTrack/DashboardApp      read-only native dashboard viewer
+TaskTrack/DashboardMcp      dashboard stdio MCP
+
+tests                      deterministic regression tests
+examples                   decision and dashboard examples
+skills                      optional agent workflow guidance
+```
 
 ## Documentation
 
-- [Architecture](docs/ARCHITECTURE.md) — package boundaries and design decisions.
-- [MCP contract](docs/MCP.md) — tools, live interaction and fallback behaviour.
-- [Interaction lifecycle](docs/INTERACTION_LIFECYCLE.md) — direct answers, assistance and delegation.
-- [Question types](docs/QUESTION_TYPES.md) — the 18 semantic response types.
-- [Persistence schema](docs/SCHEMA.md) — durable JSON and recovery rules.
-- [Changelog](CHANGELOG.md) — release history.
+- [Architecture](docs/ARCHITECTURE.md)
+- [Dashboard contract](docs/DASHBOARD.md)
+- [MCP contract](docs/MCP.md)
+- [Interaction lifecycle](docs/INTERACTION_LIFECYCLE.md)
+- [Question types](docs/QUESTION_TYPES.md)
+- [Human-decision persistence schema](docs/SCHEMA.md)
+- [Active work](docs/ACTIVE_WORK.md)
+- [Changelog](CHANGELOG.md)
 
 ## License
 
