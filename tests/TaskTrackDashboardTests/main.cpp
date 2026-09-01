@@ -4,7 +4,6 @@ using namespace Upp;
 namespace {
 #include "TaskTrackDashboardTestHelpers.inc"
 #include "TaskTrackDashboardTestCases.inc"
-}
 CONSOLE_APP_MAIN
 {
 #include "TaskTrackDashboardTestRunA.inc"
