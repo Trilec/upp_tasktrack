@@ -1,9 +1,9 @@
-BASE: bbd9f566d7222fac336fcd458eb63a873a997823 (TaskTrack main before dashboard work)
-TASK: Complete native AI-maintained project dashboard, TaskTrack-local timeline rail, persistence/MCP, tests/docs.
-TOUCHED: DashboardCore, DashboardWidgets, DashboardApp, DashboardMcp, dashboard tests/examples/docs, README, verify, ignore rules.
-STATUS: Implementation complete; published checkpoint requires native Windows/U++ visual/build validation.
-PUBLISHED: This recovery record is included in the dashboard implementation publish; use Git history for the exact commit SHA.
-VALIDATION: Full static source/diff audit performed against TaskTrack base and upp_Ui f1d20a7abbcb4edec614c051bd761cf94eb170bf.
-VALIDATION: Deterministic DashboardCore and DashboardMcp tests are included in verify.ps1; native execution requires the Windows U++ assembly.
-BOUNDARY: Existing TaskTrack human-question Core/App/Mcp lifecycle is unchanged. Dashboard state never becomes human answer.data.
-NEXT: Run verify.ps1, open examples/TaskTrackDashboardExample/project-dashboard.json, inspect light/dark + narrow/wide layouts, then fix only observed bounded defects.
+BASE: f21cfada55f9fb1ae8a15665673f5a088f7d8419 (published dashboard companion before MCP unification)
+TASK: Unify human-decision and dashboard tool families behind the single registered TaskTrackMcp.exe.
+TOUCHED: TaskTrack/Mcp, TaskTrackBuild identity, DashboardCore version marker, verify/docs/plugin/skill; retire standalone DashboardMcp package.
+STATUS: Unified MCP correction implemented; publication checkpoint complete when this record reaches main.
+VERSION: Unified build 0.3.0-rc1; task schema 2; dashboard schema 1.
+BOUNDARY: Human create_task lifecycle remains accepted code; dashboard Core/Widgets/App remain separate and dashboard state never becomes human answer.data.
+PUBLISHED: This record travels with the 0.3.0-rc1 unification commit; Git main HEAD is authoritative.
+VALIDATION: Static source/package/diff checks performed; native Windows/U++ compile and refreshed-Codex runtime gate remain.
+NEXT: Build all six targets, run human+dashboard tests and unified MCP selftest, install TaskTrackMcp.exe with both GUIs, restart Codex, verify 0.3.0-rc1.

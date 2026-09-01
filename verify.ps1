@@ -1,5 +1,5 @@
 # Build the distributable TaskTrack human-decision and dashboard targets, tests
-# and example, then run the deterministic Core and MCP checks.
+# and example, then run deterministic Core and unified MCP checks.
 param(
     [string]$UppRoot = $env:UPP_ROOT,
     [string]$RepoRoot = $PSScriptRoot,
@@ -26,7 +26,8 @@ function Read-BuildVersion {
     return $match.Groups[1].Value
 }
 
-function Remove-OldTarget { param([string]$Target)
+function Remove-OldTarget {
+    param([string]$Target)
     $targetPath = Join-Path $buildDir $Target
     foreach($candidate in @($targetPath, "$targetPath.exe")) {
         if(Test-Path -LiteralPath $candidate) { Remove-Item -LiteralPath $candidate -Force }
@@ -41,7 +42,8 @@ function Build-UppPackage {
     else { & $umk $assembly $Package CLANGx64 --out-dir $buildDir -br +CONSOLE $targetPath }
 }
 
-function Show-BinaryIdentity { param([string]$Path)
+function Show-BinaryIdentity {
+    param([string]$Path)
     if(!(Test-Path -LiteralPath $Path)) { throw "Expected build output is missing: $Path" }
     $item = Get-Item -LiteralPath $Path
     $hash = (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash
@@ -77,32 +79,26 @@ Run-Step "Build TaskTrack MCP" { Build-UppPackage -Package "TaskTrack/Mcp" -Targ
 Run-Step "Build TaskTrack tests" { Build-UppPackage -Package "tests/TaskTrackTests" -Target "TaskTrackTests" }
 Run-Step "Build TaskTrack example" { Build-UppPackage -Package "examples/TaskTrackExample" -Target "TaskTrackExample" }
 Run-Step "Build Dashboard GUI" { Build-UppPackage -Package "TaskTrack/DashboardApp" -Target "TaskTrackDashboardGui" -Gui }
-Run-Step "Build Dashboard MCP" { Build-UppPackage -Package "TaskTrack/DashboardMcp" -Target "TaskTrackDashboardMcp" }
 Run-Step "Build Dashboard tests" { Build-UppPackage -Package "tests/TaskTrackDashboardTests" -Target "TaskTrackDashboardTests" }
 
 foreach($exe in @("TaskTrackGui.exe", "TaskTrackMcp.exe", "TaskTrackTests.exe", "TaskTrackExample.exe",
-                  "TaskTrackDashboardGui.exe", "TaskTrackDashboardMcp.exe", "TaskTrackDashboardTests.exe")) {
+                  "TaskTrackDashboardGui.exe", "TaskTrackDashboardTests.exe")) {
     if(!(Test-Path -LiteralPath (Join-Path $buildDir $exe))) { throw "Expected build output is missing: $exe" }
 }
 
 $mcpPath = Join-Path $buildDir "TaskTrackMcp.exe"
-Run-Step "MCP binary identity" {
+Run-Step "Unified MCP binary identity" {
     Show-BinaryIdentity -Path $mcpPath
     $versionOutput = (& $mcpPath --version 2>&1 | Out-String).TrimEnd()
     Write-Host $versionOutput
     if($versionOutput -notmatch [regex]::Escape($buildVersion)) { throw "Fresh MCP binary does not report expected build '$buildVersion'" }
-}
-
-$dashboardMcp = Join-Path $buildDir "TaskTrackDashboardMcp.exe"
-Run-Step "Dashboard MCP binary identity" {
-    Show-BinaryIdentity -Path $dashboardMcp
-    & $dashboardMcp --version
+    if($versionOutput -notmatch 'task schema version\s+2') { throw "Fresh MCP binary does not report task schema 2" }
+    if($versionOutput -notmatch 'dashboard schema version\s+1') { throw "Fresh MCP binary does not report dashboard schema 1" }
 }
 
 Run-Step "Core/persistence tests" { & (Join-Path $buildDir "TaskTrackTests.exe") }
-Run-Step "MCP selftest" { & $mcpPath --selftest }
+Run-Step "Unified MCP selftest" { & $mcpPath --selftest }
 Run-Step "Dashboard Core/persistence tests" { & (Join-Path $buildDir "TaskTrackDashboardTests.exe") }
-Run-Step "Dashboard MCP selftest" { & $dashboardMcp --selftest }
 
 Write-Host ""
 Write-Host "verify.ps1: ok"

@@ -1,4 +1,0 @@
-description "TaskTrack dashboard stdio MCP server";
-uses Core, TaskTrack/DashboardCore;
-file main.cpp, TaskTrackDashboardMcpBase.inc, TaskTrackDashboardMcpSchema.inc, TaskTrackDashboardMcpTools.inc, TaskTrackDashboardMcpProtocol.inc, TaskTrackDashboardMcpSelfTest.inc;
-mainconfig "" = "CONSOLE";

@@ -1,13 +1,29 @@
 # TaskTrack architecture
 
-TaskTrack now has two intentionally separate semantic interfaces for agent workflows:
+TaskTrack has two intentionally separate semantic authority domains behind one local MCP service:
 
 - **Human decisions** — a person supplies durable structured evidence.
 - **Project dashboards** — an agent supplies durable structured project state for native visual presentation.
 
-The authority domains never merge. `TaskTrackDocument.items[].answer.data` remains human-answer authority. Dashboard state may reference a human task but is always agent-authored management/presentation state.
+`TaskTrackDocument.items[].answer.data` remains human-answer authority. Dashboard state may reference a human task but is always agent-authored management/presentation state.
 
-## Existing human-decision packages
+## Single MCP boundary
+
+Agent hosts register only `TaskTrackMcp.exe`.
+
+```text
+Agent host
+    |
+    +-- TaskTrackMcp.exe
+            |
+            +-- create_task / open_task --> TaskTrackGui.exe
+            |
+            +-- dashboard tools ---------> TaskTrackDashboardGui.exe
+```
+
+The MCP executable exposes both tool families. Human-decision calls retain their existing live interaction lifecycle. Dashboard calls are non-blocking project-state operations and do not enter the human-evidence wait path.
+
+## Human-decision packages
 
 ### `TaskTrack/Core`
 Owns the human task/answer model, 18 semantic question types, validation/migration, persistence/recovery, locator/result helpers and the separate agent-assistance sidecar.
@@ -19,11 +35,9 @@ Maps semantic human questions onto native `upp_Ui` controls. MCP never names GUI
 Owns the native question window, measured responsive layout, autosave/reminders and live human interaction.
 
 ### `TaskTrack/Mcp`
-Owns the existing live `create_task` lifecycle and assistance protocol.
+Owns the single public STDIO MCP boundary. The accepted human `create_task` lifecycle remains intact and the dashboard tool bridge delegates project-state operations to DashboardCore.
 
-These packages were deliberately left unchanged by the dashboard addition.
-
-## Dashboard companion packages
+## Dashboard packages
 
 ### `TaskTrack/DashboardCore`
 GUI- and MCP-independent authority for dashboard state:
@@ -39,54 +53,31 @@ GUI- and MCP-independent authority for dashboard state:
 - immutable numbered revision snapshots with incomplete-next-revision crash recovery;
 - current/history listing and revision loading.
 
-The current dashboard is not intended as an append-only project log. Revisions hold prior accepted state.
+The current dashboard is not an append-only project log. Revisions hold prior accepted state.
 
 ### `TaskTrack/DashboardWidgets`
 Maps the eight dashboard semantics onto native `upp_Ui` controls. It includes the TaskTrack-local `TaskTrackTimelineRail` while that control is being proven in real dashboard usage.
 
-The rail has a normal Ui-style public contract: theme-driven default style, custom-style override, data binding, selection, mouse, keyboard and focus behaviour.
-
-Project State consumes the public `UiProgressRing`; progress/objective rows consume existing `UiProgressBar`. Other panels are compositions of standard Ui labels/layouts/group panels.
+Project State consumes public `UiProgressRing`; progress/objective rows consume existing Ui controls. Agents provide semantics, not pixel geometry.
 
 ### `TaskTrack/DashboardApp`
-Read-only native dashboard viewer:
+Read-only native dashboard viewer with project summary, progress ring, attention count, categories, stacked independent panels, detail expansion, current auto-refresh and historical revision browsing.
 
-- summary header/ring/attention count;
-- category filter;
-- revision selector;
-- vertically stacked independent panels;
-- panel detail expansion;
-- current revision auto-refresh;
-- historical revision browsing.
-
-There is no fixed dashboard geometry supplied by the agent. The agent supplies semantic chunks; the App owns native composition.
-
-### `TaskTrack/DashboardMcp`
-Small independent local STDIO MCP server over DashboardCore. Dashboard tools return immediately; they do not enter the blocking human-input lifecycle.
-
-Separating DashboardMcp from the accepted human-decision MCP avoids risking the live TaskTrack interaction while the dashboard contract is new.
-
-## Executables
-
-Human decision:
+## Distributable runtime
 
 ```text
 TaskTrackMcp.exe
 TaskTrackGui.exe
-```
-
-Dashboard:
-
-```text
-TaskTrackDashboardMcp.exe
 TaskTrackDashboardGui.exe
 ```
+
+The MCP and both GUIs are kept together. Only `TaskTrackMcp.exe` is registered with the agent host.
 
 ## Persistence invariants
 
 1. Dashboard JSON is never human evidence.
 2. Existing dashboard updates require exact `base_revision`.
-3. Writer locking closes the check-then-write race across simultaneous MCP processes.
+3. Writer locking closes the check-then-write race across simultaneous agent processes.
 4. Accepted numbered revisions are immutable.
 5. An incomplete beyond-current next revision from a crashed writer may be replaced under the writer lock; accepted revisions at or below current may not.
 6. Current documents are bounded; history belongs in revisions.

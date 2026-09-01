@@ -1,5 +1,6 @@
 #include "TaskTrackDashboardCore.h"
 
+#include <TaskTrack/Core/TaskTrackBuild.h>
 #include <ctype.h>
 
 namespace Upp {

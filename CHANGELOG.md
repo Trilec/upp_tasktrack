@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.0-rc1 — 2026-09-01
+
+- Unified TaskTrack behind one registered `TaskTrackMcp.exe`; the MCP now exposes both human-decision and dashboard tool families.
+- `create_task` / `open_task` continue to launch `TaskTrackGui.exe`; `open_dashboard` launches sibling `TaskTrackDashboardGui.exe`.
+- Removed the standalone `TaskTrackDashboardMcp.exe` product and its separate host registration.
+- Added dashboard dispatch and dashboard MCP self-test coverage to the existing TaskTrack MCP without changing the accepted human interaction lifecycle.
+- Unified build identity is `0.3.0-rc1`; the version surface reports task schema 2 and dashboard schema 1 for restart verification.
+- Dashboard Core/Widgets/App remain separate internal subsystems and dashboard state remains distinct from authoritative human `items[].answer.data`.
+
 ## Dashboard companion — 2026-09-01
 
 - Added a complete semantic project-dashboard subsystem without changing the accepted human-question lifecycle.
@@ -7,12 +16,12 @@
 - Added `TaskTrack/DashboardWidgets`, including a TaskTrack-local `TaskTrackTimelineRail` with theme/custom-style, data, selection, mouse, keyboard and focus behaviour.
 - Uses the existing `UiProgressRing` directly for overall/project-state circular progress.
 - Added `TaskTrackDashboardGui.exe`, a read-only native cockpit with category filtering, compact/full panel inspection, current-state auto-refresh and historical revision browsing.
-- Added `TaskTrackDashboardMcp.exe` with validate/upsert/read/open/list/history tools.
-- Added deterministic DashboardCore regression tests and DashboardMcp self-test coverage.
+- Added the dashboard MCP tool family with validate/upsert/read/open/list/history operations; the final 0.3.0-rc1 boundary is the single `TaskTrackMcp.exe`.
+- Added deterministic DashboardCore regression tests and dashboard MCP tool-family self-test coverage.
 - Hardened dashboard writes with a short cross-process writer lock and safe recovery of an incomplete beyond-current next revision after a crashed writer.
 - Added dashboard examples, Agent Skill guidance and full dashboard contract documentation.
 - Extended `verify.ps1` to build and validate both existing TaskTrack executables and the new dashboard companion targets.
-- Existing `TaskTrackMcp.exe`, `TaskTrackGui.exe`, human task schema and authoritative `items[].answer.data` path remain unchanged.
+- Existing human-decision semantics, `TaskTrackGui.exe`, human task schema and authoritative `items[].answer.data` path remain unchanged by the dashboard model addition.
 
 ## 0.2.1 — 2026-08-27
 

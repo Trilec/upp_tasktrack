@@ -1,6 +1,6 @@
 String TaskTrackDashboardVersion()
 {
-    return "0.1.0";
+    return TaskTrackBuildVersion();
 }
 
 String TaskTrackDashboardPanelTypeName(TaskTrackDashboardPanelType type)

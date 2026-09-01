@@ -1,33 +1,24 @@
 ---
 name: tasktrack-dashboard
-description: Maintain and present durable visual project state through TaskTrack Dashboard. Use it when the user asks where a project stands, wants a project/status dashboard, milestones, objectives, next steps, attention items, verification/audit state, changes or revision history. Dashboard state is agent-authored and must never be treated as human TaskTrack answer evidence.
+description: Maintain and present durable visual project state through the dashboard tools exposed by the single TaskTrack MCP service. Use it for project status, milestones, objectives, next steps, attention, verification, changes or revision history. Dashboard state is agent-authored and never human TaskTrack answer evidence.
 license: GPL-3.0-only
 metadata:
-  version: "0.1.0"
+  version: "0.3.0-rc1"
 ---
 
 # TaskTrack Dashboard
 
-TaskTrack Dashboard is the durable visual presentation path for project state.
+TaskTrack Dashboard is the durable visual presentation path for project state. It is reached through the same registered `TaskTrackMcp.exe` as human TaskTrack decisions; `open_dashboard` launches the sibling `TaskTrackDashboardGui.exe`.
 
 ## When to use it
 
-Use the dashboard when a visual structured status is more useful than another prose list, especially for:
+Use dashboard tools when a visual structured status is more useful than another prose list, especially for current state, milestones, objectives/workstreams, next steps, attention/blockers/risks, verification/audits/tests, important changes and revision history.
 
-- current project state;
-- milestones/checkpoints;
-- objectives/workstreams and percentages;
-- next steps;
-- attention/blockers/risks;
-- verification/audits/tests;
-- important changes;
-- durable revision history.
-
-Do not use the dashboard as a substitute for human TaskTrack evidence. If a person must decide, approve or visually verify something, use the normal human TaskTrack workflow and optionally link its task id from an Attention entry.
+Do not use dashboard state as a substitute for human TaskTrack evidence. If a person must decide, approve or visually verify something, use the normal human TaskTrack workflow and optionally link its task id from an Attention entry.
 
 ## Panel selection
 
-Choose only panels useful for the question.
+Choose only panels useful for the question:
 
 - `project_state`: concise where-are-we snapshot.
 - `timeline`: ordered phases/milestones/checkpoints.
@@ -42,21 +33,15 @@ A quick status normally needs only a few panels. Do not mechanically send all ei
 
 ## Keep current state bounded
 
-Current dashboard JSON should describe useful current state, not every event in project history. Prefer stable IDs, archive/compress completed detail, and rely on immutable dashboard revisions for previous accepted states.
+Current dashboard JSON should describe useful current state, not every event in project history. Preserve stable IDs, archive/compress completed detail, and rely on immutable dashboard revisions for previous accepted states.
 
 ## Update workflow
 
-1. Read current dashboard with `get_dashboard` when it already exists.
+1. Read current state with `get_dashboard` when it exists.
 2. Reconcile against current repository/build/test/audit truth.
-3. Preserve stable panel and entry ids where the meaning is unchanged.
-4. Update semantic status/progress/evidence and remove obsolete current clutter where appropriate.
-5. Call `upsert_dashboard` using the exact current `base_revision`. On `REVISION_CONFLICT`, re-read current state, merge and retry. On `WRITE_BUSY`, wait/retry the normal read/merge/upsert path. Never force a stale document or bypass the writer lock.
+3. Preserve stable panel and entry ids where meaning is unchanged.
+4. Update semantic status/progress/evidence and remove obsolete current clutter.
+5. Call `upsert_dashboard` using exact current `base_revision`. On `REVISION_CONFLICT`, re-read/merge/retry. On `WRITE_BUSY`, retry the normal path; never bypass the writer lock.
 6. Use `open_dashboard` when the person needs the native visual presentation.
 
-## Progress
-
-Prefer evidence-backed entry progress. When suitable, let Core derive overall progress from weighted contributing Timeline/Progress List entries. Use explicit `overall_progress` only when there is a defensible management estimate distinct from the mathematical milestone average. Keep `confidence` separate.
-
-## Attention
-
-Use Attention for unresolved risk/blocker/approval/decision state. Write the title/detail in plain human language. Do not hide the actual problem behind test jargon.
+Prefer evidence-backed progress. Use explicit `overall_progress` only when there is a defensible management estimate distinct from derived progress. Keep `confidence` separate.

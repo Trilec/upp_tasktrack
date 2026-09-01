@@ -1,10 +1,42 @@
-# TaskTrack MCP contracts
+# TaskTrack MCP contract
 
-TaskTrack exposes two local STDIO MCP services with deliberately different authority and lifecycle.
+TaskTrack exposes **one local STDIO MCP service**: `TaskTrackMcp.exe`.
 
-## Human-decision MCP
+It carries two deliberately separate authority domains: durable human evidence and AI-maintained project-dashboard state. Sharing one MCP process does not merge those data models.
 
-`TaskTrackMcp.exe` is the established human evidence server. Its tools remain:
+## Registration
+
+Register only:
+
+```text
+name: tasktrack
+command: C:\path\to\TaskTrackMcp.exe
+```
+
+Keep `TaskTrackGui.exe` and `TaskTrackDashboardGui.exe` beside the MCP executable.
+
+## Version identity
+
+For the current bring-up candidate:
+
+```text
+TaskTrackMcp.exe --version
+```
+
+reports the unified build identity plus both schemas:
+
+```text
+TaskTrack MCP
+version 0.3.0-rc1
+task core version 0.2.1
+task schema version 2
+dashboard schema version 1
+MCP protocol 2026-07-28
+```
+
+The MCP `version` tool exposes the same build identity and schema fields.
+
+## Human-decision tools
 
 - `version`
 - `create_task`
@@ -14,75 +46,38 @@ TaskTrack exposes two local STDIO MCP services with deliberately different autho
 - `close_task`
 - `respond_to_request`
 
-`create_task` normally owns the live interaction until completed/closed or an assistance compatibility checkpoint. Canonical human evidence is `items[].answer.data`. Dashboard work does not alter this contract.
+`create_task` normally owns the live interaction until completed/closed or an assistance compatibility checkpoint. Canonical human evidence is `items[].answer.data`.
 
-See `INTERACTION_LIFECYCLE.md` and `QUESTION_TYPES.md` for the human path.
+`create_task` and `open_task` launch `TaskTrackGui.exe`.
 
-## Dashboard MCP
+See `INTERACTION_LIFECYCLE.md` and `QUESTION_TYPES.md`.
 
-`TaskTrackDashboardMcp.exe` is a separate non-blocking project-state service over DashboardCore.
+## Dashboard tools
 
-### Tools
-
-- `version` — dashboard component/schema/protocol information.
-- `validate_dashboard` — validate a dashboard document without installing it.
-- `upsert_dashboard` — create/update current state and create the next immutable accepted revision.
-- `get_dashboard` — retrieve current state.
-- `open_dashboard` — launch the read-only native viewer for an existing dashboard.
-- `list_dashboards` — list recent current dashboard documents.
+- `validate_dashboard` — validate semantic dashboard state without persisting it.
+- `upsert_dashboard` — create/update current state and append the next immutable accepted revision.
+- `get_dashboard` — retrieve current state and progress/attention summaries.
+- `open_dashboard` — launch `TaskTrackDashboardGui.exe` for an existing dashboard.
+- `list_dashboards` — list current dashboards.
 - `list_dashboard_revisions` — list accepted immutable revisions.
-- `get_dashboard_revision` — retrieve a specific accepted historical revision.
+- `get_dashboard_revision` — retrieve one historical revision.
+
+Dashboard calls return normally; opening the viewer does not hold the MCP request open waiting for human evidence.
 
 ### Upsert
 
-Create:
+Creation starts at revision 1. A new dashboard may omit `base_revision` or use zero.
 
-```json
-{
-  "dashboard": { "dashboard_id": "my-project", "title": "Project status", "panels": [...] }
-}
-```
+Existing dashboards require exact current `base_revision`:
 
-A new dashboard becomes revision 1. `base_revision` may be omitted or zero.
+- `REVISION_REQUIRED` — base revision omitted.
+- `REVISION_CONFLICT` — stale base; re-read, merge and retry.
+- `WRITE_BUSY` — another process owns the short writer lock; retry the normal read/merge/upsert path.
 
-Update:
+Never bypass the writer lock or force stale state over newer project truth.
 
-```json
-{
-  "dashboard_id": "my-project",
-  "base_revision": 4,
-  "dashboard": { "dashboard_id": "my-project", "title": "Project status", "panels": [...] }
-}
-```
+## Presentation boundary
 
-Existing dashboards require an exact current `base_revision`.
+Agents send semantic panel and entry data only. Do not send U++ class names, coordinates, widths or other GUI construction instructions. The native dashboard chooses presentation.
 
-- `REVISION_REQUIRED` — update omitted a base revision.
-- `REVISION_CONFLICT` — base revision is stale; re-read/merge/retry.
-- `WRITE_BUSY` — another process currently owns the short dashboard writer lock; retry the normal read/merge/upsert path.
-
-The upsert path serializes writers with a cross-process lock; `WRITE_BUSY` is retryable and must not be bypassed.
-
-### Presentation semantics
-
-Agents send semantic panel/entry data only. Do not send U++ class names, coordinates, widths, colours or other GUI construction instructions. The native app chooses presentation.
-
-### Open
-
-`open_dashboard` returns after launching the viewer. Unlike a human TaskTrack question, a dashboard view is informational and does not hold the MCP request open waiting for user evidence.
-
-### Authority
-
-Dashboard output is useful project state, not human testimony. If an Attention item needs a human decision, create a normal TaskTrack human task and optionally reference its `task_id` from the dashboard entry.
-
-## Dashboard CLI
-
-```text
-TaskTrackDashboardMcp.exe
-TaskTrackDashboardMcp.exe --help
-TaskTrackDashboardMcp.exe --version
-TaskTrackDashboardMcp.exe --selftest
-TaskTrackDashboardMcp.exe --oneshot <request.json>
-```
-
-Register the executable as a local STDIO MCP service with no arguments.
+Dashboard output is project state, not human testimony. If an Attention item requires a human decision, create a normal TaskTrack human task and optionally reference its `task_id` from the dashboard entry.

@@ -23,7 +23,7 @@ The two models are intentionally separate. Dashboard state is agent-authored pre
 
 ## Project dashboards
 
-`TaskTrackDashboardMcp.exe` owns the AI-facing dashboard contract and `TaskTrackDashboardGui.exe` is the read-only native project cockpit.
+`TaskTrackMcp.exe` exposes both human-decision and dashboard tool families. `TaskTrackDashboardGui.exe` is the read-only native project cockpit opened by `open_dashboard`.
 
 - Eight semantic panel types: project state, timeline, progress/objectives, next actions, attention, verification, changes and generic records.
 - `UiProgressRing` for overall/project-state progress.
@@ -61,27 +61,23 @@ build\TaskTrackMcp.exe
 build\TaskTrackTests.exe
 build\TaskTrackExample.exe
 build\TaskTrackDashboardGui.exe
-build\TaskTrackDashboardMcp.exe
 build\TaskTrackDashboardTests.exe
 ```
 
-and runs the deterministic Core tests, main MCP self-test, dashboard Core tests and dashboard MCP self-test.
+and runs the deterministic human Core tests, the unified MCP self-test (human + dashboard tool families), and dashboard Core tests.
 
 For a TheIDE assembly include the TaskTrack repository, `upp_Ui`, `upp_animation`, and U++ `uppsrc`.
 
 ## Connect to an agent host
 
-Register the services you need as local STDIO MCP servers with no arguments:
+Register **one** local STDIO MCP server with no arguments:
 
 ```text
 name: tasktrack
 command: C:\path\to\TaskTrackMcp.exe
-
-name: tasktrack-dashboard
-command: C:\path\to\TaskTrackDashboardMcp.exe
 ```
 
-Keep each GUI executable beside its MCP executable. `TaskTrackMcp.exe` launches `TaskTrackGui.exe`; `TaskTrackDashboardMcp.exe` launches `TaskTrackDashboardGui.exe` when `open_dashboard` is called.
+Keep both GUI executables beside the MCP executable. `TaskTrackMcp.exe` launches `TaskTrackGui.exe` for human-decision workflows and `TaskTrackDashboardGui.exe` when `open_dashboard` is called.
 
 For OpenCode, `opencode mcp add` is the most version-safe registration path. The optional Agent Skills bundle is under `skills/` for hosts that support the format.
 
@@ -111,12 +107,11 @@ The example files are under `examples/TaskTrackDashboardExample/`.
 TaskTrack/Core              human-decision model, persistence and recovery
 TaskTrack/Widgets           semantic human-question rendering
 TaskTrack/App               human-decision GUI
-TaskTrack/Mcp               human-decision stdio MCP
+TaskTrack/Mcp               single stdio MCP for human + dashboard tool families
 
 TaskTrack/DashboardCore     dashboard model, validation, revisions and recovery
 TaskTrack/DashboardWidgets  dashboard renderers + TaskTrackTimelineRail
 TaskTrack/DashboardApp      read-only native dashboard viewer
-TaskTrack/DashboardMcp      dashboard stdio MCP
 
 tests                      deterministic regression tests
 examples                   decision and dashboard examples

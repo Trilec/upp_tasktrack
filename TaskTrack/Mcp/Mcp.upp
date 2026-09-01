@@ -1,9 +1,16 @@
 uses
     Core,
-    TaskTrack/Core;
+    TaskTrack/Core,
+    TaskTrack/DashboardCore;
 
 file
     TaskTrackAgentMcp.h,
+    TaskTrackDashboardBridge.h,
+    TaskTrackDashboardBridge.cpp,
+    TaskTrackDashboardBridgeSchema.inc,
+    TaskTrackDashboardBridgeTools.inc,
+    TaskTrackDashboardBridgeSelfTest.inc,
+    TaskTrackHumanMcp.inc,
     main.cpp;
 
 mainconfig

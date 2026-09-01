@@ -1,7 +1,7 @@
 {
   "name": "tasktrack",
-  "description": "TaskTrack provides durable human decisions and AI-maintained project dashboards for agent workflows. Use human TaskTrack only for evidence a person must supply; use the dashboard companion for visual project state, milestones, progress, next actions, risks, verification and revision history.",
-  "version": "0.2.1",
+  "description": "TaskTrack provides durable human decisions and AI-maintained project dashboards through one MCP service. Use human TaskTrack only for evidence a person must supply; use dashboard tools for visual project state, milestones, progress, next actions, risks, verification and revision history.",
+  "version": "0.3.0-rc1",
   "author": {"name":"Curtis Edwards"},
   "repository":"https://github.com/Trilec/upp_tasktrack",
   "license":"GPL-3.0-only",
@@ -9,8 +9,8 @@
   "skills":"./skills/",
   "interface":{
     "displayName":"TaskTrack",
-    "shortDescription":"Durable human decisions and visual project state for agent workflows.",
-    "longDescription":"Use TaskTrack when an agent reaches a genuinely human-dependent decision or verification, and use TaskTrack Dashboard when the agent needs to maintain a durable visual project cockpit with milestones, objectives, next actions, attention items, audits and immutable revision history. The two authority domains remain separate: agent-authored dashboard state never becomes human answer evidence.",
+    "shortDescription":"One MCP for durable human decisions and visual project state.",
+    "longDescription":"Register TaskTrackMcp.exe once. Its human-decision tools collect durable human evidence through TaskTrackGui.exe, while its dashboard tools maintain and open TaskTrackDashboardGui.exe. The authority domains remain separate: agent-authored dashboard state never becomes human answer evidence.",
     "developerName":"Curtis Edwards",
     "category":"Developer Tools",
     "capabilities":["Read","Write"],
