@@ -1,7 +1,7 @@
 {
   "name": "tasktrack",
   "description": "TaskTrack provides durable human decisions and AI-maintained project dashboards through one MCP service. Use human TaskTrack only for evidence a person must supply; use dashboard tools for visual project state, milestones, progress, next actions, risks, verification and revision history.",
-  "version": "0.3.0-rc1",
+  "version": "0.3.0",
   "author": {"name":"Curtis Edwards"},
   "repository":"https://github.com/Trilec/upp_tasktrack",
   "license":"GPL-3.0-only",

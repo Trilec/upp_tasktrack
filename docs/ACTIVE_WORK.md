@@ -1,9 +1,12 @@
-BASE: f21cfada55f9fb1ae8a15665673f5a088f7d8419 (published dashboard companion before MCP unification)
-TASK: Unify human-decision and dashboard tool families behind the single registered TaskTrackMcp.exe.
-TOUCHED: TaskTrack/Mcp, TaskTrackBuild identity, DashboardCore version marker, verify/docs/plugin/skill; retire standalone DashboardMcp package.
-STATUS: Unified MCP correction implemented; publication checkpoint complete when this record reaches main.
-VERSION: Unified build 0.3.0-rc1; task schema 2; dashboard schema 1.
-BOUNDARY: Human create_task lifecycle remains accepted code; dashboard Core/Widgets/App remain separate and dashboard state never becomes human answer.data.
-PUBLISHED: This record travels with the 0.3.0-rc1 unification commit; Git main HEAD is authoritative.
-VALIDATION: Static source/package/diff checks performed; native Windows/U++ compile and refreshed-Codex runtime gate remain.
-NEXT: Build all six targets, run human+dashboard tests and unified MCP selftest, install TaskTrackMcp.exe with both GUIs, restart Codex, verify 0.3.0-rc1.
+BASE: f3fed550b144666afa557b96205e5e7e16374a5f (remote main before 0.3.0 release)
+RELEASE: Unified TaskTrack + Dashboard 0.3.0
+
+OBJECTIVE: Promote the accepted unified implementation from 0.3.0-rc1 to 0.3.0.
+STATUS: Release identity and repository terminology updated; verification passed.
+BOUNDARY: One registered TaskTrackMcp.exe launches TaskTrackGui.exe or
+TaskTrackDashboardGui.exe. Dashboard state remains separate from human
+TaskTrack answer.data and the accepted human interaction lifecycle.
+VALIDATION: verify.ps1 must pass six builds, TaskTrack tests, unified MCP
+selftest, Dashboard tests, version 0.3.0, task schema 2 and dashboard schema 1.
+PUBLISHED: Release commit is on origin/main; Git main HEAD is authoritative.
+NEXT: None for this release.

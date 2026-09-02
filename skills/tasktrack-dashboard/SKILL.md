@@ -3,7 +3,7 @@ name: tasktrack-dashboard
 description: Maintain and present durable visual project state through the dashboard tools exposed by the single TaskTrack MCP service. Use it for project status, milestones, objectives, next steps, attention, verification, changes or revision history. Dashboard state is agent-authored and never human TaskTrack answer evidence.
 license: GPL-3.0-only
 metadata:
-  version: "0.3.0-rc1"
+  version: "0.3.0"
 ---
 
 # TaskTrack Dashboard

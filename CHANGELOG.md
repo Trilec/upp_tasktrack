@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.0 — 2026-09-02
+
+- Promoted the accepted unified TaskTrack and Dashboard release from 0.3.0-rc1.
+- One registered `TaskTrackMcp.exe` launches `TaskTrackGui.exe` and `TaskTrackDashboardGui.exe`.
+- Task schema remains 2 and dashboard schema remains 1.
+
 ## 0.3.0-rc1 — 2026-09-01
 
 - Unified TaskTrack behind one registered `TaskTrackMcp.exe`; the MCP now exposes both human-decision and dashboard tool families.
