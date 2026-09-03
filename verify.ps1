@@ -1,5 +1,5 @@
-# Build the distributable TaskTrack human-decision and dashboard targets, tests
-# and example, then run deterministic Core and unified MCP checks.
+# Build the distributable TaskTrack human-decision, dashboard and optional tunnel
+# supervisor targets, tests and example, then run deterministic Core and MCP checks.
 param(
     [string]$UppRoot = $env:UPP_ROOT,
     [string]$RepoRoot = $PSScriptRoot,
@@ -76,12 +76,14 @@ Write-Host "TaskTrack build expected: $buildVersion"
 
 Run-Step "Build TaskTrack GUI" { Build-UppPackage -Package "TaskTrack/App" -Target "TaskTrackGui" -Gui }
 Run-Step "Build TaskTrack MCP" { Build-UppPackage -Package "TaskTrack/Mcp" -Target "TaskTrackMcp" }
+Run-Step "Build TaskTrack tunnel GUI" { Build-UppPackage -Package "TaskTrack/TunnelApp" -Target "TaskTrackTunnelGui" -Gui }
 Run-Step "Build TaskTrack tests" { Build-UppPackage -Package "tests/TaskTrackTests" -Target "TaskTrackTests" }
 Run-Step "Build TaskTrack example" { Build-UppPackage -Package "examples/TaskTrackExample" -Target "TaskTrackExample" }
 Run-Step "Build Dashboard GUI" { Build-UppPackage -Package "TaskTrack/DashboardApp" -Target "TaskTrackDashboardGui" -Gui }
 Run-Step "Build Dashboard tests" { Build-UppPackage -Package "tests/TaskTrackDashboardTests" -Target "TaskTrackDashboardTests" }
 
-foreach($exe in @("TaskTrackGui.exe", "TaskTrackMcp.exe", "TaskTrackTests.exe", "TaskTrackExample.exe",
+foreach($exe in @("TaskTrackGui.exe", "TaskTrackMcp.exe", "TaskTrackTunnelGui.exe",
+                  "TaskTrackTests.exe", "TaskTrackExample.exe",
                   "TaskTrackDashboardGui.exe", "TaskTrackDashboardTests.exe")) {
     if(!(Test-Path -LiteralPath (Join-Path $buildDir $exe))) { throw "Expected build output is missing: $exe" }
 }

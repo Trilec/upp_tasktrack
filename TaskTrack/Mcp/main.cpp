@@ -15,6 +15,7 @@
 #include <TaskTrack/Core/TaskTrackCore.h>
 #include <TaskTrack/Core/TaskTrackBuild.h>
 #include <TaskTrack/DashboardCore/TaskTrackDashboardCore.h>
+#include <TaskTrack/TunnelCore/TaskTrackTunnelCore.h>
 #include "TaskTrackDashboardBridge.h"
 
 using namespace Upp;
@@ -137,10 +138,41 @@ Value UnifiedVersionResult(bool modern)
     out.Add("question_types", 18);
     out.Add("dashboard_panel_types", 8);
     out.Add("dashboard_tools", true);
+    out.Add("tunnel_probe", true);
     out.Add("current_protocol", UNIFIED_PROTOCOL);
     out.Add("tasks_extension", "io.modelcontextprotocol/tasks");
     out.Add("live_create_task", true);
     out.Add("mrtr_assistance", true);
+    return BuildCallToolResult(out, false, modern);
+}
+
+Value UnifiedTunnelProbeToolSpec()
+{
+    ValueMap input;
+    input.Add("type", "object");
+    input.Add("additionalProperties", false);
+
+    ValueMap annotations;
+    annotations.Add("readOnlyHint", true);
+    annotations.Add("destructiveHint", false);
+    annotations.Add("idempotentHint", true);
+
+    ValueMap tool;
+    tool.Add("name", "tunnel_probe");
+    tool.Add("description",
+             "Use this when verifying that browser or remote tunnel access reaches this exact local TaskTrack runtime. It reads only the latest probe written by TaskTrackTunnelGui and never modifies tasks, dashboards, files, or repository state.");
+    tool.Add("inputSchema", input);
+    tool.Add("annotations", annotations);
+    return Value(tool);
+}
+
+Value UnifiedTunnelProbeResult(bool modern)
+{
+    ValueMap out = TaskTrackTunnelProbeStatusValue();
+    out.Set("build_version", TaskTrackBuildVersion());
+    out.Set("task_schema_version", 2);
+    out.Set("dashboard_schema_version", TASKTRACK_DASHBOARD_SCHEMA_VERSION);
+    out.Set("transport", "stdio");
     return BuildCallToolResult(out, false, modern);
 }
 
@@ -207,6 +239,7 @@ Value UnifiedHandleRequest(const Value& request, bool& has_response)
             if(tools_value.Is<ValueArray>()) {
                 ValueArray tools = tools_value;
                 TaskTrackAppendDashboardToolSpecs(tools);
+                tools.Add(UnifiedTunnelProbeToolSpec());
                 result.Set("tools", tools);
             }
             PatchServerInfo(result);
@@ -226,6 +259,12 @@ Value UnifiedHandleRequest(const Value& request, bool& has_response)
     String name = ToolName(request);
     if(name == "version") {
         response.Set("result", UnifiedVersionResult(IsModern(request)));
+        PatchUnifiedResponse(response);
+        return Value(response);
+    }
+
+    if(name == "tunnel_probe") {
+        response.Set("result", UnifiedTunnelProbeResult(IsModern(request)));
         PatchUnifiedResponse(response);
         return Value(response);
     }
@@ -337,20 +376,34 @@ int UnifiedRunSelfTest()
     String list_json = AsJSON(UnifiedHandleRequest(
         UnifiedRequest("tools/list", 201, list_params), has_response), false);
     if(!has_response || list_json.Find("create_task") < 0 ||
-       list_json.Find("upsert_dashboard") < 0 || list_json.Find("open_dashboard") < 0)
-        failures.Add("unified tools/list does not expose both TaskTrack tool families");
+       list_json.Find("upsert_dashboard") < 0 || list_json.Find("open_dashboard") < 0 ||
+       list_json.Find("tunnel_probe") < 0)
+        failures.Add("unified tools/list does not expose human, dashboard and tunnel-probe tools");
     if(list_json.Find("validate a candidate semantic dashboard") < 0 ||
        list_json.Find("exact base_revision") < 0 ||
        list_json.Find("human needs to inspect") < 0 ||
        list_json.Find("accepted dashboard history") < 0)
         failures.Add("dashboard tool descriptions do not expose the operational workflow");
+    if(list_json.Find("verifying that browser or remote tunnel access") < 0 ||
+       list_json.Find("never modifies tasks, dashboards, files, or repository state") < 0)
+        failures.Add("tunnel_probe description does not expose its read-only diagnostic boundary");
+
+    ValueMap probe_params;
+    probe_params.Add("name", "tunnel_probe");
+    probe_params.Add("arguments", ValueMap());
+    probe_params.Add("_meta", UnifiedModernMeta());
+    String probe_json = AsJSON(UnifiedHandleRequest(
+        UnifiedRequest("tools/call", 202, probe_params), has_response), false);
+    if(!has_response || probe_json.Find("read_only") < 0 ||
+       probe_json.Find(TaskTrackBuildVersion()) < 0)
+        failures.Add("tunnel_probe tool is missing read-only/build identity");
 
     ValueMap call_params;
     call_params.Add("name", "version");
     call_params.Add("arguments", ValueMap());
     call_params.Add("_meta", UnifiedModernMeta());
     String version_json = AsJSON(UnifiedHandleRequest(
-        UnifiedRequest("tools/call", 202, call_params), has_response), false);
+        UnifiedRequest("tools/call", 203, call_params), has_response), false);
     if(!has_response || version_json.Find(TaskTrackBuildVersion()) < 0 ||
        version_json.Find("dashboard_schema_version") < 0 ||
        version_json.Find(Format(":%d", TASKTRACK_DASHBOARD_SCHEMA_VERSION)) < 0)
@@ -388,6 +441,7 @@ String UnifiedMcpHelpText()
         "\n"
         "Runtime:\n"
         "  TaskTrackGui.exe and TaskTrackDashboardGui.exe must be beside TaskTrackMcp.exe.\n"
+        "  TaskTrackTunnelGui.exe is an optional supervisor for the official Secure MCP Tunnel client.\n"
         "  open_task/create_task launch TaskTrackGui.exe.\n"
         "  open_dashboard launches TaskTrackDashboardGui.exe.\n"
         "\n"
@@ -396,7 +450,8 @@ String UnifiedMcpHelpText()
         "  Dashboard state is agent-authored project state and never substitutes for human evidence.\n"
         "\n"
         "Transport:\n"
-        "  stdio MCP; register TaskTrackMcp.exe once with Codex/OpenCode.";
+        "  stdio MCP; register TaskTrackMcp.exe once with Codex/OpenCode.\n"
+        "  Secure MCP Tunnel may forward the same stdio server through the official tunnel-client.";
 }
 
 } // namespace

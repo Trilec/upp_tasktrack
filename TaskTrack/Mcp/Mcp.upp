@@ -1,7 +1,8 @@
 uses
     Core,
     TaskTrack/Core,
-    TaskTrack/DashboardCore;
+    TaskTrack/DashboardCore,
+    TaskTrack/TunnelCore;
 
 file
     TaskTrackAgentMcp.h,

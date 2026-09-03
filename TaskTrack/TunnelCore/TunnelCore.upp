@@ -1,0 +1,8 @@
+description "TaskTrack local tunnel probe state shared by the MCP and tunnel supervisor";
+
+uses
+    Core;
+
+file
+    TaskTrackTunnelCore.h,
+    TaskTrackTunnelCore.cpp;

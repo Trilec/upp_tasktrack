@@ -1,0 +1,12 @@
+description "TaskTrack native supervisor for the official OpenAI Secure MCP Tunnel client";
+
+uses
+    Ui,
+    TaskTrack/Core,
+    TaskTrack/TunnelCore;
+
+file
+    main.cpp;
+
+mainconfig
+    "" = "GUI";
