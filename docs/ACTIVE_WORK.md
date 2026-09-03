@@ -1,12 +1,13 @@
-BASE: f3fed550b144666afa557b96205e5e7e16374a5f (remote main before 0.3.0 release)
-RELEASE: Unified TaskTrack + Dashboard 0.3.0
+BASE: 3f0eb25d5ca1073ba0aa6def3b36d5e816ca691c (remote main before 0.3.1)
+RELEASE: TaskTrack 0.3.1 agent workflow guidance
 
-OBJECTIVE: Promote the accepted unified implementation from 0.3.0-rc1 to 0.3.0.
-STATUS: Release identity and repository terminology updated; verification passed.
+OBJECTIVE: Make human TaskTrack, Dashboard and cross-agent handoff usage clear
+to an unfamiliar capable developer/agent without changing application behavior.
+STATUS: Skills, MCP descriptions/schemas, README and handoff guidance updated; verification passed.
 BOUNDARY: One registered TaskTrackMcp.exe launches TaskTrackGui.exe or
-TaskTrackDashboardGui.exe. Dashboard state remains separate from human
-TaskTrack answer.data and the accepted human interaction lifecycle.
-VALIDATION: verify.ps1 must pass six builds, TaskTrack tests, unified MCP
-selftest, Dashboard tests, version 0.3.0, task schema 2 and dashboard schema 1.
+TaskTrackDashboardGui.exe; human evidence remains items[].answer.data and
+dashboard state remains agent-authored current project presentation.
+VALIDATION: verify.ps1, MCP description/version selftest and complete diff review
+passed; task schema 2, dashboard schema 1 and persistence remain unchanged.
 PUBLISHED: Release commit is on origin/main; Git main HEAD is authoritative.
 NEXT: None for this release.

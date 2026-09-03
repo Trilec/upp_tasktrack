@@ -344,24 +344,24 @@ Value CreateTaskSchema()
 Value BuildToolsList(bool modern)
 {
     ValueArray tools;
-    tools.Add(ToolSpec("version", "Return TaskTrack version/protocol.", EmptyObjectSchema(), true, false, true));
+    tools.Add(ToolSpec("version", "Use this to inspect TaskTrack version and protocol identity.", EmptyObjectSchema(), true, false, true));
     tools.Add(ToolSpec("create_task",
         "Create durable human evidence and, by default, keep this tool call active while the TaskTrack GUI is open. When the human completes or cancels, the final structured result returns directly from this create_task call so the agent continues without manual polling. If the human requests Suggest/Clarify, modern clients receive an in-call MCP input_required sampling round and then the same create_task call resumes. Use launch=false only for explicitly detached/recovery workflows. Do not use TaskTrack for ordinary conversation/explanation/opinion/information.",
         CreateTaskSchema(), false, false, false));
     tools.Add(ToolSpec("get_task",
-        "Recovery/detached lookup for durable TaskTrack state. Normal launched create_task already waits for and returns the final human result directly. If an older/non-MRTR host exposes agent_action_required, respond_to_request is the fallback. closed with no answer = no human evidence.",
+        "Use this for recovery/detached lookup or to continue a compatibility interaction. Normal launched create_task waits for and returns the final human result directly; closed with no answer means no human evidence.",
         TaskLocatorSchema(true), true, false, true));
     tools.Add(ToolSpec("respond_to_request",
-        "Recovery/compatibility fallback for a pending human->agent request: propose_answer=>recommended; clarify=>clarification (+optional recommended); continue_with_judgement=>no payload. Normal modern create_task handles these through in-call input_required. Advisory only; never writes human answer.",
+        "Use this only for a pending compatibility human-to-agent request: propose_answer uses recommended, clarify uses clarification, and continue_with_judgement has no payload. Modern create_task handles this in-call; proposals are advisory and never write human answers.",
         TaskTrackMcpRespondRequestSchema(), false, false, false));
-    tools.Add(ToolSpec("open_task", "Launch TaskTrack GUI for task_id.", TaskLocatorSchema(false), false, false, false));
+    tools.Add(ToolSpec("open_task", "Use this to reopen the native human-decision GUI for an existing task_id.", TaskLocatorSchema(false), false, false, false));
 
     ValueMap list_props;
     list_props.Add("store_root", StringSchema());
     list_props.Add("limit", IntSchema(1, 200));
     ValueMap list_schema; list_schema.Add("type", "object"); list_schema.Add("properties", list_props); list_schema.Add("additionalProperties", false);
-    tools.Add(ToolSpec("list_tasks", "List recent TaskTrack tasks.", list_schema, true, false, true));
-    tools.Add(ToolSpec("close_task", "Close unfinished task without fabricating human evidence.", TaskLocatorSchema(false), false, true, false));
+    tools.Add(ToolSpec("list_tasks", "Use this to find recent human-decision tasks or recover a task_id.", list_schema, true, false, true));
+    tools.Add(ToolSpec("close_task", "Use this to end an unfinished task without fabricating human evidence.", TaskLocatorSchema(false), false, true, false));
 
     ValueMap result;
     if(modern) result.Add("resultType", "complete");

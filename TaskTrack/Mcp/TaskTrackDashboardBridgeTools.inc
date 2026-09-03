@@ -1,25 +1,25 @@
 void TaskTrackAppendDashboardToolSpecs(ValueArray& tools)
 {
     tools.Add(DToolSpec("validate_dashboard",
-                        "Validate semantic project-dashboard state without persisting it.",
+                        "Use this to validate a candidate semantic dashboard before installing it; it does not persist state.",
                         DashboardDocumentSchema(), true, false, true));
     tools.Add(DToolSpec("upsert_dashboard",
-                        "Create or update the current project dashboard and append an immutable revision. Read current state first; existing dashboards require exact base_revision. WRITE_BUSY is retryable and writer locks must not be bypassed.",
+                        "Use this to create a dashboard or install reconciled current state after reading it. Existing dashboards require the exact base_revision; on REVISION_CONFLICT re-read and merge, and retry WRITE_BUSY without bypassing the writer lock.",
                         DashboardUpsertSchema(), false, false, false));
     tools.Add(DToolSpec("get_dashboard",
-                        "Read current dashboard state with progress and attention summaries.",
+                        "Use this to read current state before modifying an existing dashboard or whenever current visual/project state is required; it includes progress and attention summaries.",
                         DashboardLocatorSchema(true), true, false, true));
     tools.Add(DToolSpec("open_dashboard",
-                        "Open the native read-only TaskTrack dashboard viewer.",
+                        "Use this when a human needs to inspect the native read-only visual dashboard.",
                         DashboardLocatorSchema(false), false, false, false));
     tools.Add(DToolSpec("list_dashboards",
-                        "List current project dashboards.",
+                        "Use this to discover current project dashboards before selecting one to read or open.",
                         DashboardListSchema(), true, false, true));
     tools.Add(DToolSpec("list_dashboard_revisions",
-                        "List immutable revision summaries for a dashboard.",
+                        "Use this to inspect accepted dashboard history rather than current working state.",
                         DashboardRevisionSchema(true, false), true, false, true));
     tools.Add(DToolSpec("get_dashboard_revision",
-                        "Read one immutable historical dashboard revision.",
+                        "Use this to read one previous accepted dashboard revision, not the current working source.",
                         DashboardRevisionSchema(false, true), true, false, true));
 }
 

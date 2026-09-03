@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.1 — 2026-09-03
+
+- Clarified the agent-facing human TaskTrack, dashboard and cross-agent handoff workflows.
+- Added operational MCP tool and schema descriptions without changing protocol or data semantics.
+
 ## 0.3.0 — 2026-09-02
 
 - Promoted the accepted unified TaskTrack and Dashboard release from 0.3.0-rc1.

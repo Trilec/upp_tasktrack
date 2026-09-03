@@ -27,7 +27,7 @@ reports the unified build identity plus both schemas:
 
 ```text
 TaskTrack MCP
-version 0.3.0
+version 0.3.1
 task core version 0.2.1
 task schema version 2
 dashboard schema version 1

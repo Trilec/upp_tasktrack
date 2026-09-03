@@ -72,17 +72,17 @@ Value DashboardEntrySchema()
     ValueMap p;
     p.Add("id", DStringSchema("Globally stable entry id."));
     p.Add("title", DStringSchema("Short human-readable entry title."));
-    p.Add("subtitle", DStringSchema());
-    p.Add("status", DStringSchema());
+    p.Add("subtitle", DStringSchema("Optional supporting line."));
+    p.Add("status", DStringSchema("Semantic state such as complete, active, next, pending or blocked; not display styling."));
     p.Add("detail", DStringSchema());
-    p.Add("category", DStringSchema());
-    p.Add("progress", DNumberSchema("Optional 0..100 completion."));
+    p.Add("category", DStringSchema("Navigation/grouping label, not layout instructions."));
+    p.Add("progress", DNumberSchema("Optional measurable 0..100 completion only."));
     p.Add("weight", DNumberSchema("Positive progress weight."));
-    p.Add("attention", DBoolSchema());
-    p.Add("archived", DBoolSchema());
+    p.Add("attention", DBoolSchema("Unresolved awareness, decision or intervention signal."));
+    p.Add("archived", DBoolSchema("Entry is no longer current; excluded from derived progress."));
     p.Add("timestamp", DStringSchema());
-    p.Add("task_id", DStringSchema("Optional related normal TaskTrack decision task."));
-    p.Add("evidence", DStringSchema());
+    p.Add("task_id", DStringSchema("Optional link to a separate human TaskTrack decision; never human evidence itself."));
+    p.Add("evidence", DStringSchema("Evidence supporting this current entry."));
     p.Add("data", ValueMap());
 
     ValueArray required;
@@ -110,10 +110,10 @@ Value DashboardPanelSchema()
     p.Add("type", DEnumStringSchema(types, 8, "Semantic dashboard panel renderer."));
     p.Add("title", DStringSchema());
     p.Add("subtitle", DStringSchema());
-    p.Add("category", DStringSchema());
-    p.Add("density", DEnumStringSchema(densities, 3, "Initial detail density."));
+    p.Add("category", DStringSchema("Navigation/grouping label, not layout."));
+    p.Add("density", DEnumStringSchema(densities, 3, "Presentation hint, not geometry."));
     p.Add("preview_limit", DIntSchema(1, 100));
-    p.Add("contributes_to_progress", DBoolSchema());
+    p.Add("contributes_to_progress", DBoolSchema("Whether measurable entries contribute to derived overall progress."));
 
     ValueMap entries;
     entries.Add("type", "array");
@@ -145,14 +145,14 @@ Value DashboardDocumentSchema()
     p.Add("title", DStringSchema());
     p.Add("subtitle", DStringSchema());
     p.Add("phase", DStringSchema());
-    p.Add("overall_progress", DNumberSchema());
-    p.Add("confidence", DNumberSchema());
+    p.Add("overall_progress", DNumberSchema("Optional explicit management estimate overriding derived display."));
+    p.Add("confidence", DNumberSchema("Separate 0..100 confidence in the status, not progress."));
     p.Add("revision", DIntSchema(0, INT_MAX,
                                  "Server-produced revision; upsert allocates next revision."));
     p.Add("created_at", DStringSchema("Server-produced; safe to round-trip."));
     p.Add("updated_at", DStringSchema("Server-produced; replaced on accepted write."));
     p.Add("updated_by", DStringSchema());
-    p.Add("source_head", DStringSchema());
+    p.Add("source_head", DStringSchema("Repository or source revision supporting this dashboard state."));
 
     ValueMap panels;
     panels.Add("type", "array");

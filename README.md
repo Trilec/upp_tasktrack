@@ -81,6 +81,11 @@ Keep both GUI executables beside the MCP executable. `TaskTrackMcp.exe` launches
 
 For OpenCode, `opencode mcp add` is the most version-safe registration path. The optional Agent Skills bundle is under `skills/` for hosts that support the format.
 
+Common deployment paths:
+
+- MCP-capable coding agent: `Agent → TaskTrackMcp.exe → native TaskTrack GUI/dashboard`
+- Non-MCP chat handoff: `Chat/agent → durable project-status handoff → TaskTrack-capable agent → TaskTrack dashboard`
+
 ## Dashboard workflow
 
 A normal update is intentionally small:
@@ -100,6 +105,8 @@ open viewer auto-refreshes
 On a revision conflict, read current state again, merge, and retry. Do not blindly overwrite.
 
 The example files are under `examples/TaskTrackDashboardExample/`.
+
+When a chatbot cannot call TaskTrack, it can leave a bounded handoff using the template in [PROJECT_STATUS.md](docs/PROJECT_STATUS.md). A TaskTrack-capable agent verifies that handoff against fresher repository evidence before updating the dashboard.
 
 ## Package layout
 

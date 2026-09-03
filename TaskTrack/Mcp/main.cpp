@@ -339,6 +339,11 @@ int UnifiedRunSelfTest()
     if(!has_response || list_json.Find("create_task") < 0 ||
        list_json.Find("upsert_dashboard") < 0 || list_json.Find("open_dashboard") < 0)
         failures.Add("unified tools/list does not expose both TaskTrack tool families");
+    if(list_json.Find("validate a candidate semantic dashboard") < 0 ||
+       list_json.Find("exact base_revision") < 0 ||
+       list_json.Find("human needs to inspect") < 0 ||
+       list_json.Find("accepted dashboard history") < 0)
+        failures.Add("dashboard tool descriptions do not expose the operational workflow");
 
     ValueMap call_params;
     call_params.Add("name", "version");
