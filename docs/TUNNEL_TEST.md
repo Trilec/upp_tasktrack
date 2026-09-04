@@ -2,8 +2,8 @@
 
 This is an experimental `0.3.2-rc1` integration. TaskTrack does not implement
 OpenAI's tunnel wire protocol itself. `TaskTrackTunnelGui.exe` supervises the
-official `tunnel-client.exe`, which forwards the existing local stdio
-`TaskTrackMcp.exe`.
+official runtime-only Windows artifact downloaded from OpenAI Platform, which
+forwards the existing local stdio `TaskTrackMcp.exe`.
 
 ## Local runtime
 
@@ -13,42 +13,55 @@ Keep these files together in a writable runtime/build directory:
 - `TaskTrackGui.exe`
 - `TaskTrackDashboardGui.exe`
 - `TaskTrackTunnelGui.exe`
-- official `tunnel-client.exe`
+- official OpenAI tunnel runtime executable, named locally `tunnel-client.exe`
+
+The Platform download can be the narrow `tunnel-client-runtime` artifact.
+That binary intentionally exposes only `run`, `--help`, and `--version`.
+TaskTrack therefore starts `run` directly and does not depend on the full
+client's `runtimes ...` management commands.
 
 Create the tunnel in OpenAI Platform with the ChatGPT workspace that will use
 the connector. Record the returned `tunnel_...` id.
 
-Create a restricted Platform runtime API key with only Tunnels Read + Use and
-set it in the environment that launches TaskTrack Tunnel:
+Set a Platform API key that is authorized to use that tunnel in the environment
+that launches TaskTrack Tunnel:
 
 ```powershell
 $env:CONTROL_PLANE_API_KEY="sk-..."
 .\TaskTrackTunnelGui.exe --tunnel-id tunnel_...
 ```
 
-The key is inherited by `tunnel-client`; TaskTrack does not persist or display
-it.
+The runtime itself also accepts `OPENAI_API_KEY` when
+`CONTROL_PLANE_API_KEY` is absent, but TaskTrack uses the explicit
+`CONTROL_PLANE_API_KEY` contract so the active credential source is obvious.
+The key is inherited by the official runtime; TaskTrack does not persist or
+display it.
 
-`Connect` uses the official managed-runtime path:
+`Connect` launches the official runtime approximately as:
 
 ```text
-tunnel-client runtimes connect
-  --alias tasktrack-browser
-  --tunnel-id <id>
-  --runtime-api-key env:CONTROL_PLANE_API_KEY
-  --mcp-command <co-located TaskTrackMcp.exe>
+tunnel-client-runtime run
+  --control-plane.tunnel-id <id>
+  --control-plane.api-key env:CONTROL_PLANE_API_KEY
+  --mcp.command <co-located TaskTrackMcp.exe>
+  --health.listen-addr 127.0.0.1:0
+  --health.url-file <local health-url file>
 ```
 
-`Status` calls `tunnel-client runtimes status ... --json`; `Stop` stops that
-managed runtime. `Open tunnel UI` opens the health URL reported by the client
-when available.
+The runtime remains active while `TaskTrackTunnelGui.exe` is open.
+`Status` reads the runtime's `/healthz` and `/readyz` endpoints directly.
+`Stop` terminates the locally supervised runtime. `Open health` opens
+`/readyz` in the browser. The narrow runtime artifact has no full admin UI.
 
 ## Browser connector
 
-In ChatGPT connector/plugin settings choose Connection = Tunnel and select the
-same tunnel id. Keep the local runtime running.
+In ChatGPT plugin settings choose Connection = Tunnel, select the same tunnel,
+and choose No Auth for this local stdio MCP path. Keep the local runtime
+running. The logical tunnel can appear in ChatGPT before the local runtime is
+ready; plugin creation/tool discovery should be tested only after Status shows
+`ready=true`.
 
-For the first acceptance enable/use only read operations. Call:
+For the first acceptance use read operations:
 
 1. `version` -> expect `0.3.2-rc1`, task schema 2, dashboard schema 1.
 2. `tunnel_probe` -> confirms the browser reached this local TaskTrack runtime.
@@ -56,8 +69,8 @@ For the first acceptance enable/use only read operations. Call:
 
 `Send probe` in `TaskTrackTunnelGui.exe` increments a small local diagnostic
 record. A later `tunnel_probe` call must return the new sequence/message. The
-probe is read-only from MCP and is not task, dashboard, repository or human
-evidence.
+probe does not contain the computer name and is not task, dashboard, repository
+or human evidence.
 
 ## Boundary
 
