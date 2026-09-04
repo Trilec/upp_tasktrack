@@ -65,7 +65,9 @@ private:
     String alias_;
     String mcp_path_;
     String health_url_;
+    String health_url_file_;
     String last_runtime_output_;
+    LocalProcess runtime_;
 
     UiPanel surface_;
     UiBoxLayout root_{UiDirection::V};
@@ -215,98 +217,64 @@ private:
             return;
         }
 
-        Vector<String> args;
-        args.Add("runtimes");
-        args.Add("--json");
-        args.Add("connect");
-        args.Add("--alias");
-        args.Add(alias_);
-        args.Add("--tunnel-id");
-        args.Add(tunnel_id_);
-        args.Add("--runtime-api-key");
-        args.Add("env:CONTROL_PLANE_API_KEY");
-        args.Add("--mcp-command");
-        args.Add(mcp_path_);
-
-        String output;
-        int code;
-        if(!RunClient(args, output, code) || code != 0) {
-            runtime_label_.SetText("Runtime: CONNECT FAILED   " + CompactOutput(output));
-            Exclamation("TaskTrack tunnel connect failed.\n\n" + output);
+        if(runtime_.IsRunning()) {
+            runtime_label_.SetText("Runtime: already running");
+            RefreshRuntimeStatus(false);
             return;
         }
 
-        last_runtime_output_ = output;
-        runtime_label_.SetText("Runtime: connect command accepted");
+        health_url_file_ = GetTempFileName("tasktrack-tunnel-health-");
+        SaveFile(health_url_file_, "");
+        Vector<String> args;
+        args.Add("run");
+        args.Add("--control-plane.api-key");
+        args.Add("env:CONTROL_PLANE_API_KEY");
+        args.Add("--control-plane.tunnel-id");
+        args.Add(tunnel_id_);
+        args.Add("--mcp.command");
+        args.Add(mcp_path_);
+        args.Add("--health.url-file");
+        args.Add(health_url_file_);
+        args.Add("--log.file");
+        args.Add("file:" + GetExeDirFile("TaskTrackTunnelRuntime.log"));
+
+        if(!runtime_.Start(~client_path_, args)) {
+            runtime_label_.SetText("Runtime: START FAILED");
+            Exclamation("Unable to start tunnel-client run.");
+            return;
+        }
+        runtime_label_.SetText("Runtime: starting");
         RefreshRuntimeStatus(false);
     }
 
     void RefreshRuntimeStatus(bool show_dialog)
     {
-        Vector<String> args;
-        args.Add("runtimes");
-        args.Add("--json");
-        args.Add("status");
-        args.Add(alias_);
-
-        String output;
-        int code;
-        if(!RunClient(args, output, code) || code != 0) {
-            last_runtime_output_ = output;
-            runtime_label_.SetText("Runtime: STATUS FAILED   " + CompactOutput(output));
-            if(show_dialog)
-                Exclamation("TaskTrack tunnel status failed.\n\n" + output);
+        if(!runtime_.IsRunning()) {
+            runtime_label_.SetText("Runtime: stopped (exit=" + AsString(runtime_.GetExitCode()) + ")");
             return;
         }
-
-        last_runtime_output_ = output;
-        String summary = CompactOutput(output);
-        try {
-            int first = output.Find('{');
-            int last = output.ReverseFind('}');
-            if(first >= 0 && last > first) {
-                Value root = ParseJSON(output.Mid(first, last - first + 1));
-                Value state = FindJsonKey(root, "runtime_state");
-                Value running = FindJsonKey(root, "process_running");
-                Value healthy = FindJsonKey(root, "healthy");
-                Value ready = FindJsonKey(root, "ready");
-                Value health = FindJsonKey(root, "health_url");
-                if(IsNull(health))
-                    health = FindJsonKey(root, "health_base_url");
-                if(!IsNull(health))
-                    health_url_ = AsString(health);
-
-                summary = "state=" + (IsNull(state) ? String("?") : AsString(state))
-                        + "  process=" + (IsNull(running) ? String("?") : AsString(running))
-                        + "  healthy=" + (IsNull(healthy) ? String("?") : AsString(healthy))
-                        + "  ready=" + (IsNull(ready) ? String("?") : AsString(ready));
-            }
+        if(health_url_.IsEmpty() && FileExists(health_url_file_))
+            health_url_ = TrimBoth(LoadFile(health_url_file_));
+        String summary = "process=true healthy=false ready=false";
+        if(!health_url_.IsEmpty()) {
+            HttpRequest health(health_url_ + "/healthz");
+            health.RequestTimeout(1000);
+            String body = health.Execute();
+            bool healthy = health.IsSuccess();
+            HttpRequest ready(health_url_ + "/readyz");
+            ready.RequestTimeout(1000);
+            ready.Execute();
+            summary = "process=true healthy=" + AsString(healthy) + " ready=" + AsString(ready.IsSuccess());
         }
-        catch(CParser::Error) {
-        }
-
-        runtime_label_.SetText("Runtime: " + summary);
+        runtime_label_.SetText("Runtime: " + summary + "  health=" + health_url_);
         if(show_dialog)
-            PromptOK("Tunnel runtime status\n\n" + output);
+            PromptOK("Tunnel runtime status\n\n" + summary);
     }
 
     void StopRuntime()
     {
-        Vector<String> args;
-        args.Add("runtimes");
-        args.Add("--json");
-        args.Add("stop");
-        args.Add(alias_);
-
-        String output;
-        int code;
-        if(!RunClient(args, output, code) || code != 0) {
-            runtime_label_.SetText("Runtime: STOP FAILED   " + CompactOutput(output));
-            Exclamation("Unable to stop TaskTrack tunnel runtime.\n\n" + output);
-            return;
-        }
-
-        last_runtime_output_ = output;
+        if(runtime_.IsRunning())
+            runtime_.Kill();
         runtime_label_.SetText("Runtime: stopped");
     }
 
