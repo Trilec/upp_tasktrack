@@ -1,10 +1,10 @@
-BASE: e3a24cf363cb844c689dcad6a9253621e945cd32 (remote main with OpenAI tunnel-client docs)
-TASK: Prove browser ChatGPT can reach the existing local TaskTrack stdio MCP through OpenAI Secure MCP Tunnel.
+BASE: a1bdbb35d56d58a37a79fac0388281b8ec90e743
+TASK: Prove browser ChatGPT can reach local TaskTrack through OpenAI Secure MCP Tunnel.
 BUILD: 0.3.2-rc1
-STATUS: Architectural implementation published for native Windows/U++ validation.
-TOUCHED: TunnelCore, TunnelApp, unified MCP read-only tunnel_probe, verify.ps1, tunnel test guide.
-BOUNDARY: Official OpenAI tunnel-client owns the tunnel transport; TaskTrack does not store the runtime API key and does not disguise writes as reads.
-PROBE: TaskTrackTunnelGui writes a tiny co-located diagnostic state; tunnel_probe only reads it and cannot modify task/dashboard/repository state.
-IPC: Tunnel is remote ingress only; any future local U++ application bus remains behind TaskTrackMcp.
-VALIDATION: Static source/package review only in supervisor environment; native CLANGx64 build and runtime tunnel test are pending.
-NEXT: Gary builds seven targets and runs verify.ps1; Curt creates tunnel/runtime key, launches TaskTrackTunnelGui, then browser ChatGPT performs version/tunnel_probe/dashboard read smoke test.
+STATUS: Runtime-only Platform artifact identified; supervisor now launches its direct run surface.
+TOUCHED: TunnelApp runtime supervision, tunnel test guide; MCP probe/schema/persistence unchanged.
+BOUNDARY: Official OpenAI runtime owns remote transport; TaskTrack owns only process supervision, health checks and read-only probe.
+RUNTIME: Connect -> tunnel-client-runtime run; Status -> /healthz + /readyz; Stop -> local process termination.
+SECURITY: API key stays in CONTROL_PLANE_API_KEY; probe no longer includes local computer name.
+VALIDATION: Source/API review completed; native CLANGx64 rebuild and live browser acceptance pending.
+NEXT: Gary rebuilds current HEAD; Curt runs Connect/Status to ready=true, sends probe, then creates No Auth ChatGPT plugin and tests tunnel_probe.

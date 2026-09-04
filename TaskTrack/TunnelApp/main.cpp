@@ -1,4 +1,5 @@
 #include <Ui/Ui.h>
+#include <Core/Inet.h>
 #include <TaskTrack/Core/TaskTrackBuild.h>
 #include <TaskTrack/TunnelCore/TaskTrackTunnelCore.h>
 
@@ -49,6 +50,8 @@ public:
         : tunnel_id_(tunnel_id), client_path_(client_path), alias_(alias)
     {
         mcp_path_ = GetExeDirFile("TaskTrackMcp.exe");
+        health_url_file_ = GetExeDirFile("tasktrack-tunnel-health-url.txt");
+        runtime_log_file_ = GetExeDirFile("tasktrack-tunnel-runtime.log");
         Title("TaskTrack Tunnel");
         Sizeable().Zoomable();
         SetRect(0, 0, DPI(760), DPI(430));
@@ -66,8 +69,11 @@ private:
     String mcp_path_;
     String health_url_;
     String health_url_file_;
+    String runtime_log_file_;
     String last_runtime_output_;
     LocalProcess runtime_;
+    LocalProcess runtime_process_;
+    bool runtime_started_ = false;
 
     UiPanel surface_;
     UiBoxLayout root_{UiDirection::V};
@@ -85,7 +91,7 @@ private:
     UiButton status_button_;
     UiButton stop_button_;
     UiButton probe_button_;
-    UiButton open_ui_button_;
+    UiButton open_health_button_;
     UiButton close_button_;
     UiLabel note_label_;
 
@@ -120,21 +126,21 @@ private:
         status_button_.SetText("Status").SetContentInset(DPI(4));
         stop_button_.SetText("Stop").SetContentInset(DPI(4));
         probe_button_.SetText("Send probe").SetContentInset(DPI(4));
-        open_ui_button_.SetText("Open tunnel UI").SetContentInset(DPI(4));
+        open_health_button_.SetText("Open health").SetContentInset(DPI(4));
         close_button_.SetText("Close window").SetContentInset(DPI(4));
 
         actions_.Add(connect_button_).Fixed(DPI(88)).MinCross(DPI(30));
         actions_.Add(status_button_).Fixed(DPI(80)).MinCross(DPI(30));
         actions_.Add(stop_button_).Fixed(DPI(70)).MinCross(DPI(30));
         actions_.Add(probe_button_).Fixed(DPI(100)).MinCross(DPI(30));
-        actions_.Add(open_ui_button_).Fixed(DPI(118)).MinCross(DPI(30));
+        actions_.Add(open_health_button_).Fixed(DPI(118)).MinCross(DPI(30));
         actions_.AddSpacer(1).Expand(1).MinMain(DPI(8));
         actions_.Add(close_button_).Fixed(DPI(106)).MinCross(DPI(30));
 
         note_label_.SetText(
-            "The runtime API key is read only from CONTROL_PLANE_API_KEY and is never stored by "
-            "TaskTrack. Send probe changes local read-only probe state; browser ChatGPT reads it "
-            "through the tunnel_probe MCP tool.");
+            "The Platform API key is read only from CONTROL_PLANE_API_KEY and is never stored by "
+            "TaskTrack. The official runtime stays active while this window is open. Send probe "
+            "changes local diagnostic state; browser ChatGPT reads it through tunnel_probe.");
 
         root_.Add(status_group_).Fit().MinMain(DPI(230)).AlignSelf(UiCrossAlign::Stretch);
         root_.Add(actions_).Fit().MinMain(DPI(34)).AlignSelf(UiCrossAlign::Stretch);
@@ -147,27 +153,83 @@ private:
         status_button_.WhenAction = [=] { RefreshRuntimeStatus(true); };
         stop_button_.WhenAction = [=] { StopRuntime(); };
         probe_button_.WhenAction = [=] { SendProbe(); };
-        open_ui_button_.WhenAction = [=] { OpenTunnelUi(); };
+        open_health_button_.WhenAction = [=] { OpenHealth(); };
         close_button_.WhenAction = [=] { Close(); };
     }
 
-    bool RunClient(const Vector<String>& args, String& output, int& exit_code)
+    bool LoadHealthUrl()
     {
-        output.Clear();
-        exit_code = -1;
-        if(!FileExists(client_path_)) {
-            output = "tunnel-client executable not found: " + client_path_;
+        if(!FileExists(health_url_file_))
             return false;
-        }
-
-        LocalProcess process;
-        if(!process.Start(~client_path_, args)) {
-            output = "Unable to start tunnel-client.";
+        String url = LoadFile(health_url_file_);
+        if(IsNull(url))
             return false;
-        }
-
-        exit_code = process.Finish(output);
+        url = TrimBoth(url);
+        if(url.IsEmpty())
+            return false;
+        while(url.EndsWith("/"))
+            url = url.Left(url.GetCount() - 1);
+        health_url_ = url;
         return true;
+    }
+
+    String RuntimeMcpCommand() const
+    {
+        String command = mcp_path_;
+        command.Replace("\\", "/");
+        if(command.Find(' ') >= 0 || command.Find('\t') >= 0)
+            command = "\"" + command + "\"";
+        return command;
+    }
+
+    void DrainRuntimeOutput()
+    {
+        if(!runtime_started_)
+            return;
+        for(int i = 0; i < 8; ++i) {
+            String out, err;
+            runtime_process_.Read2(out, err);
+            if(out.IsEmpty() && err.IsEmpty())
+                break;
+            last_runtime_output_ << out << err;
+            if(last_runtime_output_.GetCount() > 4000)
+                last_runtime_output_ = last_runtime_output_.Right(4000);
+        }
+    }
+
+    String RuntimeDiagnostics()
+    {
+        String out = last_runtime_output_;
+        String log = LoadFile(runtime_log_file_);
+        if(!IsNull(log) && !log.IsEmpty()) {
+            if(log.GetCount() > 2400)
+                log = log.Right(2400);
+            if(!out.IsEmpty())
+                out << "\n";
+            out << log;
+        }
+        return out;
+    }
+
+    bool ProbeHealth(const String& suffix, int& status, String& error)
+    {
+        status = 0;
+        error.Clear();
+        if(health_url_.IsEmpty() && !LoadHealthUrl()) {
+            error = "health URL is not available yet";
+            return false;
+        }
+        String endpoint = health_url_ + suffix;
+        HttpRequest request(~endpoint);
+        request.Timeout(2000);
+        request.Execute();
+        status = request.GetStatusCode();
+        if(request.IsSuccess())
+            return true;
+        error = request.GetErrorDesc();
+        if(error.IsEmpty())
+            error = Format("HTTP %d %s", status, request.GetReasonPhrase());
+        return false;
     }
 
     void RefreshLocalState()
@@ -175,7 +237,7 @@ private:
         version_label_.SetText("TaskTrack build: " + TaskTrackBuildVersion());
         tunnel_label_.SetText("Tunnel: " + (tunnel_id_.IsEmpty() ? String("NOT SET") : tunnel_id_)
                               + "   Alias: " + alias_);
-        client_label_.SetText(String("Tunnel client: ")
+        client_label_.SetText(String("Tunnel runtime: ")
                               + (FileExists(client_path_) ? "FOUND   " : "MISSING   ")
                               + client_path_);
         mcp_label_.SetText(String("TaskTrack MCP: ")
@@ -193,8 +255,8 @@ private:
         else
             probe_label_.SetText("Local probe: none yet");
 
-        if(last_runtime_output_.IsEmpty())
-            runtime_label_.SetText("Runtime: not checked");
+        if(!runtime_started_)
+            runtime_label_.SetText("Runtime: not started");
     }
 
     void ConnectRuntime()
@@ -205,7 +267,7 @@ private:
             return;
         }
         if(!FileExists(client_path_)) {
-            Exclamation("tunnel-client.exe was not found.");
+            Exclamation("The official tunnel runtime executable was not found.");
             return;
         }
         if(!FileExists(mcp_path_)) {
@@ -213,9 +275,20 @@ private:
             return;
         }
         if(GetEnv("CONTROL_PLANE_API_KEY").IsEmpty()) {
-            Exclamation("CONTROL_PLANE_API_KEY is not set. Create a restricted runtime API key with Tunnels Read + Use, then start this app from that environment.");
+            Exclamation("CONTROL_PLANE_API_KEY is not set. Start this app from an environment containing a Platform API key that is allowed to use this tunnel.");
             return;
         }
+        if(runtime_started_ && runtime_process_.IsRunning()) {
+            RefreshRuntimeStatus(true);
+            return;
+        }
+
+        runtime_process_.Kill();
+        runtime_started_ = false;
+        health_url_.Clear();
+        last_runtime_output_.Clear();
+        DeleteFile(health_url_file_);
+        DeleteFile(runtime_log_file_);
 
         if(runtime_.IsRunning()) {
             runtime_label_.SetText("Runtime: already running");
@@ -225,6 +298,9 @@ private:
 
         health_url_file_ = GetTempFileName("tasktrack-tunnel-health-");
         SaveFile(health_url_file_, "");
+        runtime_log_file_ = GetTempFileName("tasktrack-tunnel-runtime-");
+        DeleteFile(runtime_log_file_);
+
         Vector<String> args;
         args.Add("run");
         args.Add("--control-plane.api-key");
@@ -232,49 +308,98 @@ private:
         args.Add("--control-plane.tunnel-id");
         args.Add(tunnel_id_);
         args.Add("--mcp.command");
-        args.Add(mcp_path_);
+        args.Add(RuntimeMcpCommand());
+        args.Add("--health.listen-addr");
+        args.Add("127.0.0.1:0");
         args.Add("--health.url-file");
         args.Add(health_url_file_);
         args.Add("--log.file");
-        args.Add("file:" + GetExeDirFile("TaskTrackTunnelRuntime.log"));
+        args.Add(runtime_log_file_);
 
-        if(!runtime_.Start(~client_path_, args)) {
+        if(!runtime_process_.Start(~client_path_, args)) {
             runtime_label_.SetText("Runtime: START FAILED");
-            Exclamation("Unable to start tunnel-client run.");
+            Exclamation("Unable to start the official tunnel runtime.");
             return;
         }
+
+        runtime_started_ = true;
         runtime_label_.SetText("Runtime: starting");
+        for(int i = 0; i < 40; ++i) {
+            DrainRuntimeOutput();
+            if(LoadHealthUrl() || !runtime_process_.IsRunning())
+                break;
+            Sleep(100);
+        }
+
+        RefreshRuntimeStatus(false);
         RefreshRuntimeStatus(false);
     }
 
     void RefreshRuntimeStatus(bool show_dialog)
     {
-        if(!runtime_.IsRunning()) {
-            runtime_label_.SetText("Runtime: stopped (exit=" + AsString(runtime_.GetExitCode()) + ")");
+        DrainRuntimeOutput();
+
+        bool running = runtime_started_ && runtime_process_.IsRunning();
+        if(!running) {
+            String detail;
+            if(runtime_started_) {
+                String output;
+                int code = runtime_process_.Finish(output);
+                last_runtime_output_ << output;
+                detail = Format("process exited with code %d", code);
+                runtime_process_.Kill();
+                runtime_started_ = false;
+            }
+            else
+                detail = "not started";
+
+            String diagnostics = RuntimeDiagnostics();
+            runtime_label_.SetText("Runtime: " + detail);
+            if(show_dialog) {
+                String message = "Tunnel runtime: " + detail;
+                if(!diagnostics.IsEmpty())
+                    message << "\n\n" << diagnostics;
+                PromptOK(message);
+            }
             return;
         }
+
         if(health_url_.IsEmpty() && FileExists(health_url_file_))
             health_url_ = TrimBoth(LoadFile(health_url_file_));
-        String summary = "process=true healthy=false ready=false";
-        if(!health_url_.IsEmpty()) {
-            HttpRequest health(health_url_ + "/healthz");
-            health.RequestTimeout(1000);
-            String body = health.Execute();
-            bool healthy = health.IsSuccess();
-            HttpRequest ready(health_url_ + "/readyz");
-            ready.RequestTimeout(1000);
-            ready.Execute();
-            summary = "process=true healthy=" + AsString(healthy) + " ready=" + AsString(ready.IsSuccess());
+
+        LoadHealthUrl();
+        int health_status = 0, ready_status = 0;
+        String health_error, ready_error;
+        bool healthy = ProbeHealth("/healthz", health_status, health_error);
+        bool ready = ProbeHealth("/readyz", ready_status, ready_error);
+
+        String summary = Format("process=true  healthy=%s  ready=%s",
+                                healthy ? "true" : "false",
+                                ready ? "true" : "false");
+        runtime_label_.SetText("Runtime: " + summary);
+
+        if(show_dialog) {
+            String message = summary;
+            if(!health_url_.IsEmpty())
+                message << "\nHealth: " << health_url_;
+            if(!healthy && !health_error.IsEmpty())
+                message << "\nhealthz: " << health_error;
+            if(!ready && !ready_error.IsEmpty())
+                message << "\nreadyz: " << ready_error;
+            PromptOK(message);
         }
-        runtime_label_.SetText("Runtime: " + summary + "  health=" + health_url_);
-        if(show_dialog)
-            PromptOK("Tunnel runtime status\n\n" + summary);
     }
 
     void StopRuntime()
     {
         if(runtime_.IsRunning())
             runtime_.Kill();
+        if(runtime_started_) {
+            runtime_process_.Kill();
+            runtime_started_ = false;
+        }
+        health_url_.Clear();
+        runtime_label_.SetText("Runtime: stopped");
         runtime_label_.SetText("Runtime: stopped");
     }
 
@@ -287,9 +412,9 @@ private:
 
         probe.sequence++;
         probe.updated_at = AsString(GetSysTime());
-        probe.source = GetComputerName();
+        probe.source = "TaskTrackTunnelGui";
         probe.tunnel_id = tunnel_id_;
-        probe.message = Format("TaskTrack local probe #%d from %s", probe.sequence, probe.source);
+        probe.message = Format("TaskTrack local probe #%d", probe.sequence);
 
         if(!TaskTrackTunnelSaveProbe(probe, error)) {
             Exclamation("Unable to save local tunnel probe.\n\n" + error);
@@ -300,19 +425,15 @@ private:
         PromptOK(Format("Probe #%d is ready.\n\nAsk browser ChatGPT to call tunnel_probe.", probe.sequence));
     }
 
-    void OpenTunnelUi()
+    void OpenHealth()
     {
         if(health_url_.IsEmpty())
             RefreshRuntimeStatus(false);
         if(health_url_.IsEmpty()) {
-            Exclamation("The managed runtime did not report a health URL yet. Use Status and confirm the runtime is ready.");
+            Exclamation("The tunnel runtime has not reported its health URL yet. Use Status after Connect.");
             return;
         }
-
-        String url = health_url_;
-        while(url.EndsWith("/"))
-            url = url.Left(url.GetCount() - 1);
-        LaunchWebBrowser(url + "/ui");
+        LaunchWebBrowser(health_url_ + "/readyz");
     }
 };
 
@@ -326,9 +447,9 @@ String TunnelHelpText()
         "  TaskTrackTunnelGui.exe --tunnel-id <tunnel_id> --client <path-to-tunnel-client.exe>\n"
         "  TaskTrackTunnelGui.exe --tunnel-id <tunnel_id> --alias <local-alias>\n\n"
         "Environment:\n"
-        "  CONTROL_PLANE_API_KEY   Restricted runtime key with Tunnels Read + Use.\n"
+        "  CONTROL_PLANE_API_KEY   Platform API key authorized to use the selected tunnel.\n"
         "  TASKTRACK_TUNNEL_ID     Optional tunnel id when --tunnel-id is omitted.\n\n"
-        "The API key is inherited by tunnel-client and is never stored by TaskTrack.";
+        "The API key is inherited by the official runtime and is never stored by TaskTrack.";
 }
 
 }
