@@ -7,6 +7,11 @@ String TaskTrackTunnelProbePath()
     return GetExeDirFile("tasktrack-tunnel-probe.json");
 }
 
+String TaskTrackTunnelActivityPath()
+{
+    return GetExeDirFile("tasktrack-tunnel-activity.json");
+}
+
 static ValueMap ProbeToValue(const TaskTrackTunnelProbe& probe)
 {
     ValueMap out;
@@ -79,6 +84,117 @@ bool TaskTrackTunnelSaveProbe(const TaskTrackTunnelProbe& probe, String& error)
         return false;
     }
     return true;
+}
+
+static ValueMap ActivityToValue(const TaskTrackTunnelActivity& activity)
+{
+    ValueMap out;
+    out.Add("schema_version", activity.schema_version);
+    out.Add("received", activity.received);
+    out.Add("sent", activity.sent);
+    out.Add("last_method", activity.last_method);
+    out.Add("last_tool", activity.last_tool);
+    out.Add("updated_at", activity.updated_at);
+    return out;
+}
+
+static bool ActivityFromValue(const Value& value, TaskTrackTunnelActivity& activity, String& error)
+{
+    if(!value.Is<ValueMap>()) {
+        error = "Tunnel activity state must be a JSON object.";
+        return false;
+    }
+
+    Value schema = value["schema_version"];
+    Value received = value["received"];
+    Value sent = value["sent"];
+    if(!IsNull(schema) && (!IsNumber(schema) || (int)schema != 1)) {
+        error = "Unsupported tunnel activity schema version.";
+        return false;
+    }
+    if(!IsNull(received) && !IsNumber(received)) {
+        error = "Tunnel received count must be numeric.";
+        return false;
+    }
+    if(!IsNull(sent) && !IsNumber(sent)) {
+        error = "Tunnel sent count must be numeric.";
+        return false;
+    }
+
+    activity.schema_version = IsNull(schema) ? 1 : (int)schema;
+    activity.received = IsNull(received) ? 0 : (int64)received;
+    activity.sent = IsNull(sent) ? 0 : (int64)sent;
+    activity.last_method = IsNull(value["last_method"]) ? String() : AsString(value["last_method"]);
+    activity.last_tool = IsNull(value["last_tool"]) ? String() : AsString(value["last_tool"]);
+    activity.updated_at = IsNull(value["updated_at"]) ? String() : AsString(value["updated_at"]);
+    return true;
+}
+
+bool TaskTrackTunnelLoadActivity(TaskTrackTunnelActivity& activity, String& error)
+{
+    error.Clear();
+    String path = TaskTrackTunnelActivityPath();
+    if(!FileExists(path)) {
+        error = "No remote tunnel activity has been recorded yet.";
+        return false;
+    }
+
+    String json = LoadFile(path);
+    if(IsNull(json)) {
+        error = "Unable to read remote tunnel activity state.";
+        return false;
+    }
+
+    try {
+        return ActivityFromValue(ParseJSON(json), activity, error);
+    }
+    catch(CParser::Error) {
+        error = "Remote tunnel activity state is malformed JSON.";
+        return false;
+    }
+}
+
+bool TaskTrackTunnelSaveActivity(const TaskTrackTunnelActivity& activity, String& error)
+{
+    error.Clear();
+    String json = AsJSON(ActivityToValue(activity), true);
+    if(!SaveFile(TaskTrackTunnelActivityPath(), json)) {
+        error = "Unable to write remote tunnel activity state beside the TaskTrack executables.";
+        return false;
+    }
+    return true;
+}
+
+bool TaskTrackTunnelResetActivity(String& error)
+{
+    return TaskTrackTunnelSaveActivity(TaskTrackTunnelActivity(), error);
+}
+
+bool TaskTrackTunnelRecordReceived(const String& method, const String& tool, String& error)
+{
+    TaskTrackTunnelActivity activity;
+    if(!TaskTrackTunnelLoadActivity(activity, error))
+        activity = TaskTrackTunnelActivity();
+    activity.received++;
+    activity.last_method = method;
+    activity.last_tool = tool;
+    activity.updated_at = AsString(GetSysTime());
+    return TaskTrackTunnelSaveActivity(activity, error);
+}
+
+bool TaskTrackTunnelRecordSent(String& error)
+{
+    TaskTrackTunnelActivity activity;
+    if(!TaskTrackTunnelLoadActivity(activity, error))
+        activity = TaskTrackTunnelActivity();
+    activity.sent++;
+    activity.updated_at = AsString(GetSysTime());
+    return TaskTrackTunnelSaveActivity(activity, error);
+}
+
+bool TaskTrackTunnelIsRemoteSession()
+{
+    return GetEnv("TASKTRACK_TUNNEL_REMOTE") == "1";
 }
 
 ValueMap TaskTrackTunnelProbeStatusValue()

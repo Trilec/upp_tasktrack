@@ -84,3 +84,20 @@ ChatGPT -> Secure MCP Tunnel -> TaskTrackMcp -> local U++ application bus
 
 Cloudflare, remote HTTP MCP, OAuth and a native U++ tunnel implementation are
 out of scope for this smoke test.
+
+
+## Runtime UX
+
+The tunnel window keeps the non-secret tunnel id in an editable field and
+remembers the last value locally after Connect. The status body is selectable
+and a Copy status button copies the complete current snapshot.
+
+Two top indicators summarize the runtime:
+
+- green Ready means the supervised runtime process is healthy and /readyz passes;
+- orange Remote activity means the tunnel-launched MCP has handled traffic.
+
+Remote activity counts are diagnostic only. The tunnel supervisor marks the
+runtime child with TASKTRACK_TUNNEL_REMOTE=1; only that MCP process increments
+the co-located diagnostic received/sent counters. Normal Codex/local MCP use
+does not increment them.

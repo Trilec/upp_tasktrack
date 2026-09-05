@@ -1,10 +1,9 @@
-BASE: a1bdbb35d56d58a37a79fac0388281b8ec90e743
-TASK: Prove browser ChatGPT can reach local TaskTrack through OpenAI Secure MCP Tunnel.
+BASE: 6dde80187ccdb8979fa3a34d48ace213b7a37843
+TASK: Finish 0.3.2 Secure MCP Tunnel usability after successful browser proof.
 BUILD: 0.3.2-rc1
-STATUS: Runtime-only Platform artifact identified; supervisor now launches its direct run surface.
-TOUCHED: TunnelApp runtime supervision, tunnel test guide; MCP probe/schema/persistence unchanged.
-BOUNDARY: Official OpenAI runtime owns remote transport; TaskTrack owns only process supervision, health checks and read-only probe.
-RUNTIME: Connect -> tunnel-client-runtime run; Status -> /healthz + /readyz; Stop -> local process termination.
-SECURITY: API key stays in CONTROL_PLANE_API_KEY; probe no longer includes local computer name.
-VALIDATION: Source/API review completed; native CLANGx64 rebuild and live browser acceptance pending.
-NEXT: Gary rebuilds current HEAD; Curt runs Connect/Status to ready=true, sends probe, then creates No Auth ChatGPT plugin and tests tunnel_probe.
+PROOF: Browser ChatGPT returned version 0.3.2-rc1 and tunnel_probe #2 through the live local stdio runtime.
+STATUS: Tunnel transport accepted; bounded native UX/activity polish published for Windows validation.
+UX: Editable/remembered tunnel ID, green Ready indicator, orange remote received/sent counter, selectable status and Copy status.
+ACTIVITY: Only MCP processes launched under TASKTRACK_TUNNEL_REMOTE=1 increment diagnostic counters; ordinary local/Codex MCP traffic is excluded.
+BOUNDARY: No task/dashboard schema, persistence, human lifecycle or tunnel wire-protocol change.
+NEXT: Gary compiles/tests current HEAD; Curt reconnects and confirms indicators/activity; then create a real dashboard locally and read it from browser ChatGPT.
