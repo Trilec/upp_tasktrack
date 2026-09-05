@@ -1,13 +1,13 @@
-# TaskTrack Secure MCP Tunnel smoke test
+# TaskTrack Secure MCP Tunnel
 
-This is an experimental `0.3.2-rc1` integration. TaskTrack does not implement
-OpenAI's tunnel wire protocol itself. `TaskTrackTunnelGui.exe` supervises the
-official runtime-only Windows artifact downloaded from OpenAI Platform, which
-forwards the existing local stdio `TaskTrackMcp.exe`.
+TaskTrack `0.3.2-rc1` uses the official OpenAI Secure MCP Tunnel runtime.
+TaskTrack does not implement or fork the tunnel wire protocol. The native
+`TaskTrackTunnelGui.exe` manager supervises the official runtime-only Windows
+artifact and forwards the existing local stdio `TaskTrackMcp.exe`.
 
-## Local runtime
+## Runtime files
 
-Keep these files together in a writable runtime/build directory:
+Keep these together in a writable runtime/build directory:
 
 - `TaskTrackMcp.exe`
 - `TaskTrackGui.exe`
@@ -15,89 +15,95 @@ Keep these files together in a writable runtime/build directory:
 - `TaskTrackTunnelGui.exe`
 - official OpenAI tunnel runtime executable, named locally `tunnel-client.exe`
 
-The Platform download can be the narrow `tunnel-client-runtime` artifact.
-That binary intentionally exposes only `run`, `--help`, and `--version`.
-TaskTrack therefore starts `run` directly and does not depend on the full
-client's `runtimes ...` management commands.
+The Platform download may be the narrow `tunnel-client-runtime` artifact.
+That binary exposes `run`, `--help` and `--version`. TaskTrack starts
+`run` directly; it does not require the full client's management command tree.
 
-Create the tunnel in OpenAI Platform with the ChatGPT workspace that will use
-the connector. Record the returned `tunnel_...` id.
-
-Set a Platform API key that is authorized to use that tunnel in the environment
-that launches TaskTrack Tunnel:
+The runtime API key remains outside TaskTrack:
 
 ```powershell
 $env:CONTROL_PLANE_API_KEY="sk-..."
-.\TaskTrackTunnelGui.exe --tunnel-id tunnel_...
+.\TaskTrackTunnelGui.exe
 ```
 
-The runtime itself also accepts `OPENAI_API_KEY` when
-`CONTROL_PLANE_API_KEY` is absent, but TaskTrack uses the explicit
-`CONTROL_PLANE_API_KEY` contract so the active credential source is obvious.
-The key is inherited by the official runtime; TaskTrack does not persist or
-display it.
+TaskTrack never persists or displays the secret value.
 
-`Connect` launches the official runtime approximately as:
+## Tunnel Manager
+
+The native manager is intentionally a small desktop application rather than a
+diagnostic text window.
+
+### Overview
+
+Overview answers five questions immediately:
+
+1. Is remote TaskTrack available?
+2. Which named profile/tunnel is active?
+3. Is the TaskTrack MCP executable present?
+4. Is remote traffic flowing?
+5. What were the most recent MCP request/result pairs?
+
+The Ready state is green. Connecting is amber. Faults are red. Stopped is
+neutral. The Recent activity table retains the last six remote communications
+with direction, MCP method/tool and result size/status.
+
+Only MCP processes launched by the tunnel runtime increment the remote activity
+log. Ordinary local Codex/TaskTrack MCP traffic is excluded.
+
+### Setup
+
+Setup manages named non-secret tunnel profiles. A profile contains:
+
+- friendly profile name;
+- tunnel ID;
+- tunnel runtime executable path;
+- TaskTrack MCP executable path;
+- auto-connect preference;
+- remember-profile preference.
+
+The credential source is fixed to `CONTROL_PLANE_API_KEY` and the UI shows only
+whether it is available.
+
+Use one logical tunnel/profile per local machine. Two local machines must not
+compete for the same stdio tunnel queue. A typical two-machine setup is:
 
 ```text
-tunnel-client-runtime run
-  --control-plane.tunnel-id <id>
-  --control-plane.api-key env:CONTROL_PLANE_API_KEY
-  --mcp.command <co-located TaskTrackMcp.exe>
-  --health.listen-addr 127.0.0.1:0
-  --health.url-file <local health-url file>
+Curt PC      -> TaskTrack profile/tunnel A -> ChatGPT plugin A
+Colleague PC -> TaskTrack profile/tunnel B -> ChatGPT plugin B
 ```
 
-The runtime remains active while `TaskTrackTunnelGui.exe` is open.
-`Status` reads the runtime's `/healthz` and `/readyz` endpoints directly.
-`Stop` terminates the locally supervised runtime. `Open health` opens
-`/readyz` in the browser. The narrow runtime artifact has no full admin UI.
+Duplicate profile intentionally copies local runtime settings but leaves the
+new tunnel ID blank so a second deployment cannot accidentally reuse the same
+logical tunnel.
 
 ## Browser connector
 
-In ChatGPT plugin settings choose Connection = Tunnel, select the same tunnel,
-and choose No Auth for this local stdio MCP path. Keep the local runtime
-running. The logical tunnel can appear in ChatGPT before the local runtime is
-ready; plugin creation/tool discovery should be tested only after Status shows
-`ready=true`.
+In ChatGPT plugin settings choose:
 
-For the first acceptance use read operations:
+- Connection = Tunnel
+- the same tunnel ID as the local profile
+- Authentication = No Auth for the local stdio MCP path
 
-1. `version` -> expect `0.3.2-rc1`, task schema 2, dashboard schema 1.
-2. `tunnel_probe` -> confirms the browser reached this local TaskTrack runtime.
-3. `list_dashboards` / `get_dashboard` -> confirms normal dashboard reads.
+The logical tunnel may appear in ChatGPT before a machine-side runtime is
+ready. Create/test the connector only after the Overview reports Ready.
 
-`Send probe` in `TaskTrackTunnelGui.exe` increments a small local diagnostic
-record. A later `tunnel_probe` call must return the new sequence/message. The
-probe does not contain the computer name and is not task, dashboard, repository
-or human evidence.
+Initial read acceptance:
+
+1. `version` -> current TaskTrack build/schema identity;
+2. `tunnel_probe` -> proves the browser reached this exact local runtime;
+3. `list_dashboards` / `get_dashboard` -> normal dashboard reads.
+
+`Send probe` writes only a small local diagnostic record. It is not task,
+dashboard, repository or human evidence.
 
 ## Boundary
 
 The Secure MCP Tunnel is remote ingress to the existing MCP endpoint. It does
-not replace local application IPC. A future TaskTrack/local application bus can
-sit behind the MCP:
+not replace a future local U++ application bus:
 
 ```text
 ChatGPT -> Secure MCP Tunnel -> TaskTrackMcp -> local U++ application bus
 ```
 
-Cloudflare, remote HTTP MCP, OAuth and a native U++ tunnel implementation are
-out of scope for this smoke test.
-
-
-## Runtime UX
-
-The tunnel window keeps the non-secret tunnel id in an editable field and
-remembers the last value locally after Connect. The status body is selectable
-and a Copy status button copies the complete current snapshot.
-
-Two top indicators summarize the runtime:
-
-- green Ready means the supervised runtime process is healthy and /readyz passes;
-- orange Remote activity means the tunnel-launched MCP has handled traffic.
-
-Remote activity counts are diagnostic only. The tunnel supervisor marks the
-runtime child with TASKTRACK_TUNNEL_REMOTE=1; only that MCP process increments
-the co-located diagnostic received/sent counters. Normal Codex/local MCP use
-does not increment them.
+Cloudflare, remote HTTP MCP, OAuth and a native U++ tunnel implementation remain
+out of scope for this release.

@@ -14,6 +14,14 @@ struct TaskTrackTunnelProbe {
     String tunnel_id;
 };
 
+struct TaskTrackTunnelActivityEvent : Moveable<TaskTrackTunnelActivityEvent> {
+    String time;
+    String direction;
+    String kind;
+    String action;
+    String result;
+};
+
 struct TaskTrackTunnelActivity {
     int schema_version = 1;
     int64 received = 0;
@@ -21,6 +29,7 @@ struct TaskTrackTunnelActivity {
     String last_method;
     String last_tool;
     String updated_at;
+    Vector<TaskTrackTunnelActivityEvent> recent;
 };
 
 String TaskTrackTunnelProbePath();
@@ -33,7 +42,7 @@ bool TaskTrackTunnelLoadActivity(TaskTrackTunnelActivity& activity, String& erro
 bool TaskTrackTunnelSaveActivity(const TaskTrackTunnelActivity& activity, String& error);
 bool TaskTrackTunnelResetActivity(String& error);
 bool TaskTrackTunnelRecordReceived(const String& method, const String& tool, String& error);
-bool TaskTrackTunnelRecordSent(String& error);
+bool TaskTrackTunnelRecordSent(int response_bytes, bool is_error, String& error);
 bool TaskTrackTunnelIsRemoteSession();
 
 ValueMap TaskTrackTunnelProbeStatusValue();

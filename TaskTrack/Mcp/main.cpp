@@ -326,8 +326,22 @@ int UnifiedRunServer()
         if(has_response) {
             WriteMessage(response);
             if(TaskTrackTunnelIsRemoteSession()) {
+                bool response_error = false;
+                try {
+                    Value envelope = ParseJSON(response);
+                    if(envelope.Is<ValueMap>()) {
+                        response_error = !IsNull(envelope["error"]);
+                        Value result = envelope["result"];
+                        if(!response_error && result.Is<ValueMap>()
+                           && !IsNull(result["isError"]))
+                            response_error = (bool)result["isError"];
+                    }
+                }
+                catch(CParser::Error) {
+                    response_error = true;
+                }
                 String activity_error;
-                TaskTrackTunnelRecordSent(activity_error);
+                TaskTrackTunnelRecordSent(response.GetCount(), response_error, activity_error);
             }
         }
     }

@@ -2,17 +2,21 @@
 
 namespace Upp {
 
-String TaskTrackTunnelProbePath()
+namespace {
+
+String ActivityClock()
 {
-    return GetExeDirFile("tasktrack-tunnel-probe.json");
+    Time t = GetSysTime();
+    return Format("%02d:%02d:%02d", t.hour, t.minute, t.second);
 }
 
-String TaskTrackTunnelActivityPath()
+void TrimActivity(TaskTrackTunnelActivity& activity)
 {
-    return GetExeDirFile("tasktrack-tunnel-activity.json");
+    while(activity.recent.GetCount() > 6)
+        activity.recent.Remove(0);
 }
 
-static ValueMap ProbeToValue(const TaskTrackTunnelProbe& probe)
+ValueMap ProbeToValue(const TaskTrackTunnelProbe& probe)
 {
     ValueMap out;
     out.Add("schema_version", probe.schema_version);
@@ -24,7 +28,7 @@ static ValueMap ProbeToValue(const TaskTrackTunnelProbe& probe)
     return out;
 }
 
-static bool ProbeFromValue(const Value& value, TaskTrackTunnelProbe& probe, String& error)
+bool ProbeFromValue(const Value& value, TaskTrackTunnelProbe& probe, String& error)
 {
     if(!value.Is<ValueMap>()) {
         error = "Tunnel probe state must be a JSON object.";
@@ -49,6 +53,101 @@ static bool ProbeFromValue(const Value& value, TaskTrackTunnelProbe& probe, Stri
     probe.source = IsNull(value["source"]) ? String() : AsString(value["source"]);
     probe.tunnel_id = IsNull(value["tunnel_id"]) ? String() : AsString(value["tunnel_id"]);
     return true;
+}
+
+ValueMap ActivityEventToValue(const TaskTrackTunnelActivityEvent& event)
+{
+    ValueMap out;
+    out.Add("time", event.time);
+    out.Add("direction", event.direction);
+    out.Add("kind", event.kind);
+    out.Add("action", event.action);
+    out.Add("result", event.result);
+    return out;
+}
+
+bool ActivityEventFromValue(const Value& value, TaskTrackTunnelActivityEvent& event)
+{
+    if(!value.Is<ValueMap>())
+        return false;
+    event.time = IsNull(value["time"]) ? String() : AsString(value["time"]);
+    event.direction = IsNull(value["direction"]) ? String() : AsString(value["direction"]);
+    event.kind = IsNull(value["kind"]) ? String() : AsString(value["kind"]);
+    event.action = IsNull(value["action"]) ? String() : AsString(value["action"]);
+    event.result = IsNull(value["result"]) ? String() : AsString(value["result"]);
+    return true;
+}
+
+ValueMap ActivityToValue(const TaskTrackTunnelActivity& activity)
+{
+    ValueMap out;
+    out.Add("schema_version", activity.schema_version);
+    out.Add("received", activity.received);
+    out.Add("sent", activity.sent);
+    out.Add("last_method", activity.last_method);
+    out.Add("last_tool", activity.last_tool);
+    out.Add("updated_at", activity.updated_at);
+    ValueArray recent;
+    for(const TaskTrackTunnelActivityEvent& event : activity.recent)
+        recent.Add(ActivityEventToValue(event));
+    out.Add("recent", recent);
+    return out;
+}
+
+bool ActivityFromValue(const Value& value, TaskTrackTunnelActivity& activity, String& error)
+{
+    if(!value.Is<ValueMap>()) {
+        error = "Tunnel activity state must be a JSON object.";
+        return false;
+    }
+
+    Value schema = value["schema_version"];
+    Value received = value["received"];
+    Value sent = value["sent"];
+    if(!IsNull(schema) && (!IsNumber(schema) || (int)schema != 1)) {
+        error = "Unsupported tunnel activity schema version.";
+        return false;
+    }
+    if(!IsNull(received) && !IsNumber(received)) {
+        error = "Tunnel received count must be numeric.";
+        return false;
+    }
+    if(!IsNull(sent) && !IsNumber(sent)) {
+        error = "Tunnel sent count must be numeric.";
+        return false;
+    }
+
+    activity.schema_version = IsNull(schema) ? 1 : (int)schema;
+    activity.received = IsNull(received) ? 0 : (int64)received;
+    activity.sent = IsNull(sent) ? 0 : (int64)sent;
+    activity.last_method = IsNull(value["last_method"]) ? String() : AsString(value["last_method"]);
+    activity.last_tool = IsNull(value["last_tool"]) ? String() : AsString(value["last_tool"]);
+    activity.updated_at = IsNull(value["updated_at"]) ? String() : AsString(value["updated_at"]);
+    activity.recent.Clear();
+
+    Value recent_value = value["recent"];
+    if(recent_value.Is<ValueArray>()) {
+        ValueArray recent = recent_value;
+        for(int i = 0; i < recent.GetCount(); ++i) {
+            TaskTrackTunnelActivityEvent event;
+            if(ActivityEventFromValue(recent[i], event))
+                activity.recent.Add(pick(event));
+        }
+    }
+    TrimActivity(activity);
+    return true;
+}
+
+}
+
+String TaskTrackTunnelProbePath()
+{
+    return GetExeDirFile("tasktrack-tunnel-probe.json");
+}
+
+String TaskTrackTunnelActivityPath()
+{
+    return GetExeDirFile("tasktrack-tunnel-activity.json");
 }
 
 bool TaskTrackTunnelLoadProbe(TaskTrackTunnelProbe& probe, String& error)
@@ -78,55 +177,10 @@ bool TaskTrackTunnelLoadProbe(TaskTrackTunnelProbe& probe, String& error)
 bool TaskTrackTunnelSaveProbe(const TaskTrackTunnelProbe& probe, String& error)
 {
     error.Clear();
-    String json = AsJSON(ProbeToValue(probe), true);
-    if(!SaveFile(TaskTrackTunnelProbePath(), json)) {
+    if(!SaveFile(TaskTrackTunnelProbePath(), AsJSON(ProbeToValue(probe), true))) {
         error = "Unable to write local tunnel probe state beside the TaskTrack executables.";
         return false;
     }
-    return true;
-}
-
-static ValueMap ActivityToValue(const TaskTrackTunnelActivity& activity)
-{
-    ValueMap out;
-    out.Add("schema_version", activity.schema_version);
-    out.Add("received", activity.received);
-    out.Add("sent", activity.sent);
-    out.Add("last_method", activity.last_method);
-    out.Add("last_tool", activity.last_tool);
-    out.Add("updated_at", activity.updated_at);
-    return out;
-}
-
-static bool ActivityFromValue(const Value& value, TaskTrackTunnelActivity& activity, String& error)
-{
-    if(!value.Is<ValueMap>()) {
-        error = "Tunnel activity state must be a JSON object.";
-        return false;
-    }
-
-    Value schema = value["schema_version"];
-    Value received = value["received"];
-    Value sent = value["sent"];
-    if(!IsNull(schema) && (!IsNumber(schema) || (int)schema != 1)) {
-        error = "Unsupported tunnel activity schema version.";
-        return false;
-    }
-    if(!IsNull(received) && !IsNumber(received)) {
-        error = "Tunnel received count must be numeric.";
-        return false;
-    }
-    if(!IsNull(sent) && !IsNumber(sent)) {
-        error = "Tunnel sent count must be numeric.";
-        return false;
-    }
-
-    activity.schema_version = IsNull(schema) ? 1 : (int)schema;
-    activity.received = IsNull(received) ? 0 : (int64)received;
-    activity.sent = IsNull(sent) ? 0 : (int64)sent;
-    activity.last_method = IsNull(value["last_method"]) ? String() : AsString(value["last_method"]);
-    activity.last_tool = IsNull(value["last_tool"]) ? String() : AsString(value["last_tool"]);
-    activity.updated_at = IsNull(value["updated_at"]) ? String() : AsString(value["updated_at"]);
     return true;
 }
 
@@ -157,8 +211,7 @@ bool TaskTrackTunnelLoadActivity(TaskTrackTunnelActivity& activity, String& erro
 bool TaskTrackTunnelSaveActivity(const TaskTrackTunnelActivity& activity, String& error)
 {
     error.Clear();
-    String json = AsJSON(ActivityToValue(activity), true);
-    if(!SaveFile(TaskTrackTunnelActivityPath(), json)) {
+    if(!SaveFile(TaskTrackTunnelActivityPath(), AsJSON(ActivityToValue(activity), true))) {
         error = "Unable to write remote tunnel activity state beside the TaskTrack executables.";
         return false;
     }
@@ -175,20 +228,42 @@ bool TaskTrackTunnelRecordReceived(const String& method, const String& tool, Str
     TaskTrackTunnelActivity activity;
     if(!TaskTrackTunnelLoadActivity(activity, error))
         activity = TaskTrackTunnelActivity();
+
     activity.received++;
     activity.last_method = method;
     activity.last_tool = tool;
     activity.updated_at = AsString(GetSysTime());
+
+    TaskTrackTunnelActivityEvent event;
+    event.time = ActivityClock();
+    event.direction = "in";
+    event.kind = method.IsEmpty() ? String("request") : method;
+    event.action = tool.IsEmpty() ? method : tool;
+    event.result = "request received";
+    activity.recent.Add(pick(event));
+    TrimActivity(activity);
     return TaskTrackTunnelSaveActivity(activity, error);
 }
 
-bool TaskTrackTunnelRecordSent(String& error)
+bool TaskTrackTunnelRecordSent(int response_bytes, bool is_error, String& error)
 {
     TaskTrackTunnelActivity activity;
     if(!TaskTrackTunnelLoadActivity(activity, error))
         activity = TaskTrackTunnelActivity();
+
     activity.sent++;
     activity.updated_at = AsString(GetSysTime());
+
+    TaskTrackTunnelActivityEvent event;
+    event.time = ActivityClock();
+    event.direction = "out";
+    event.kind = is_error ? "error" : "result";
+    event.action = activity.last_tool.IsEmpty() ? activity.last_method : activity.last_tool;
+    event.result = is_error
+        ? Format("ERROR - %d B", response_bytes)
+        : Format("OK - %d B", response_bytes);
+    activity.recent.Add(pick(event));
+    TrimActivity(activity);
     return TaskTrackTunnelSaveActivity(activity, error);
 }
 

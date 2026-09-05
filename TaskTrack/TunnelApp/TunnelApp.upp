@@ -1,4 +1,4 @@
-description "TaskTrack native supervisor for the official OpenAI Secure MCP Tunnel client";
+description "TaskTrack native manager for the official OpenAI Secure MCP Tunnel runtime";
 
 uses
     Ui,
@@ -6,6 +6,8 @@ uses
     TaskTrack/TunnelCore;
 
 file
+    TaskTrackTunnelManager.h,
+    TaskTrackTunnelManager.cpp,
     main.cpp;
 
 mainconfig
