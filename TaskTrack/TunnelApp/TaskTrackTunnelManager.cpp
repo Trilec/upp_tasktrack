@@ -1,4 +1,5 @@
 #include "TaskTrackTunnelManager.h"
+#include "TunnelAppIcon.h"
 
 namespace Upp {
 
@@ -52,6 +53,7 @@ TaskTrackTunnelManager::TaskTrackTunnelManager(const TaskTrackTunnelManagerOptio
     : options_(options)
 {
     Title("TaskTrack Tunnel");
+    Icon(TunnelAppIcon(), TunnelAppIcon());
     Sizeable().Zoomable();
     SetRect(0, 0, DPI(920), DPI(610));
     SetMinSize(Size(DPI(780), DPI(610)));
@@ -110,7 +112,7 @@ void TaskTrackTunnelManager::BuildUi()
 
     header_.SetTitle("TaskTrack Tunnel")
            .SetSubTitle("Secure ChatGPT ↔ local TaskTrack connection")
-           .SetMedia(ICON_DESIGN_WIDGETS_48())
+           .SetMedia(TunnelAppIcon())
            .SetMediaSide(UiAlign::LEFT)
            .SetMediaAlign(UiAlign::CENTER, UiAlign::CENTER)
            .SetMediaReserve(DPI(44))
@@ -385,7 +387,7 @@ void TaskTrackTunnelManager::ApplyTheme()
     header_style.subtitle_color = MutedColor();
     header_style.palette.face[ST_NORMAL] = UiFill::Solid(SurfaceColor());
     header_style.metrics.radius = 0;
-    header_style.media_tint_mono = true;
+    header_style.media_tint_mono = false;
     header_.SetCustomStyle(header_style);
 
     ConfigureNavButton(overview_button_);
@@ -1365,7 +1367,7 @@ void TaskTrackTunnelManager::Layout()
     int setup_width = max(0, sp.GetWidth() - pad * 2);
     profile_bar_.SetRect(pad, DPI(16), setup_width, DPI(75));
     setup_form_.SetRect(pad, DPI(16) + DPI(75) + gap, setup_width,
-                        max(DPI(360), sp.GetHeight() - DPI(16) - DPI(75) - gap - DPI(15)));
+                        max(DPI(330), sp.GetHeight() - DPI(16) - DPI(75) - gap - DPI(15)));
 
     Rect pr = profile_bar_.GetSize();
     profile_select_caption_.SetRect(DPI(13), DPI(8), DPI(180), DPI(18));
