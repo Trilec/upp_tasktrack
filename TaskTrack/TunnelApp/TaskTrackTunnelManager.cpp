@@ -119,7 +119,6 @@ void TaskTrackTunnelManager::BuildUi()
            .SetMediaMin(DPI(26))
            .SetMediaAutoFit(true)
            .ShowTitleLine(false)
-           .SetContentInset(Rect(DPI(20), DPI(10), DPI(10), DPI(10)))
            .SetContentCell(header_actions_);
 
     header_actions_.SetGap(DPI(5)).SetInset(0).SetAlignItems(UiCrossAlign::Center);
@@ -387,6 +386,7 @@ void TaskTrackTunnelManager::ApplyTheme()
     header_style.subtitle_color = MutedColor();
     header_style.palette.face[ST_NORMAL] = UiFill::Solid(SurfaceColor());
     header_style.metrics.radius = 0;
+    header_style.metrics.content_margin = Rect(DPI(20), DPI(10), DPI(10), DPI(10));
     header_style.media_tint_mono = false;
     header_.SetCustomStyle(header_style);
 
@@ -504,13 +504,14 @@ void TaskTrackTunnelManager::ConfigureNavButton(UiToolButton& button)
         else
             return;
 
+        int line_thickness = button.IsChecked() ? DPI(2) : DPI(1);
         Font font = metrics.use_text_font ? metrics.text_font : button.GetStyle().font;
         if(IsNull(font))
             font = StdFont();
         Size text_size = GetTextSize(button.GetText(), font);
         int x = max(0, (outer.GetWidth() - text_size.cx) / 2);
         int y = min(outer.bottom - DPI(1), (outer.GetHeight() + text_size.cy) / 2 + DPI(1));
-        w.DrawRect(x, y, min(text_size.cx, outer.GetWidth() - x), DPI(1), line);
+        w.DrawRect(x, y, min(text_size.cx, outer.GetWidth() - x), line_thickness, line);
     };
 }
 
@@ -1369,7 +1370,7 @@ void TaskTrackTunnelManager::Layout()
     activity_title_.SetRect(DPI(13), DPI(8), DPI(120), DPI(26));
     activity_live_.SetRect(DPI(135), DPI(8), DPI(70), DPI(26));
     activity_count_.SetRect(max(0, ar.GetWidth() - DPI(190)), DPI(8), DPI(175), DPI(26));
-    activity_table_.SetRect(DPI(1), DPI(42), max(0, ar.GetWidth() - DPI(2)), max(0, ar.GetHeight() - DPI(84)));
+    activity_table_.SetRect(DPI(13), DPI(42), max(0, ar.GetWidth() - DPI(26)), max(0, ar.GetHeight() - DPI(84)));
     copy_diagnostics_button_.SetRect(DPI(10), max(0, ar.GetHeight() - DPI(36)), DPI(116), DPI(27));
     clear_activity_button_.SetRect(DPI(133), max(0, ar.GetHeight() - DPI(36)), DPI(105), DPI(27));
     activity_footer_note_.SetRect(max(DPI(245), ar.GetWidth() - DPI(220)), max(0, ar.GetHeight() - DPI(36)), DPI(205), DPI(27));
