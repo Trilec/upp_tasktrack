@@ -119,7 +119,7 @@ void TaskTrackTunnelManager::BuildUi()
            .SetMediaMin(DPI(26))
            .SetMediaAutoFit(true)
            .ShowTitleLine(false)
-           .SetContentInset(DPI(10))
+           .SetContentInset(Rect(DPI(20), DPI(10), DPI(10), DPI(10)))
            .SetContentCell(header_actions_);
 
     header_actions_.SetGap(DPI(5)).SetInset(0).SetAlignItems(UiCrossAlign::Center);
@@ -489,10 +489,29 @@ void TaskTrackTunnelManager::ConfigureNavButton(UiToolButton& button)
     style.palette.face[ST_HOT] = UiFill::Solid(selected);
     style.palette.face[ST_PRESSED] = UiFill::Solid(selected);
     style.palette.ink[ST_PRESSED] = TextColor();
-    style.underline = true;
-    style.underline_width = DPI(2);
+    style.underline = false;
+    style.underline_width = DPI(1);
     style.underline_offset = 0;
     button.SetCustomStyle(style);
+    button.WhenPaintForeground = [this, &button](Draw& w, const Rect& outer,
+                                                  const StyledPalette&, const StyledMetrics& metrics,
+                                                  const StyledSkin&, StyledState state, bool) {
+        Color line;
+        if(button.IsChecked())
+            line = Color(138, 58, 247);
+        else if(state == ST_HOT)
+            line = dark_theme_ ? Color(96, 104, 116) : Color(220, 225, 232);
+        else
+            return;
+
+        Font font = metrics.use_text_font ? metrics.text_font : button.GetStyle().font;
+        if(IsNull(font))
+            font = StdFont();
+        Size text_size = GetTextSize(button.GetText(), font);
+        int x = max(0, (outer.GetWidth() - text_size.cx) / 2);
+        int y = min(outer.bottom - DPI(1), (outer.GetHeight() + text_size.cy) / 2 + DPI(1));
+        w.DrawRect(x, y, min(text_size.cx, outer.GetWidth() - x), DPI(1), line);
+    };
 }
 
 void TaskTrackTunnelManager::ToggleTheme()
