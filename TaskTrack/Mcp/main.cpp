@@ -296,6 +296,13 @@ bool UnifiedProcessMessage(const String& message, String& response, bool& has_re
         return false;
     }
 
+    if(TaskTrackTunnelIsRemoteSession()) {
+        String method = request["method"].Is<String>() ? AsString(request["method"]) : String();
+        String tool = method == "tools/call" ? ToolName(request) : String();
+        String activity_error;
+        TaskTrackTunnelRecordReceived(method, tool, activity_error);
+    }
+
     Value result = UnifiedHandleRequest(request, has_response);
     if(has_response)
         response = AsJSON(result, false);
@@ -316,8 +323,27 @@ int UnifiedRunServer()
         String response;
         bool has_response = false;
         UnifiedProcessMessage(message, response, has_response);
-        if(has_response)
+        if(has_response) {
             WriteMessage(response);
+            if(TaskTrackTunnelIsRemoteSession()) {
+                bool response_error = false;
+                try {
+                    Value envelope = ParseJSON(response);
+                    if(envelope.Is<ValueMap>()) {
+                        response_error = !IsNull(envelope["error"]);
+                        Value result = envelope["result"];
+                        if(!response_error && result.Is<ValueMap>()
+                           && !IsNull(result["isError"]))
+                            response_error = (bool)result["isError"];
+                    }
+                }
+                catch(CParser::Error) {
+                    response_error = true;
+                }
+                String activity_error;
+                TaskTrackTunnelRecordSent(response.GetCount(), response_error, activity_error);
+            }
+        }
     }
 }
 
