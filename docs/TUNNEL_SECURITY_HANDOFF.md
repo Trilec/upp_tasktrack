@@ -1,6 +1,6 @@
 # Tunnel security implementation handoff
 
-Scope: local TaskTrack changes only; official OpenAI runtime stays unchanged. No commits or publishing performed. The original audit remains a historical review of checkpoint `931aa156`.
+Scope: TaskTrack changes only; official OpenAI runtime stays unchanged. Published on main at `8ee534bbda579e83c09d9f56f2a4c6404e717765`. The original audit remains a historical review of checkpoint `931aa156`.
 
 ## Product intent and stopping point
 
@@ -11,8 +11,7 @@ the coding agent's own MCP connections. Each of the two machines has its own
 tunnel/key. Keep the service boundaries and direct-local access intact; no
 aggregator or transport rewrite is needed to complete this goal.
 
-The user requested a bounded, tested handoff before further credit is spent.
-Stop after the completed pieces below. Do not modify the third-party runtime.
+This was a bounded, tested hardening pass. The completed pieces below are now published on main. Do not modify the third-party runtime merely to extend this pass.
 Embedded U++ transport and durable portable key storage are future decisions.
 The vault should protect retained local credentials without requiring an OS
 keychain; it cannot protect an unlocked process from equivalent local access.
@@ -81,5 +80,4 @@ Fresh binaries are in `build-security-verification/`, including TaskTrackMcp.exe
 TaskTrackTunnelGui.exe and its companion GUIs. The vendor binary remains at
 `tunnel-client/tunnel-client-runtime.exe`; select it explicitly in Setup or pass
 its absolute path with `--client`. Do not mistake the active old MCP process for
-the newly verified build. Restart/switch binaries when ready; publishing is the
-user's responsibility.
+the newly verified build. Restart/switch binaries when ready. Source is already published on main; the separate verification binaries remain local build artifacts.
