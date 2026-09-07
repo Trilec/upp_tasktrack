@@ -143,8 +143,8 @@ void TaskTrackTunnelManager::BuildUi()
     root_.Add(pages_);
     root_.Add(footer_);
 
-    header_.SetTitle("TaskTrack Tunnel")
-           .SetSubTitle("Secure ChatGPT ↔ local TaskTrack connection")
+    header_.SetTitle("MCP Tunnel")
+           .SetSubTitle("Secure ChatGPT ↔ local MCP services")
            .SetMedia(TunnelAppIcon())
            .SetMediaSide(UiAlign::LEFT)
            .SetMediaAlign(UiAlign::CENTER, UiAlign::CENTER)
@@ -157,7 +157,7 @@ void TaskTrackTunnelManager::BuildUi()
     header_actions_.SetGap(DPI(5)).SetInset(0).SetAlignItems(UiCrossAlign::Center);
     header_actions_.AddSpacer(1).Expand(1);
     theme_button_.SetIcon(ICON_ACTION_DARK_MODE_48()).SetIconSize(DPI(16), DPI(16)).Tip("Toggle light/dark theme");
-    help_button_.SetIcon(ICON_DESIGN_HELP_48()).SetIconSize(DPI(16), DPI(16)).Tip("TaskTrack Tunnel help");
+    help_button_.SetIcon(ICON_DESIGN_HELP_48()).SetIconSize(DPI(16), DPI(16)).Tip("MCP Tunnel help");
     exit_button_.SetIcon(ICON_DESIGN_MODE_OFF_ON_48()).SetIconSize(DPI(16), DPI(16)).Tip("Close");
     header_actions_.Add(help_button_).Fixed(DPI(32));
     header_actions_.Add(theme_button_).Fixed(DPI(32));
@@ -165,16 +165,20 @@ void TaskTrackTunnelManager::BuildUi()
 
     nav_.Add(overview_button_);
     nav_.Add(setup_button_);
+    nav_.Add(services_button_);
     nav_.Add(nav_note_);
     overview_button_.SetText("Overview").SetCheckable();
     setup_button_.SetText("Setup").SetCheckable();
-    nav_note_.SetText("Local tunnel control").SetAlign(UiAlign::RIGHT, UiAlign::CENTER);
+    services_button_.SetText("Services").SetCheckable();
+    nav_note_.SetText("Machine tunnel control").SetAlign(UiAlign::RIGHT, UiAlign::CENTER);
 
     pages_.Add(overview_page_, "overview");
     pages_.Add(setup_page_, "setup");
+    pages_.Add(services_page_, "services");
 
     BuildOverview();
     BuildSetup();
+    BuildServices();
 
     footer_.Add(footer_build_);
     footer_.Add(footer_mcp_);
@@ -209,7 +213,7 @@ void TaskTrackTunnelManager::BuildOverview()
     hero_.Add(health_button_);
 
     state_eyebrow_.SetText("TUNNEL STATE");
-    profile_caption_.SetText("Profile");
+    profile_caption_.SetText("Machine");
     tunnel_caption_.SetText("Tunnel");
     sync_caption_.SetText("Last sync");
     primary_button_.SetText("Connect");
@@ -220,25 +224,27 @@ void TaskTrackTunnelManager::BuildOverview()
         status_cell_[i].Add(status_caption_[i]);
         status_cell_[i].Add(status_value_[i]);
     }
-    status_caption_[0].SetText("TASKTRACK MCP");
+    status_caption_[0].SetText("MAIN MCP");
     status_caption_[1].SetText("OPENAI TUNNEL");
-    status_caption_[2].SetText("REMOTE ACTIVITY");
-    status_caption_[3].SetText("BUILD");
+    status_caption_[2].SetText("TASKTRACK ACTIVITY");
+    status_caption_[3].SetText("SERVICES");
 
     activity_panel_.Add(activity_title_);
     activity_panel_.Add(activity_live_);
     activity_panel_.Add(activity_count_);
     activity_panel_.Add(activity_table_);
+    activity_panel_.Add(send_probe_button_);
     activity_panel_.Add(copy_diagnostics_button_);
     activity_panel_.Add(clear_activity_button_);
     activity_panel_.Add(activity_footer_note_);
 
-    activity_title_.SetText("Recent activity");
+    activity_title_.SetText("TaskTrack activity");
     activity_live_.EnableRich(true).ClearSpans().AddBulletSpan(OkColor(), DPI(6)).AddTextSpan("  live");
     activity_count_.SetText("Last 6 communications").SetAlign(UiAlign::RIGHT, UiAlign::CENTER);
+    send_probe_button_.SetText("Send probe");
     copy_diagnostics_button_.SetText("Copy diagnostics");
     clear_activity_button_.SetText("Clear activity");
-    activity_footer_note_.SetText("No remote traffic yet").SetAlign(UiAlign::RIGHT, UiAlign::CENTER);
+    activity_footer_note_.SetText("No TaskTrack remote traffic yet").SetAlign(UiAlign::RIGHT, UiAlign::CENTER);
 
     activity_table_.SetModel(activity_model_)
                    .ShowRowHeaders(false)
@@ -258,7 +264,7 @@ void TaskTrackTunnelManager::BuildSetup()
     profile_bar_.Add(duplicate_profile_button_);
     profile_bar_.Add(delete_profile_button_);
 
-    profile_select_caption_.SetText("Tunnel profile");
+    profile_select_caption_.SetText("Machine profile");
     new_profile_button_.SetText("+ New");
     duplicate_profile_button_.SetText("Duplicate");
     delete_profile_button_.SetText("Delete");
@@ -266,45 +272,89 @@ void TaskTrackTunnelManager::BuildSetup()
     Ctrl *controls[] = {
         &section_profile_, &section_runtime_, &section_launch_,
         &profile_name_label_, &profile_name_edit_,
+        &machine_id_label_, &machine_id_edit_,
         &tunnel_id_label_, &tunnel_id_edit_,
-        &credential_label_, &credential_edit_, &credential_status_, &credential_note_,
+        &credential_label_, &credential_source_dropdown_, &credential_status_,
+        &credential_set_button_, &credential_clear_button_, &credential_note_,
         &runtime_path_label_, &runtime_path_edit_, &runtime_browse_button_,
-        &mcp_path_label_, &mcp_path_edit_, &mcp_browse_button_,
         &auto_connect_label_, &auto_connect_toggle_, &auto_connect_title_, &auto_connect_note_,
         &remember_label_, &remember_toggle_, &remember_title_, &remember_note_
     };
     for(Ctrl *ctrl : controls)
         setup_form_.Add(*ctrl);
 
-    section_profile_.SetText("PROFILE");
+    section_profile_.SetText("MACHINE PROFILE");
     section_runtime_.SetText("RUNTIME");
     section_launch_.SetText("LAUNCH BEHAVIOUR");
 
     profile_name_label_.SetText("Profile name");
+    machine_id_label_.SetText("Machine ID");
     tunnel_id_label_.SetText("Tunnel ID");
-    credential_label_.SetText("Credential source");
-    credential_edit_.SetTextUtf8("CONTROL_PLANE_API_KEY");
-    credential_edit_.SetReadOnly();
-    credential_note_.SetText("The API key is read from the credential source and is never shown or stored in the profile.");
+    credential_label_.SetText("Credential");
+
+    credential_source_dropdown_.UseInternalModel();
+    credential_source_dropdown_.Clear();
+    credential_source_dropdown_.Add("Windows Credential Manager", "windows_credential_manager");
+    credential_source_dropdown_.Add("Environment variable", "environment");
+    credential_set_button_.SetText("Set key");
+    credential_clear_button_.SetText("Remove");
+    credential_note_.SetText("Recommended: store the key in Windows Credential Manager. The profile stores only its credential reference.");
 
     runtime_path_label_.SetText("Runtime executable");
-    mcp_path_label_.SetText("TaskTrack MCP");
     runtime_browse_button_.SetText("Browse");
-    mcp_browse_button_.SetText("Browse");
 
     auto_connect_label_.SetText("Auto-connect");
     auto_connect_title_.SetText("Auto-connect on launch");
-    auto_connect_note_.SetText("Start the selected tunnel profile when the app opens.");
+    auto_connect_note_.SetText("Start this machine tunnel and all enabled services when the manager opens.");
 
     remember_label_.SetText("Remember profile");
-    remember_title_.SetText("Remember tunnel profile");
-    remember_note_.SetText("Reopen with the last selected named profile.");
+    remember_title_.SetText("Remember machine profile");
+    remember_note_.SetText("Reopen with the last selected machine profile.");
+}
+
+void TaskTrackTunnelManager::BuildServices()
+{
+    services_page_.Add(service_bar_);
+    services_page_.Add(service_form_);
+
+    service_bar_.Add(service_select_caption_);
+    service_bar_.Add(service_dropdown_);
+    service_bar_.Add(new_service_button_);
+    service_bar_.Add(duplicate_service_button_);
+    service_bar_.Add(delete_service_button_);
+
+    service_select_caption_.SetText("MCP service");
+    new_service_button_.SetText("+ New");
+    duplicate_service_button_.SetText("Duplicate");
+    delete_service_button_.SetText("Delete");
+
+    Ctrl *controls[] = {
+        &section_service_,
+        &service_name_label_, &service_name_edit_,
+        &service_id_label_, &service_id_edit_,
+        &service_channel_label_, &service_channel_edit_,
+        &service_command_label_, &service_command_edit_, &service_browse_button_,
+        &service_enabled_label_, &service_enabled_toggle_, &service_enabled_title_, &service_enabled_note_
+    };
+    for(Ctrl *ctrl : controls)
+        service_form_.Add(*ctrl);
+
+    section_service_.SetText("SERVICE BINDING");
+    service_name_label_.SetText("Display name");
+    service_id_label_.SetText("Service ID");
+    service_channel_label_.SetText("MCP channel");
+    service_command_label_.SetText("MCP command");
+    service_browse_button_.SetText("Browse");
+    service_enabled_label_.SetText("Enabled");
+    service_enabled_title_.SetText("Expose this service");
+    service_enabled_note_.SetText("Enabled services are launched under one machine tunnel. Exactly one enabled service must use channel 'main'.");
 }
 
 void TaskTrackTunnelManager::Wire()
 {
     overview_button_.WhenAction = [=] { SelectPage(PAGE_OVERVIEW); };
     setup_button_.WhenAction = [=] { SelectPage(PAGE_SETUP); };
+    services_button_.WhenAction = [=] { SelectPage(PAGE_SERVICES); };
     theme_button_.WhenAction = [=] { ToggleTheme(); };
     help_button_.WhenAction = [=] { ShowHelp(); };
     exit_button_.WhenAction = [=] { Close(); };
@@ -312,19 +362,21 @@ void TaskTrackTunnelManager::Wire()
     footer_copy_.WhenAction = [=] { CopyDiagnostics(); };
 
     primary_button_.WhenAction = [=] {
-        RuntimeState state = GetRuntimeState();
-        if(state == STATE_READY || state == STATE_CONNECTING)
+        McpTunnelRuntime::State state = runtime_.GetState();
+        if(state == McpTunnelRuntime::READY || state == McpTunnelRuntime::CONNECTING)
             StopRuntime();
         else
             ConnectRuntime();
     };
     health_button_.WhenAction = [=] { OpenHealth(); };
+    send_probe_button_.WhenAction = [=] { SendProbe(); };
     copy_diagnostics_button_.WhenAction = [=] { CopyDiagnostics(); };
     clear_activity_button_.WhenAction = [=] { ClearActivity(); };
 
     profile_dropdown_.WhenSelectData = [=](const Value& value) {
         if(loading_profile_)
             return;
+        SaveServiceFromUi();
         SaveProfileFromUi();
         SelectProfileById(AsString(value));
     };
@@ -333,13 +385,43 @@ void TaskTrackTunnelManager::Wire()
     delete_profile_button_.WhenAction = [=] { DeleteProfile(); };
 
     profile_name_edit_.WhenChange = [=] { if(!loading_profile_) SaveProfileFromUi(); };
+    machine_id_edit_.WhenChange = [=] { if(!loading_profile_) SaveProfileFromUi(); };
     tunnel_id_edit_.WhenChange = [=] { if(!loading_profile_) SaveProfileFromUi(); };
     runtime_path_edit_.WhenChange = [=] { if(!loading_profile_) SaveProfileFromUi(); };
-    mcp_path_edit_.WhenChange = [=] { if(!loading_profile_) SaveProfileFromUi(); };
     auto_connect_toggle_.WhenAction = [=] { if(!loading_profile_) SaveProfileFromUi(); };
     remember_toggle_.WhenAction = [=] { if(!loading_profile_) SaveProfileFromUi(); };
     runtime_browse_button_.WhenAction = [=] { BrowseRuntime(); };
-    mcp_browse_button_.WhenAction = [=] { BrowseMcp(); };
+    credential_source_dropdown_.WhenSelectData = [=](const Value& value) {
+        if(loading_profile_)
+            return;
+        McpTunnelProfile *profile = CurrentProfile();
+        if(!profile)
+            return;
+        profile->credential_source = McpTunnelCredentialSourceFromId(AsString(value));
+        if(profile->credential_ref.IsEmpty())
+            profile->credential_ref = McpTunnelDefaultCredentialRef(profile->id);
+        SaveProfiles();
+        RefreshCredentialProjection();
+        RefreshProjection();
+    };
+    credential_set_button_.WhenAction = [=] { SetCredential(); };
+    credential_clear_button_.WhenAction = [=] { ClearCredential(); };
+
+    service_dropdown_.WhenSelectData = [=](const Value& value) {
+        if(loading_service_)
+            return;
+        SaveServiceFromUi();
+        SelectServiceById(AsString(value));
+    };
+    new_service_button_.WhenAction = [=] { NewService(); };
+    duplicate_service_button_.WhenAction = [=] { DuplicateService(); };
+    delete_service_button_.WhenAction = [=] { DeleteService(); };
+    service_name_edit_.WhenChange = [=] { if(!loading_service_) SaveServiceFromUi(); };
+    service_id_edit_.WhenChange = [=] { if(!loading_service_) SaveServiceFromUi(); };
+    service_channel_edit_.WhenChange = [=] { if(!loading_service_) SaveServiceFromUi(); };
+    service_command_edit_.WhenChange = [=] { if(!loading_service_) SaveServiceFromUi(); };
+    service_enabled_toggle_.WhenAction = [=] { if(!loading_service_) SaveServiceFromUi(); };
+    service_browse_button_.WhenAction = [=] { BrowseServiceCommand(); };
 }
 
 Color TaskTrackTunnelManager::SurfaceColor() const { return dark_theme_ ? Color(29,34,41) : Color(251,252,254); }
