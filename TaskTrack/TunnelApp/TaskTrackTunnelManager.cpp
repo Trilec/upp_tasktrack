@@ -75,6 +75,26 @@ int EnabledServiceCount(const McpTunnelProfile& profile)
     return count;
 }
 
+String CommandExecutablePath(const String& command)
+{
+    String value = TrimBoth(command);
+    if(value.IsEmpty())
+        return String();
+    if(value[0] == '"') {
+        int end = value.Find('"', 1);
+        return end > 1 ? value.Mid(1, end - 1) : String();
+    }
+
+    int end = value.GetCount();
+    int space = value.Find(' ');
+    int tab = value.Find('\t');
+    if(space >= 0)
+        end = min(end, space);
+    if(tab >= 0)
+        end = min(end, tab);
+    return value.Left(end);
+}
+
 }
 
 TaskTrackTunnelManager::TaskTrackTunnelManager(const TaskTrackTunnelManagerOptions& options)
@@ -1304,6 +1324,19 @@ void TaskTrackTunnelManager::ConnectRuntime()
         return;
     }
 
+    RefreshMcpBinaryIdentity(true);
+    if(tasktrack && tasktrack->enabled &&
+       (mcp_binary_identity_ == MCP_BINARY_DIFFERENT ||
+        mcp_binary_identity_ == MCP_BINARY_UNVERIFIED)) {
+        String warning = mcp_binary_identity_ == MCP_BINARY_DIFFERENT
+            ? String("The configured TaskTrack MCP does not match this verified staged bundle.")
+            : String("The configured TaskTrack MCP could not be verified against a staged bundle manifest.");
+        warning << "\n\n" << McpBinaryIdentityText()
+                << "\n\nYou can continue, but this connection should not count as current-version acceptance.";
+        if(!PromptYesNo(warning + "\n\nContinue anyway?"))
+            return;
+    }
+
     String secret, credential_error;
     if(!ReadCredential(secret, credential_error)) {
         Exclamation(credential_error);
@@ -1368,10 +1401,97 @@ const McpTunnelService* TaskTrackTunnelManager::TaskTrackService() const
     return nullptr;
 }
 
+void TaskTrackTunnelManager::RefreshMcpBinaryIdentity(bool force)
+{
+    const McpTunnelService *service = TaskTrackService();
+    String command = service ? service->command : String();
+    if(!force && command == mcp_binary_command_ && mcp_binary_identity_ != MCP_BINARY_UNKNOWN)
+        return;
+
+    mcp_binary_command_ = command;
+    mcp_binary_path_ = CommandExecutablePath(command);
+    mcp_binary_actual_hash_.Clear();
+    mcp_binary_expected_hash_.Clear();
+    mcp_binary_bundle_build_.Clear();
+    mcp_binary_source_commit_.Clear();
+
+    if(mcp_binary_path_.IsEmpty() || !FileExists(mcp_binary_path_)) {
+        mcp_binary_identity_ = MCP_BINARY_MISSING;
+        return;
+    }
+
+    String image = LoadFile(mcp_binary_path_);
+    if(IsNull(image)) {
+        mcp_binary_identity_ = MCP_BINARY_UNVERIFIED;
+        return;
+    }
+    mcp_binary_actual_hash_ = SHA256String(image);
+
+    String manifest_json = LoadFile(GetExeDirFile("manifest.json"));
+    if(IsNull(manifest_json) || manifest_json.IsEmpty()) {
+        mcp_binary_identity_ = MCP_BINARY_UNVERIFIED;
+        return;
+    }
+
+    try {
+        Value root = ParseJSON(manifest_json);
+        if(!root.Is<ValueMap>()) {
+            mcp_binary_identity_ = MCP_BINARY_UNVERIFIED;
+            return;
+        }
+
+        mcp_binary_bundle_build_ = AsString(root["tasktrack_build"]);
+        mcp_binary_source_commit_ = AsString(root["source_commit"]);
+        Value files_value = root["files"];
+        if(files_value.Is<ValueArray>()) {
+            ValueArray files = files_value;
+            for(int i = 0; i < files.GetCount(); ++i) {
+                Value item = files[i];
+                if(item.Is<ValueMap>() && AsString(item["name"]) == "TaskTrackMcp.exe") {
+                    mcp_binary_expected_hash_ = ToLower(AsString(item["sha256"]));
+                    break;
+                }
+            }
+        }
+    }
+    catch(CParser::Error) {
+        mcp_binary_identity_ = MCP_BINARY_UNVERIFIED;
+        return;
+    }
+
+    if(mcp_binary_expected_hash_.IsEmpty()) {
+        mcp_binary_identity_ = MCP_BINARY_UNVERIFIED;
+        return;
+    }
+
+    bool hash_matches = ToLower(mcp_binary_actual_hash_) == mcp_binary_expected_hash_;
+    bool build_matches = mcp_binary_bundle_build_.IsEmpty() ||
+                         mcp_binary_bundle_build_ == TaskTrackBuildVersion();
+    mcp_binary_identity_ = hash_matches && build_matches
+        ? MCP_BINARY_CURRENT : MCP_BINARY_DIFFERENT;
+}
+
+String TaskTrackTunnelManager::McpBinaryIdentityText() const
+{
+    switch(mcp_binary_identity_) {
+    case MCP_BINARY_CURRENT:
+        return "TaskTrack MCP is the verified staged binary (" + mcp_binary_bundle_build_ + ").";
+    case MCP_BINARY_DIFFERENT:
+        return "TaskTrack MCP differs from the verified staged binary.";
+    case MCP_BINARY_UNVERIFIED:
+        return "TaskTrack MCP is present but no matching staged identity is available.";
+    case MCP_BINARY_MISSING:
+        return "TaskTrack MCP executable is missing.";
+    default:
+        return "TaskTrack MCP identity has not been checked.";
+    }
+}
+
 void TaskTrackTunnelManager::RefreshProjection()
 {
     McpTunnelRuntime::State state = runtime_.GetState();
     const McpTunnelProfile *profile = CurrentProfile();
+    RefreshMcpBinaryIdentity(false);
 
     Color state_color = StoppedColor();
     Color beacon_face = SubtleColor();
@@ -1434,10 +1554,28 @@ void TaskTrackTunnelManager::RefreshProjection()
             }
 
     bool main_configured = main_service && !main_service->command.IsEmpty();
+    Color main_color = main_configured ? OkColor() : DangerColor();
+    String main_text = main_configured ? main_service->name : String("Missing");
+    const McpTunnelService *tasktrack_service = TaskTrackService();
+    if(main_configured && tasktrack_service == main_service) {
+        if(mcp_binary_identity_ == MCP_BINARY_CURRENT)
+            main_text << "  • current";
+        else if(mcp_binary_identity_ == MCP_BINARY_DIFFERENT) {
+            main_text << "  • differs";
+            main_color = ActivityColor();
+        }
+        else if(mcp_binary_identity_ == MCP_BINARY_UNVERIFIED) {
+            main_text << "  • unverified";
+            main_color = ActivityColor();
+        }
+        else if(mcp_binary_identity_ == MCP_BINARY_MISSING) {
+            main_text << "  • missing";
+            main_color = DangerColor();
+        }
+    }
     status_value_[0].ClearSpans().EnableRich(true)
-                    .AddBulletSpan(main_configured ? OkColor() : DangerColor(), DPI(7))
-                    .AddTextSpan(main_configured ? "  " + main_service->name : String("  Missing"),
-                                 TextColor(), true);
+                    .AddBulletSpan(main_color, DPI(7))
+                    .AddTextSpan("  " + main_text, TextColor(), true);
 
     Color tunnel_color = state == McpTunnelRuntime::READY ? OkColor()
                        : state == McpTunnelRuntime::CONNECTING ? ActivityColor()
@@ -1625,6 +1763,14 @@ String TaskTrackTunnelManager::BuildDiagnostics() const
         << "Credential available: " << BoolText(credential_available) << "\n"
         << "Secret value: [not exposed]\n"
         << "Runtime executable: " << (profile ? profile->runtime_path : String()) << "\n";
+
+    const_cast<TaskTrackTunnelManager *>(this)->RefreshMcpBinaryIdentity(true);
+    out << "TaskTrack MCP identity: " << McpBinaryIdentityText() << "\n"
+        << "TaskTrack MCP path: " << mcp_binary_path_ << "\n"
+        << "TaskTrack MCP SHA256: " << mcp_binary_actual_hash_ << "\n"
+        << "Expected MCP SHA256: " << mcp_binary_expected_hash_ << "\n"
+        << "Bundle build: " << mcp_binary_bundle_build_ << "\n"
+        << "Bundle source commit: " << mcp_binary_source_commit_ << "\n";
 
     if(profile) {
         out << "Enabled services: " << EnabledServiceCount(*profile) << "\n";
