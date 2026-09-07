@@ -484,6 +484,7 @@ void TaskTrackTunnelManager::ApplyTheme()
     root_.SetCustomStyle(MakePanelStyle(SurfaceColor(), 0, SurfaceColor()));
     overview_page_.SetCustomStyle(MakePanelStyle(SurfaceColor(), 0, SurfaceColor()));
     setup_page_.SetCustomStyle(MakePanelStyle(SurfaceColor(), 0, SurfaceColor()));
+    services_page_.SetCustomStyle(MakePanelStyle(SurfaceColor(), 0, SurfaceColor()));
     nav_.SetCustomStyle(MakePanelStyle(SurfaceColor(), 0, LineColor()));
     footer_.SetCustomStyle(MakePanelStyle(SubtleColor(), 0, LineColor()));
 
@@ -507,13 +508,17 @@ void TaskTrackTunnelManager::ApplyTheme()
 
     ConfigureNavButton(overview_button_);
     ConfigureNavButton(setup_button_);
+    ConfigureNavButton(services_button_);
     nav_note_.SetCustomStyle(MakeLabelStyle(SoftColor(), 10));
 
-    hero_.SetCustomStyle(MakePanelStyle(dark_theme_ ? Color(34,40,48) : White(), 10));
-    status_strip_.SetCustomStyle(MakePanelStyle(dark_theme_ ? Color(34,40,48) : White(), 10));
-    activity_panel_.SetCustomStyle(MakePanelStyle(dark_theme_ ? Color(34,40,48) : White(), 10));
-    profile_bar_.SetCustomStyle(MakePanelStyle(dark_theme_ ? Color(34,40,48) : White(), 10));
-    setup_form_.SetCustomStyle(MakePanelStyle(dark_theme_ ? Color(34,40,48) : White(), 10));
+    Color panel_face = dark_theme_ ? Color(34,40,48) : White();
+    hero_.SetCustomStyle(MakePanelStyle(panel_face, 10));
+    status_strip_.SetCustomStyle(MakePanelStyle(panel_face, 10));
+    activity_panel_.SetCustomStyle(MakePanelStyle(panel_face, 10));
+    profile_bar_.SetCustomStyle(MakePanelStyle(panel_face, 10));
+    setup_form_.SetCustomStyle(MakePanelStyle(panel_face, 10));
+    service_bar_.SetCustomStyle(MakePanelStyle(panel_face, 10));
+    service_form_.SetCustomStyle(MakePanelStyle(panel_face, 10));
 
     state_eyebrow_.SetCustomStyle(MakeLabelStyle(SoftColor(), 9, true));
     state_title_.SetCustomStyle(MakeLabelStyle(TextColor(), 27, true));
@@ -529,8 +534,8 @@ void TaskTrackTunnelManager::ApplyTheme()
     health_button_.SetCustomStyle(MakeButtonStyle(UiButtonRole::Subtle));
 
     for(int i = 0; i < 4; ++i) {
-        status_cell_[i].SetCustomStyle(MakePanelStyle(dark_theme_ ? Color(34,40,48) : White(), 0,
-                                                      i == 3 ? (dark_theme_ ? Color(34,40,48) : White()) : LineColor()));
+        status_cell_[i].SetCustomStyle(MakePanelStyle(panel_face, 0,
+                                                      i == 3 ? panel_face : LineColor()));
         status_caption_[i].SetCustomStyle(MakeLabelStyle(SoftColor(), 9, true));
         status_value_[i].SetCustomStyle(MakeLabelStyle(TextColor(), 11, true));
     }
@@ -546,8 +551,8 @@ void TaskTrackTunnelManager::ApplyTheme()
     table_style.show_grid = false;
     table_style.alternate_rows = false;
     table_style.row_height = DPI(31);
-    table_style.table_bg = dark_theme_ ? Color(34,40,48) : White();
-    table_style.alternate_row_bg = table_style.table_bg;
+    table_style.table_bg = panel_face;
+    table_style.alternate_row_bg = panel_face;
     table_style.hover_bg = dark_theme_ ? Color(43,51,61) : Color(246,248,250);
     table_style.cell_ink = TextColor();
     table_style.muted_ink = MutedColor();
@@ -555,6 +560,7 @@ void TaskTrackTunnelManager::ApplyTheme()
     activity_table_.SetCustomStyle(table_style);
 
     UiButton::Style small_button = MakeButtonStyle(UiButtonRole::Subtle);
+    send_probe_button_.SetCustomStyle(small_button);
     copy_diagnostics_button_.SetCustomStyle(small_button);
     clear_activity_button_.SetCustomStyle(small_button);
     footer_help_.SetCustomStyle(small_button);
@@ -563,23 +569,33 @@ void TaskTrackTunnelManager::ApplyTheme()
     duplicate_profile_button_.SetCustomStyle(small_button);
     delete_profile_button_.SetCustomStyle(MakeButtonStyle(UiButtonRole::Danger));
     runtime_browse_button_.SetCustomStyle(small_button);
-    mcp_browse_button_.SetCustomStyle(small_button);
+    credential_set_button_.SetCustomStyle(MakeButtonStyle(UiButtonRole::Accent));
+    credential_clear_button_.SetCustomStyle(small_button);
+    new_service_button_.SetCustomStyle(small_button);
+    duplicate_service_button_.SetCustomStyle(small_button);
+    delete_service_button_.SetCustomStyle(MakeButtonStyle(UiButtonRole::Danger));
+    service_browse_button_.SetCustomStyle(small_button);
 
     section_profile_.SetCustomStyle(MakeLabelStyle(SoftColor(), 9, true));
     section_runtime_.SetCustomStyle(MakeLabelStyle(SoftColor(), 9, true));
     section_launch_.SetCustomStyle(MakeLabelStyle(SoftColor(), 9, true));
+    section_service_.SetCustomStyle(MakeLabelStyle(SoftColor(), 9, true));
 
     UiLabel *form_labels[] = {
-        &profile_select_caption_, &profile_name_label_, &tunnel_id_label_, &credential_label_,
-        &runtime_path_label_, &mcp_path_label_, &auto_connect_label_, &remember_label_
+        &profile_select_caption_, &profile_name_label_, &machine_id_label_, &tunnel_id_label_,
+        &credential_label_, &runtime_path_label_, &auto_connect_label_, &remember_label_,
+        &service_select_caption_, &service_name_label_, &service_id_label_, &service_channel_label_,
+        &service_command_label_, &service_enabled_label_
     };
     for(UiLabel *label : form_labels)
         label->SetCustomStyle(MakeLabelStyle(MutedColor(), 10));
 
     auto_connect_title_.SetCustomStyle(MakeLabelStyle(TextColor(), 10, true));
     remember_title_.SetCustomStyle(MakeLabelStyle(TextColor(), 10, true));
+    service_enabled_title_.SetCustomStyle(MakeLabelStyle(TextColor(), 10, true));
     auto_connect_note_.SetCustomStyle(MakeLabelStyle(SoftColor(), 9));
     remember_note_.SetCustomStyle(MakeLabelStyle(SoftColor(), 9));
+    service_enabled_note_.SetCustomStyle(MakeLabelStyle(SoftColor(), 9));
     credential_note_.SetCustomStyle(MakeLabelStyle(SoftColor(), 9));
 
     footer_build_.SetCustomStyle(MakeLabelStyle(SoftColor(), 9));
@@ -592,6 +608,7 @@ void TaskTrackTunnelManager::ApplyTheme()
     help_button_.SetCustomStyle(utility_style);
     exit_button_.SetCustomStyle(UiTheme::ResolveToolButton(UiRole::Alert));
 
+    RefreshCredentialProjection();
     RefreshProjection();
     RefreshActivity();
     RefreshLayout();
@@ -640,10 +657,11 @@ void TaskTrackTunnelManager::ToggleTheme()
 
 void TaskTrackTunnelManager::SelectPage(int page)
 {
-    page = minmax(page, (int)PAGE_OVERVIEW, (int)PAGE_SETUP);
+    page = minmax(page, (int)PAGE_OVERVIEW, (int)PAGE_SERVICES);
     pages_.SetActivePage(page);
     overview_button_.SetChecked(page == PAGE_OVERVIEW);
     setup_button_.SetChecked(page == PAGE_SETUP);
+    services_button_.SetChecked(page == PAGE_SERVICES);
 }
 
 String TaskTrackTunnelManager::ProfileStorePath() const
