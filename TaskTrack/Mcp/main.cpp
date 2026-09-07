@@ -37,6 +37,12 @@ String UnifiedBundleSourceCommit();
 
 CONSOLE_APP_MAIN
 {
+    // Snapshot executable + staged-bundle identity at process start. Hosts such
+    // as Codex may keep this process alive while newer files are staged beside
+    // it; version must describe this running instance, not a later replacement.
+    UnifiedExecutableSha256();
+    UnifiedBundleVerified();
+
     const Vector<String>& cmd = CommandLine();
     switch(TaskTrackClassifyMcpCommand(cmd)) {
     case TaskTrackMcpCommand::Server:
