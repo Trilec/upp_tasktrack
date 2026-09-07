@@ -139,6 +139,11 @@ Run-Step "Unified MCP binary identity" {
     if($versionOutput -notmatch [regex]::Escape($buildVersion)) { throw "Fresh MCP binary does not report expected build '$buildVersion'" }
     if($versionOutput -notmatch 'task schema version\s+2') { throw "Fresh MCP binary does not report task schema 2" }
     if($versionOutput -notmatch 'dashboard schema version\s+1') { throw "Fresh MCP binary does not report dashboard schema 1" }
+    $hashMatch = [regex]::Match($versionOutput, 'executable sha256\s+([0-9a-fA-F]{64})')
+    if(!$hashMatch.Success) { throw "Fresh MCP binary does not report its executable SHA-256" }
+    $reportedHash = $hashMatch.Groups[1].Value.ToLowerInvariant()
+    $actualHash = (Get-FileHash -LiteralPath $mcpPath -Algorithm SHA256).Hash.ToLowerInvariant()
+    if($reportedHash -ne $actualHash) { throw "MCP self-reported executable SHA-256 does not match the built file" }
 }
 
 $vendorRuntime = Join-Path $RepoRoot "tunnel-client\tunnel-client-runtime.exe"
