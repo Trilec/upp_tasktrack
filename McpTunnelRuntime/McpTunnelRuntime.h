@@ -56,6 +56,48 @@ bool McpTunnelReadCredential(const McpTunnelProfile& profile, String& secret, St
 bool McpTunnelWriteCredential(const McpTunnelProfile& profile, const String& secret, String& error);
 bool McpTunnelDeleteCredential(const McpTunnelProfile& profile, String& error);
 
+class McpTunnelRuntime : NoCopy {
+public:
+    enum State {
+        STOPPED,
+        CONNECTING,
+        READY,
+        ERROR,
+    };
+
+    McpTunnelRuntime();
+    ~McpTunnelRuntime();
+
+    bool Start(const McpTunnelProfile& profile, const String& control_plane_api_key);
+    void Refresh();
+    void Stop();
+
+    State GetState() const;
+    bool IsStarted() const { return started_; }
+    bool IsHealthy() const { return healthy_; }
+    bool IsReady() const { return ready_; }
+
+    const String& GetHealthUrl() const { return health_url_; }
+    const String& GetLastError() const { return last_error_; }
+    String GetRuntimeOutput() const { return runtime_output_; }
+    String GetDiagnostics() const;
+
+private:
+    LocalProcess process_;
+    bool started_ = false;
+    bool healthy_ = false;
+    bool ready_ = false;
+    String health_url_;
+    String health_url_file_;
+    String runtime_log_file_;
+    String runtime_output_;
+    String last_error_;
+
+    bool LoadHealthUrl();
+    void DrainOutput();
+    bool ProbeHealth(const String& suffix, int& status, String& error);
+};
+
 }
 
 #endif
