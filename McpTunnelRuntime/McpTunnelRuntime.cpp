@@ -12,14 +12,22 @@ namespace {
 String NormalizedId(String value)
 {
     value = ToLower(TrimBoth(value));
+    String out;
+    bool dash = false;
     for(int i = 0; i < value.GetCount(); ++i) {
         int c = value[i];
-        if(!IsAlNum(c) && c != '-' && c != '_' && c != '.')
-            value.Set(i, '-');
+        if(IsAlNum(c) || c == '_' || c == '.') {
+            out.Cat(c);
+            dash = false;
+        }
+        else if(!dash && !out.IsEmpty()) {
+            out.Cat('-');
+            dash = true;
+        }
     }
-    while(value.Find("--") >= 0)
-        value.Replace("--", "-");
-    return TrimBoth(value, "-");
+    while(out.EndsWith("-"))
+        out.Trim(out.GetCount() - 1);
+    return out;
 }
 
 bool IsCanonicalChannel(const String& channel)
@@ -71,7 +79,9 @@ String McpTunnelDefaultCredentialRef(const String& profile_id)
 
 String McpTunnelDefaultMachineId()
 {
-    String id = GetEnv("COMPUTERNAME");
+    String id = GetComputerName();
+    if(id.IsEmpty())
+        id = GetEnv("COMPUTERNAME");
     if(id.IsEmpty())
         id = GetEnv("HOSTNAME");
     id = NormalizedId(id);
@@ -318,8 +328,31 @@ String McpTunnelBuildChildEnvironment(const McpTunnelProfile& profile,
 
 bool McpTunnelCredentialExists(const McpTunnelProfile& profile, String& error)
 {
-    String secret;
-    return McpTunnelReadCredential(profile, secret, error);
+    error.Clear();
+    if(profile.credential_source == MCP_TUNNEL_CREDENTIAL_ENVIRONMENT) {
+        if(GetEnv("CONTROL_PLANE_API_KEY").IsEmpty()) {
+            error = "CONTROL_PLANE_API_KEY is not set.";
+            return false;
+        }
+        return true;
+    }
+
+#ifdef PLATFORM_WIN32
+    String target = CredentialTarget(profile);
+    PCREDENTIALA credential = nullptr;
+    if(!CredReadA(~target, CRED_TYPE_GENERIC, 0, &credential)) {
+        if(GetLastError() == ERROR_NOT_FOUND)
+            error = "No Windows Credential Manager key is stored for this profile.";
+        else
+            error = WinErrorText("CredRead");
+        return false;
+    }
+    CredFree(credential);
+    return true;
+#else
+    error = "Windows Credential Manager is only available on Windows.";
+    return false;
+#endif
 }
 
 bool McpTunnelReadCredential(const McpTunnelProfile& profile, String& secret, String& error)
