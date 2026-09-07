@@ -94,6 +94,13 @@ runtime-path configuration.
 
 See [Runtime bundle](bin/README.md).
 
+For live/host acceptance, do not rely on the build label alone. The MCP
+`version` tool reports the exact running executable SHA-256 and, when launched
+from a staged bundle, whether it matches the adjacent manifest plus that
+bundle's verified source commit. Restart Codex/other MCP hosts after replacing
+the staged executable and require the live identity to match the bundle before
+testing.
+
 For a TheIDE assembly include the TaskTrack repository, `upp_Ui`, `upp_animation`, and U++ `uppsrc`.
 
 ## Connect to an agent host
