@@ -47,10 +47,10 @@ McpTunnelProfile McpTunnelDuplicateProfile(const McpTunnelProfile& source,
                                            const String& new_name);
 bool McpTunnelValidateProfile(const McpTunnelProfile& profile, String& error);
 Vector<String> McpTunnelBuildRunArgs(const McpTunnelProfile& profile,
+                                     const String& control_plane_api_key_ref,
                                      const String& health_url_file,
                                      const String& log_file);
-String McpTunnelBuildChildEnvironment(const McpTunnelProfile& profile,
-                                      const String& control_plane_api_key);
+String McpTunnelBuildChildEnvironment(const McpTunnelProfile& profile);
 
 bool McpTunnelCredentialExists(const McpTunnelProfile& profile, String& error);
 bool McpTunnelReadCredential(const McpTunnelProfile& profile, String& secret, String& error);
@@ -91,10 +91,13 @@ private:
     String health_url_;
     String health_url_file_;
     String runtime_log_file_;
+    String secret_file_;
     String runtime_output_;
     String last_error_;
 
     bool LoadHealthUrl();
+    bool CreateSecretFile(const String& secret);
+    void DeleteSecretFile();
     void DrainOutput();
     bool ProbeHealth(const String& suffix, int& status, String& error);
 };
