@@ -76,7 +76,7 @@ int EnabledServiceCount(const McpTunnelProfile& profile)
 
 }
 
-TaskTrackTunnelManager::TaskTrackTunnelManagerTaskTrackTunnelManager::TaskTrackTunnelManager(const TaskTrackTunnelManagerOptions& options)
+TaskTrackTunnelManager::TaskTrackTunnelManager(const TaskTrackTunnelManagerOptions& options)
     : options_(options)
 {
     Title("MCP Tunnel");
