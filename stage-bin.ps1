@@ -186,7 +186,9 @@ $bundleManifest = [ordered]@{
     }
     files = $files
 }
-$bundleManifest | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $BinDir "manifest.json") -Encoding UTF8
+$manifestJson = $bundleManifest | ConvertTo-Json -Depth 6
+$manifestPath = Join-Path $BinDir "manifest.json"
+[System.IO.File]::WriteAllText($manifestPath, $manifestJson, [System.Text.UTF8Encoding]::new($false))
 
 Write-Host ""
 Write-Host "TaskTrack runtime bundle staged:"
