@@ -93,8 +93,10 @@ Common deployment paths:
 `TaskTrackTunnelGui.exe` manages an optional machine-level OpenAI Secure MCP
 Tunnel profile. One machine profile can bind multiple separate local MCP
 services to logical channels while TaskTrack remains its own domain/MCP service.
-New Windows profiles store the tunnel runtime key in Windows Credential Manager
-by default; only a credential reference is persisted by TaskTrack.
+For the RC validation path, the tunnel runtime key is either session-only
+(memory) or supplied through CONTROL_PLANE_API_KEY. The profile never persists
+the secret. A portable encrypted U++ vault is the intended durable-storage
+direction after the tunnel/multi-service flow is accepted.
 
 See [Machine tunnel architecture](docs/TUNNEL_ARCHITECTURE.md) and
 [Secure MCP tunnel setup/test](docs/TUNNEL_TEST.md).
