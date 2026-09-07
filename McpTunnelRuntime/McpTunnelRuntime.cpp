@@ -4,6 +4,9 @@
 #include <windows.h>
 #include <wincred.h>
 #endif
+#ifdef PLATFORM_POSIX
+#include <sys/stat.h>
+#endif
 
 namespace Upp {
 
@@ -498,6 +501,7 @@ bool McpTunnelRuntime::LoadHealthUrl()
     while(url.EndsWith("/"))
         url = url.Left(url.GetCount() - 1);
     health_url_ = url;
+    DeleteSecretFile();
     return true;
 }
 
@@ -646,6 +650,7 @@ void McpTunnelRuntime::Refresh()
         started_ = false;
         healthy_ = false;
         ready_ = false;
+        DeleteSecretFile();
         return;
     }
 
