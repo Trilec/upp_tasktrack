@@ -287,6 +287,35 @@ Vector<String> McpTunnelBuildRunArgs(const McpTunnelProfile& profile,
     return args;
 }
 
+String McpTunnelBuildChildEnvironment(const McpTunnelProfile& profile,
+                                      const String& control_plane_api_key)
+{
+    String block;
+    const VectorMap<String, String>& environment = Environment();
+    for(int i = 0; i < environment.GetCount(); ++i) {
+        String name = environment.GetKey(i);
+        if(!CompareNoCase(name, "CONTROL_PLANE_API_KEY") ||
+           !CompareNoCase(name, "MCP_TUNNEL_REMOTE") ||
+           !CompareNoCase(name, "MCP_TUNNEL_MACHINE_ID") ||
+           !CompareNoCase(name, "MCP_TUNNEL_PROFILE_ID") ||
+           !CompareNoCase(name, "TASKTRACK_TUNNEL_REMOTE"))
+            continue;
+        block << name << "=" << environment[i];
+        block.Cat(0);
+    }
+
+    block << "CONTROL_PLANE_API_KEY=" << control_plane_api_key;
+    block.Cat(0);
+    block << "MCP_TUNNEL_REMOTE=1";
+    block.Cat(0);
+    block << "MCP_TUNNEL_MACHINE_ID=" << profile.machine_id;
+    block.Cat(0);
+    block << "MCP_TUNNEL_PROFILE_ID=" << profile.id;
+    block.Cat(0);
+    block.Cat(0);
+    return block;
+}
+
 bool McpTunnelCredentialExists(const McpTunnelProfile& profile, String& error)
 {
     String secret;
