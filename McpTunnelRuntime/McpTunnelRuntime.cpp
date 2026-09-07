@@ -76,13 +76,50 @@ String McpTunnelCommandForExecutable(const String& path)
     return command;
 }
 
+String McpTunnelNormalizeServiceCommand(const String& command)
+{
+    String value = TrimBoth(command);
+#ifdef PLATFORM_WIN32
+    if(value.IsEmpty())
+        return value;
+
+    // The upstream tunnel runtime parses stdio commands with shell-like
+    // backslash escaping, even on Windows. Treat a plain/quoted *.exe value as
+    // one executable path and canonicalize separators before persistence and
+    // launch. This also repairs older pasted Windows paths on load.
+    String candidate = value;
+    if(candidate.GetCount() >= 2 && candidate[0] == '"' && candidate[candidate.GetCount() - 1] == '"')
+        candidate = candidate.Mid(1, candidate.GetCount() - 2);
+
+    if(ToLower(candidate).EndsWith(".exe"))
+        return McpTunnelCommandForExecutable(candidate);
+
+    // For command forms with arguments, normalize only an obvious leading
+    // drive-qualified executable token. Advanced arguments remain untouched.
+    int split = value.GetCount();
+    for(int i = 0; i < value.GetCount(); ++i)
+        if(value[i] == ' ' || value[i] == '\t') {
+            split = i;
+            break;
+        }
+    if(split > 2) {
+        String token = value.Left(split);
+        if(token.GetCount() >= 3 && IsAlpha(token[0]) && token[1] == ':' && token.Find('\\') >= 0) {
+            token.Replace("\\", "/");
+            value = token + value.Mid(split);
+        }
+    }
+#endif
+    return value;
+}
+
 ValueMap McpTunnelServiceToValue(const McpTunnelService& service)
 {
     ValueMap out;
     out.Add("id", service.id);
     out.Add("name", service.name);
     out.Add("channel", service.channel);
-    out.Add("command", service.command);
+    out.Add("command", McpTunnelNormalizeServiceCommand(service.command));
     out.Add("enabled", service.enabled);
     return out;
 }
@@ -95,7 +132,7 @@ McpTunnelService McpTunnelServiceFromValue(const Value& value)
     service.id = AsString(value["id"]);
     service.name = AsString(value["name"]);
     service.channel = AsString(value["channel"]);
-    service.command = AsString(value["command"]);
+    service.command = McpTunnelNormalizeServiceCommand(AsString(value["command"]));
     service.enabled = IsNull(value["enabled"]) || (bool)value["enabled"];
     if(service.channel.IsEmpty())
         service.channel = "main";
@@ -354,7 +391,7 @@ Vector<String> McpTunnelBuildRunArgs(const McpTunnelProfile& profile,
         if(!service.enabled)
             continue;
         args.Add("--mcp.command");
-        args.Add("channel=" + service.channel + ",command=" + service.command);
+        args.Add("channel=" + service.channel + ",command=" + McpTunnelNormalizeServiceCommand(service.command));
     }
 
     args.Add("--health.listen-addr");
