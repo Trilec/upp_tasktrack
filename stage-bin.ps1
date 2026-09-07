@@ -41,6 +41,30 @@ else { $BuildDir = Full-Path -Path $BuildDir -Base $RepoRoot }
 if([string]::IsNullOrWhiteSpace($BinDir)) { $BinDir = Join-Path $RepoRoot "bin\windows-x64" }
 else { $BinDir = Full-Path -Path $BinDir -Base $RepoRoot }
 
+$verificationManifestPath = Join-Path $BuildDir "verification-manifest.json"
+if(!(Test-Path -LiteralPath $verificationManifestPath)) {
+    throw "Verified build manifest not found: $verificationManifestPath. Run verify.ps1 against this output directory first."
+}
+$verificationManifest = Get-Content -LiteralPath $verificationManifestPath -Raw | ConvertFrom-Json
+if($verificationManifest.status -ne "passed" -or $verificationManifest.platform -ne "windows-x64") {
+    throw "Build verification manifest does not describe a passed windows-x64 verification."
+}
+if([bool]$verificationManifest.source_dirty) {
+    throw "Refusing to stage a deployable bundle from a dirty source tree. Re-run verify.ps1 from a clean checkout."
+}
+
+$gitCommand = Get-Command git.exe -ErrorAction SilentlyContinue
+if(!$gitCommand) { $gitCommand = Get-Command git -ErrorAction SilentlyContinue }
+if(!$gitCommand) { throw "git is required to confirm build/source provenance before staging." }
+$currentCommit = (& $gitCommand.Source -C $RepoRoot rev-parse HEAD 2>&1 | Out-String).Trim()
+if($LASTEXITCODE -ne 0 -or $currentCommit -ne [string]$verificationManifest.source_commit) {
+    throw "Current repository HEAD does not match the commit recorded by verify.ps1. Rebuild/verify current main before staging."
+}
+$currentStatus = (& $gitCommand.Source -C $RepoRoot status --porcelain=v1 --untracked-files=normal 2>&1 | Out-String)
+if($LASTEXITCODE -ne 0 -or ![string]::IsNullOrWhiteSpace($currentStatus)) {
+    throw "Refusing to stage from a dirty working tree."
+}
+
 $vendorManifestPath = Join-Path $RepoRoot "tunnel-client\runtime-manifest.json"
 if(!(Test-Path -LiteralPath $vendorManifestPath)) {
     throw "Vendor runtime manifest not found: $vendorManifestPath"
@@ -67,15 +91,30 @@ foreach($name in $productionExecutables) {
     if(!(Test-Path -LiteralPath $source)) {
         throw "Required verified build output is missing: $source"
     }
+    $verified = @($verificationManifest.files | Where-Object { $_.name -eq $name })
+    if($verified.Count -ne 1) {
+        throw "Verification manifest does not contain exactly one identity for $name."
+    }
+    $actualHash = (Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash.ToLowerInvariant()
+    if($actualHash -ne ([string]$verified[0].sha256).ToLowerInvariant()) {
+        throw "Build output changed after verification: $name"
+    }
 }
 if(!(Test-Path -LiteralPath $VendorRuntime)) {
     throw "Pinned OpenAI tunnel runtime is missing: $VendorRuntime"
+}
+if($null -eq $verificationManifest.vendor_runtime) {
+    throw "The verified build did not include vendor-runtime compatibility testing. Re-run verify.ps1 with the pinned runtime present."
 }
 
 $expectedVendorHash = ([string]$vendorManifest.sha256).ToLowerInvariant()
 $actualVendorHash = (Get-FileHash -LiteralPath $VendorRuntime -Algorithm SHA256).Hash.ToLowerInvariant()
 if($actualVendorHash -ne $expectedVendorHash) {
     throw "OpenAI tunnel runtime SHA-256 does not match the validated artifact. Expected $expectedVendorHash, got $actualVendorHash. Validate the new vendor artifact before updating tunnel-client/runtime-manifest.json."
+}
+$verifiedVendorHash = ([string]$verificationManifest.vendor_runtime.sha256).ToLowerInvariant()
+if($actualVendorHash -ne $verifiedVendorHash) {
+    throw "The vendor runtime changed after verify.ps1 compatibility testing."
 }
 
 if(Test-Path -LiteralPath $BinDir) {
@@ -121,16 +160,9 @@ for the bundled vendor notices/SBOM.
 "@
 Set-Content -LiteralPath (Join-Path $BinDir "README.txt") -Value $runtimeReadme -Encoding UTF8
 
-$sourceCommit = ""
-try {
-    $git = Get-Command git.exe -ErrorAction SilentlyContinue
-    if(!$git) { $git = Get-Command git -ErrorAction SilentlyContinue }
-    if($git) {
-        $sourceCommit = (& $git.Source -C $RepoRoot rev-parse HEAD 2>$null | Out-String).Trim()
-        if($LASTEXITCODE -ne 0) { $sourceCommit = "" }
-    }
-}
-catch { $sourceCommit = "" }
+Copy-Item -LiteralPath $verificationManifestPath -Destination (Join-Path $BinDir "verification-manifest.json")
+
+$sourceCommit = [string]$verificationManifest.source_commit
 
 $files = @()
 foreach($name in $productionExecutables + @($stagedVendorName)) {
@@ -143,6 +175,7 @@ $bundleManifest = [ordered]@{
     source_commit = $sourceCommit
     platform = "windows-x64"
     generated_utc = [DateTime]::UtcNow.ToString("o")
+    verification_manifest_sha256 = (Get-FileHash -LiteralPath (Join-Path $BinDir "verification-manifest.json") -Algorithm SHA256).Hash.ToLowerInvariant()
     vendor_runtime = [ordered]@{
         name = [string]$vendorManifest.name
         version = [string]$vendorManifest.version
