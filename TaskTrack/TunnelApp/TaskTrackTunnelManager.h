@@ -122,8 +122,12 @@ private:
     UiToggle service_enabled_toggle_;
 
     UiPanel footer_;
-    UiLabel footer_build_, footer_mcp_, footer_dashboard_;
+    UiLabel footer_build_, footer_mcp_, footer_dashboard_, footer_saved_;
     UiButton footer_help_, footer_copy_;
+
+    bool profile_store_loaded_ = false;
+    bool profile_save_failed_ = false;
+    String profile_save_error_;
 
     void BuildUi();
     void BuildOverview();
@@ -155,6 +159,7 @@ private:
 
     void LoadProfiles();
     void SaveProfiles();
+    void RefreshSaveProjection();
     void EnsureDefaultProfile();
     McpTunnelProfile* CurrentProfile();
     const McpTunnelProfile* CurrentProfile() const;
