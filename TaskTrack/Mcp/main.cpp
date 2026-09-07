@@ -438,8 +438,10 @@ int UnifiedRunSelfTest()
     String probe_json = AsJSON(UnifiedHandleRequest(
         UnifiedRequest("tools/call", 202, probe_params), has_response), false);
     if(!has_response || probe_json.Find("read_only") < 0 ||
-       probe_json.Find(TaskTrackBuildVersion()) < 0)
-        failures.Add("tunnel_probe tool is missing read-only/build identity");
+       probe_json.Find(TaskTrackBuildVersion()) < 0 ||
+       probe_json.Find("executable_sha256") < 0 ||
+       probe_json.Find(UnifiedExecutableSha256()) < 0)
+        failures.Add("tunnel_probe tool is missing read-only/executable identity");
 
     ValueMap call_params;
     call_params.Add("name", "version");
@@ -448,9 +450,11 @@ int UnifiedRunSelfTest()
     String version_json = AsJSON(UnifiedHandleRequest(
         UnifiedRequest("tools/call", 203, call_params), has_response), false);
     if(!has_response || version_json.Find(TaskTrackBuildVersion()) < 0 ||
+       version_json.Find("executable_sha256") < 0 ||
+       version_json.Find(UnifiedExecutableSha256()) < 0 ||
        version_json.Find("dashboard_schema_version") < 0 ||
        version_json.Find(Format(":%d", TASKTRACK_DASHBOARD_SCHEMA_VERSION)) < 0)
-        failures.Add("unified version tool is missing build/dashboard identity");
+        failures.Add("unified version tool is missing exact executable/dashboard identity");
 
     if(failures.IsEmpty()) {
         Cout() << "tasktrack-unified-mcp-selftest: ok (dashboard "
