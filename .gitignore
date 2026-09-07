@@ -25,6 +25,8 @@
 *.var
 
 # Build output
+# Generated runtime bundles; bin/README.md remains tracked.
+/bin/*/
 /build/
 /out/
 /Build/
