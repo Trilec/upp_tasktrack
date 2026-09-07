@@ -69,9 +69,11 @@ CONSOLE_APP_MAIN
             "executable command did not normalize Windows separators");
     t.Check(McpTunnelValidateProfile(profile, error), "valid two-service machine profile rejected: " + error);
 
-    Vector<String> args = McpTunnelBuildRunArgs(profile, "health.url", "runtime.log");
+    Vector<String> args = McpTunnelBuildRunArgs(profile, "file:C:/Temp/runtime-key", "health.url", "runtime.log");
     t.Check(HasArgPair(args, "--control-plane.tunnel-id", "tunnel_test"),
             "runtime args missing tunnel id");
+    t.Check(HasArgPair(args, "--control-plane.api-key", "file:C:/Temp/runtime-key"),
+            "runtime args do not use the ephemeral file credential reference");
     t.Check(HasArgPair(args, "--mcp.command",
                        "channel=main,command=C:/apps/TaskTrackMcp.exe"),
             "runtime args missing main TaskTrack binding");
@@ -81,16 +83,19 @@ CONSOLE_APP_MAIN
     t.Check(HasArgPair(args, "--health.url-file", "health.url"),
             "runtime args missing health URL file");
 
-    String old_key = GetEnv("CONTROL_PLANE_API_KEY");
-    String child_env = McpTunnelBuildChildEnvironment(profile, "test-secret");
-    t.Check(child_env.Find("CONTROL_PLANE_API_KEY=test-secret") >= 0,
-            "child environment missing runtime key");
+    String child_env = McpTunnelBuildChildEnvironment(profile);
+    t.Check(child_env.Find("CONTROL_PLANE_API_KEY=") < 0,
+            "runtime child environment exposes CONTROL_PLANE_API_KEY");
+    t.Check(child_env.Find("OPENAI_API_KEY=") < 0,
+            "runtime child environment exposes OPENAI_API_KEY");
+    t.Check(child_env.Find("OPENAI_ADMIN_KEY=") < 0,
+            "runtime child environment exposes OPENAI_ADMIN_KEY");
     t.Check(child_env.Find("MCP_TUNNEL_REMOTE=1") >= 0,
             "child environment missing generic remote marker");
     t.Check(child_env.Find("MCP_TUNNEL_MACHINE_ID=curt-main") >= 0,
             "child environment missing machine identity");
-    t.Check(GetEnv("CONTROL_PLANE_API_KEY") == old_key,
-            "building child environment changed parent process environment");
+    t.Check(args.Find("test-secret") < 0,
+            "runtime argv contains an API key value");
 
     McpTunnelProfile duplicate = McpTunnelDuplicateProfile(profile, "curt-copy", "Curt copy");
     t.Check(duplicate.tunnel_id.IsEmpty(), "duplicated profile copied tunnel id");
