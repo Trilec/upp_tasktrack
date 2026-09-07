@@ -19,40 +19,67 @@ String EllipsizeMiddle(const String& text, int keep = 12)
     return text.Left(keep) + "..." + text.Right(keep);
 }
 
-ValueMap ProfileToValue(const TaskTrackTunnelProfile& profile)
+class ApiKeyDialog : public TopWindow {
+public:
+    typedef ApiKeyDialog CLASSNAME;
+
+    ApiKeyDialog()
+    {
+        Title("Store OpenAI tunnel key");
+        SetRect(0, 0, DPI(470), DPI(150));
+        SetMinSize(Size(DPI(430), DPI(150)));
+        Add(message_);
+        Add(secret_);
+        Add(save_);
+        Add(cancel_);
+
+        message_.SetText("The key is stored in Windows Credential Manager and is never written to the TaskTrack profile.");
+        secret_.SetPlaceholder("OpenAI runtime API key").EnableVisibilityIcon(true);
+        save_.SetText("Store key");
+        cancel_.SetText("Cancel");
+        save_.WhenAction = [=] {
+            if(TrimBoth(secret_.GetTextUtf8()).IsEmpty()) {
+                Exclamation("Enter the runtime API key.");
+                return;
+            }
+            Break(IDOK);
+        };
+        cancel_.WhenAction = [=] { Break(IDCANCEL); };
+    }
+
+    String GetSecret() const { return TrimBoth(secret_.GetTextUtf8()); }
+
+    virtual void Layout() override
+    {
+        Size sz = GetSize();
+        const int pad = DPI(14);
+        message_.SetRect(pad, DPI(12), max(0, sz.cx - pad * 2), DPI(36));
+        secret_.SetRect(pad, DPI(53), max(0, sz.cx - pad * 2), DPI(32));
+        save_.SetRect(max(pad, sz.cx - DPI(190)), DPI(101), DPI(90), DPI(30));
+        cancel_.SetRect(max(pad, sz.cx - DPI(92)), DPI(101), DPI(78), DPI(30));
+    }
+
+private:
+    UiLabel message_;
+    UiPasswordEdit secret_;
+    UiButton save_, cancel_;
+};
+
+int EnabledServiceCount(const McpTunnelProfile& profile)
 {
-    ValueMap out;
-    out.Add("id", profile.id);
-    out.Add("name", profile.name);
-    out.Add("tunnel_id", profile.tunnel_id);
-    out.Add("runtime_path", profile.runtime_path);
-    out.Add("mcp_path", profile.mcp_path);
-    out.Add("auto_connect", profile.auto_connect);
-    out.Add("remember_profile", profile.remember_profile);
-    return out;
-}
-
-TaskTrackTunnelProfile ProfileFromValue(const Value& value)
-{
-    TaskTrackTunnelProfile profile;
-    if(!value.Is<ValueMap>())
-        return profile;
-    profile.id = AsString(value["id"]);
-    profile.name = AsString(value["name"]);
-    profile.tunnel_id = AsString(value["tunnel_id"]);
-    profile.runtime_path = AsString(value["runtime_path"]);
-    profile.mcp_path = AsString(value["mcp_path"]);
-    profile.auto_connect = !IsNull(value["auto_connect"]) && (bool)value["auto_connect"];
-    profile.remember_profile = IsNull(value["remember_profile"]) || (bool)value["remember_profile"];
-    return profile;
+    int count = 0;
+    for(const McpTunnelService& service : profile.services)
+        if(service.enabled)
+            count++;
+    return count;
 }
 
 }
 
-TaskTrackTunnelManager::TaskTrackTunnelManager(const TaskTrackTunnelManagerOptions& options)
+TaskTrackTunnelManager::TaskTrackTunnelManagerTaskTrackTunnelManager::TaskTrackTunnelManager(const TaskTrackTunnelManagerOptions& options)
     : options_(options)
 {
-    Title("TaskTrack Tunnel");
+    Title("MCP Tunnel");
     Icon(TunnelAppIcon(), TunnelAppIcon());
     Sizeable().Zoomable();
     SetRect(0, 0, DPI(920), DPI(610));
@@ -61,13 +88,19 @@ TaskTrackTunnelManager::TaskTrackTunnelManager(const TaskTrackTunnelManagerOptio
     LoadProfiles();
     EnsureDefaultProfile();
 
-    if(TaskTrackTunnelProfile *profile = CurrentProfile()) {
+    if(McpTunnelProfile *profile = CurrentProfile()) {
         if(!options_.tunnel_id.IsEmpty())
             profile->tunnel_id = options_.tunnel_id;
         if(!options_.runtime_path.IsEmpty())
             profile->runtime_path = options_.runtime_path;
-        if(profile->mcp_path.IsEmpty())
-            profile->mcp_path = GetExeDirFile("TaskTrackMcp.exe");
+        if(profile->services.IsEmpty()) {
+            McpTunnelService service;
+            service.id = "tasktrack";
+            service.name = "TaskTrack";
+            service.channel = "main";
+            service.command = GetExeDirFile("TaskTrackMcp.exe");
+            profile->services.Add(pick(service));
+        }
     }
 
     UiThemeContext context = UiTheme::GetContext();
@@ -85,9 +118,10 @@ TaskTrackTunnelManager::TaskTrackTunnelManager(const TaskTrackTunnelManagerOptio
 
     SetTimeCallback(-1000, [=] { Tick(); }, TIMER_REFRESH);
 
-    const TaskTrackTunnelProfile *profile = CurrentProfile();
+    const McpTunnelProfile *profile = CurrentProfile();
+    String credential_error;
     if(profile && profile->auto_connect && !profile->tunnel_id.IsEmpty()
-       && !GetEnv("CONTROL_PLANE_API_KEY").IsEmpty())
+       && McpTunnelCredentialExists(*profile, credential_error))
         PostCallback([=] { ConnectRuntime(); });
 }
 
@@ -96,8 +130,7 @@ TaskTrackTunnelManager::~TaskTrackTunnelManager()
     KillTimeCallback(TIMER_REFRESH);
     SaveProfileFromUi();
     SaveProfiles();
-    if(runtime_started_)
-        runtime_process_.Kill();
+    runtime_.Stop();
 }
 
 void TaskTrackTunnelManager::BuildUi()
@@ -556,7 +589,7 @@ void TaskTrackTunnelManager::LoadProfiles()
         if(list_value.Is<ValueArray>()) {
             ValueArray list = list_value;
             for(int i = 0; i < list.GetCount(); ++i) {
-                TaskTrackTunnelProfile profile = ProfileFromValue(list[i]);
+                McpTunnelProfile profile = ProfileFromValue(list[i]);
                 if(profile.id.IsEmpty() || profile.name.IsEmpty())
                     continue;
                 if(profile.runtime_path.IsEmpty())
@@ -587,13 +620,13 @@ void TaskTrackTunnelManager::SaveProfiles()
     root.Add("dark_theme", dark_theme_);
 
     String selected_id;
-    const TaskTrackTunnelProfile *profile = CurrentProfile();
+    const McpTunnelProfile *profile = CurrentProfile();
     if(profile && profile->remember_profile)
         selected_id = profile->id;
     root.Add("selected_profile", selected_id);
 
     ValueArray list;
-    for(const TaskTrackTunnelProfile& item : profiles_)
+    for(const McpTunnelProfile& item : profiles_)
         list.Add(ProfileToValue(item));
     root.Add("profiles", list);
     SaveFile(ProfileStorePath(), AsJSON(root, true));
@@ -602,7 +635,7 @@ void TaskTrackTunnelManager::SaveProfiles()
 void TaskTrackTunnelManager::EnsureDefaultProfile()
 {
     if(profiles_.IsEmpty()) {
-        TaskTrackTunnelProfile profile;
+        McpTunnelProfile profile;
         profile.id = "local-tasktrack";
         profile.name = "Local TaskTrack";
         profile.runtime_path = options_.runtime_path.IsEmpty()
@@ -616,13 +649,13 @@ void TaskTrackTunnelManager::EnsureDefaultProfile()
         selected_profile_ = 0;
 }
 
-TaskTrackTunnelProfile* TaskTrackTunnelManager::CurrentProfile()
+McpTunnelProfile* TaskTrackTunnelManager::CurrentProfile()
 {
     return selected_profile_ >= 0 && selected_profile_ < profiles_.GetCount()
         ? &profiles_[selected_profile_] : nullptr;
 }
 
-const TaskTrackTunnelProfile* TaskTrackTunnelManager::CurrentProfile() const
+const McpTunnelProfile* TaskTrackTunnelManager::CurrentProfile() const
 {
     return selected_profile_ >= 0 && selected_profile_ < profiles_.GetCount()
         ? &profiles_[selected_profile_] : nullptr;
@@ -633,7 +666,7 @@ String TaskTrackTunnelManager::NewProfileId() const
     for(int n = 1;; ++n) {
         String id = Format("profile-%d", n);
         bool used = false;
-        for(const TaskTrackTunnelProfile& profile : profiles_)
+        for(const McpTunnelProfile& profile : profiles_)
             if(profile.id == id) {
                 used = true;
                 break;
@@ -649,16 +682,16 @@ void TaskTrackTunnelManager::RebuildProfileDropdown()
     profile_dropdown_.UseInternalModel();
     UiListModel& model = profile_dropdown_.Model();
     model.Clear();
-    for(const TaskTrackTunnelProfile& profile : profiles_)
+    for(const McpTunnelProfile& profile : profiles_)
         model.Add(profile.name, profile.id);
-    if(const TaskTrackTunnelProfile *profile = CurrentProfile())
+    if(const McpTunnelProfile *profile = CurrentProfile())
         profile_dropdown_.SelectByData(profile->id);
     loading_profile_ = false;
 }
 
 void TaskTrackTunnelManager::LoadProfileIntoUi()
 {
-    const TaskTrackTunnelProfile *profile = CurrentProfile();
+    const McpTunnelProfile *profile = CurrentProfile();
     if(!profile)
         return;
 
@@ -677,7 +710,7 @@ void TaskTrackTunnelManager::SaveProfileFromUi()
 {
     if(loading_profile_)
         return;
-    TaskTrackTunnelProfile *profile = CurrentProfile();
+    McpTunnelProfile *profile = CurrentProfile();
     if(!profile)
         return;
 
@@ -714,7 +747,7 @@ void TaskTrackTunnelManager::NewProfile()
     }
 
     SaveProfileFromUi();
-    TaskTrackTunnelProfile profile;
+    McpTunnelProfile profile;
     profile.id = NewProfileId();
     profile.name = "New profile";
     profile.runtime_path = GetExeDirFile("tunnel-client.exe");
@@ -734,11 +767,11 @@ void TaskTrackTunnelManager::DuplicateProfile()
     }
 
     SaveProfileFromUi();
-    const TaskTrackTunnelProfile *source = CurrentProfile();
+    const McpTunnelProfile *source = CurrentProfile();
     if(!source)
         return;
 
-    TaskTrackTunnelProfile profile;
+    McpTunnelProfile profile;
     profile.id = NewProfileId();
     profile.name = source->name + " copy";
     profile.runtime_path = source->runtime_path;
@@ -800,7 +833,7 @@ void TaskTrackTunnelManager::BrowseMcp()
 
 String TaskTrackTunnelManager::RuntimeMcpCommand() const
 {
-    const TaskTrackTunnelProfile *profile = CurrentProfile();
+    const McpTunnelProfile *profile = CurrentProfile();
     String command = profile ? profile->mcp_path : String();
     command.Replace("\\", "/");
     if(command.Find(' ') >= 0 || command.Find('\t') >= 0)
@@ -875,7 +908,7 @@ bool TaskTrackTunnelManager::ProbeHealth(const String& suffix, int& status, Stri
 void TaskTrackTunnelManager::ConnectRuntime()
 {
     SaveProfileFromUi();
-    const TaskTrackTunnelProfile *profile = CurrentProfile();
+    const McpTunnelProfile *profile = CurrentProfile();
     if(!profile)
         return;
 
@@ -1047,7 +1080,7 @@ TaskTrackTunnelManager::RuntimeState TaskTrackTunnelManager::GetRuntimeState() c
 void TaskTrackTunnelManager::RefreshProjection()
 {
     RuntimeState state = GetRuntimeState();
-    const TaskTrackTunnelProfile *profile = CurrentProfile();
+    const McpTunnelProfile *profile = CurrentProfile();
 
     Color state_color = StoppedColor();
     Color beacon_face = SubtleColor();
@@ -1227,7 +1260,7 @@ void TaskTrackTunnelManager::SendProbe()
     probe.sequence++;
     probe.updated_at = AsString(GetSysTime());
     probe.source = "TaskTrackTunnelGui";
-    const TaskTrackTunnelProfile *profile = CurrentProfile();
+    const McpTunnelProfile *profile = CurrentProfile();
     probe.tunnel_id = profile ? profile->tunnel_id : String();
     probe.message = Format("TaskTrack local probe #%d", probe.sequence);
 
@@ -1252,7 +1285,7 @@ void TaskTrackTunnelManager::ClearActivity()
 
 String TaskTrackTunnelManager::BuildDiagnostics() const
 {
-    const TaskTrackTunnelProfile *profile = CurrentProfile();
+    const McpTunnelProfile *profile = CurrentProfile();
     TaskTrackTunnelActivity activity;
     String error;
     bool has_activity = TaskTrackTunnelLoadActivity(activity, error);
