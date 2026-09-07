@@ -36,6 +36,10 @@ String McpTunnelCredentialSourceId(McpTunnelCredentialSource source);
 McpTunnelCredentialSource McpTunnelCredentialSourceFromId(const String& id);
 String McpTunnelDefaultMachineId();
 String McpTunnelCommandForExecutable(const String& path);
+// Canonicalizes the simple executable-path form used by local MCP services.
+// On Windows the upstream tunnel command parser treats backslash as an escape,
+// so executable paths are persisted/passed with forward slashes.
+String McpTunnelNormalizeServiceCommand(const String& command);
 
 ValueMap McpTunnelServiceToValue(const McpTunnelService& service);
 McpTunnelService McpTunnelServiceFromValue(const Value& value);
