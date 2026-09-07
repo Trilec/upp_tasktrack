@@ -1206,7 +1206,7 @@ void TaskTrackTunnelManager::RefreshCredentialProjection()
     credential_set_button_.Enable(windows_source && !runtime_.IsStarted());
     credential_clear_button_.Enable(windows_source && available && !runtime_.IsStarted());
     credential_note_.SetText(windows_source
-        ? "Stored by Windows Credential Manager for this profile. The secret is passed only to the tunnel child process."
+        ? "Stored by Windows Credential Manager. A short-lived launch file is consumed by the tunnel runtime and is not inherited by MCP services."
         : "Compatibility mode: CONTROL_PLANE_API_KEY must exist in the environment before launch.");
 }
 
