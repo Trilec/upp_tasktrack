@@ -1602,7 +1602,7 @@ String TaskTrackTunnelManager::BuildDiagnostics() const
             out << "Service: " << service.id
                 << " | channel=" << service.channel
                 << " | enabled=" << BoolText(service.enabled)
-                << " | command=" << service.command << "\n";
+                << " | command_configured=" << BoolText(!service.command.IsEmpty()) << "\n";
     }
 
     out << "TaskTrack remote activity: "
