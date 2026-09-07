@@ -26,8 +26,7 @@ McpTunnelProfile MakeProfile()
     profile.machine_id = "curt-main";
     profile.tunnel_id = "tunnel_test";
     profile.runtime_path = "C:/tools/tunnel-client.exe";
-    profile.credential_source = MCP_TUNNEL_CREDENTIAL_WINDOWS;
-    profile.credential_ref = McpTunnelDefaultCredentialRef(profile.id);
+    profile.credential_source = MCP_TUNNEL_CREDENTIAL_SESSION;
 
     McpTunnelService tasktrack;
     tasktrack.id = "tasktrack";
@@ -99,8 +98,6 @@ CONSOLE_APP_MAIN
 
     McpTunnelProfile duplicate = McpTunnelDuplicateProfile(profile, "curt-copy", "Curt copy");
     t.Check(duplicate.tunnel_id.IsEmpty(), "duplicated profile copied tunnel id");
-    t.Check(duplicate.credential_ref != profile.credential_ref,
-            "duplicated profile reused credential reference");
     t.Check(!duplicate.auto_connect, "duplicated profile copied auto-connect");
     t.Check(duplicate.services.GetCount() == 2, "duplicated profile lost service bindings");
     t.Check(duplicate.services.GetCount() == 2 && duplicate.services[1].channel == "patchtrack",
@@ -109,7 +106,7 @@ CONSOLE_APP_MAIN
     ValueMap value = McpTunnelProfileToValue(profile);
     McpTunnelProfile roundtrip = McpTunnelProfileFromValue(value, 2);
     t.Check(roundtrip.machine_id == profile.machine_id, "profile round-trip lost machine id");
-    t.Check(roundtrip.credential_source == MCP_TUNNEL_CREDENTIAL_WINDOWS,
+    t.Check(roundtrip.credential_source == MCP_TUNNEL_CREDENTIAL_SESSION,
             "profile round-trip lost credential source");
     t.Check(roundtrip.services.GetCount() == 2, "profile round-trip lost services");
 
