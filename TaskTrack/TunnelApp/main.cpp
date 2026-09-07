@@ -15,7 +15,8 @@ String TunnelHelpText()
         "  TaskTrackTunnelGui.exe --client <path-to-tunnel-client.exe>\n"
         "  TaskTrackTunnelGui.exe --alias <local-alias>\n\n"
         "Machine profiles can expose multiple named local MCP services through one tunnel runtime.\n"
-        "Windows Credential Manager is the recommended API-key source; environment-variable mode remains available for compatibility.\n"
+        "For validation, use a session-only key or CONTROL_PLANE_API_KEY.\n"
+        "Durable cross-platform encrypted storage is intentionally deferred until the tunnel flow is accepted.\n"
         "Secrets are never written to the TaskTrack profile or displayed in diagnostics.";
 }
 
