@@ -34,7 +34,8 @@ public:
         Add(cancel_);
 
         message_.SetText("The key is kept only in memory for this manager session and is never written to the machine profile.");
-        secret_.SetPlaceholder("OpenAI runtime API key").EnableVisibilityIcon(true);
+        secret_.SetPlaceholder("OpenAI runtime API key");
+        secret_.EnableVisibilityIcon(true);
         save_.SetText("Use key");
         cancel_.SetText("Cancel");
         save_.WhenAction = [=] {
@@ -362,8 +363,7 @@ void TaskTrackTunnelManager::Wire()
     footer_copy_.WhenAction = [=] { CopyDiagnostics(); };
 
     primary_button_.WhenAction = [=] {
-        McpTunnelRuntime::State state = runtime_.GetState();
-        if(state == McpTunnelRuntime::READY || state == McpTunnelRuntime::CONNECTING)
+        if(runtime_.IsStarted())
             StopRuntime();
         else
             ConnectRuntime();
@@ -847,6 +847,7 @@ void TaskTrackTunnelManager::SaveProfileFromUi()
         profile->machine_id = McpTunnelDefaultMachineId();
     profile->tunnel_id = TrimBoth(tunnel_id_edit_.GetTextUtf8());
     profile->runtime_path = TrimBoth(runtime_path_edit_.GetTextUtf8());
+    session_credentials_.InvalidateChangedBinding(*profile);
     profile->auto_connect = auto_connect_toggle_.IsOn();
     profile->remember_profile = remember_toggle_.IsOn();
     SaveProfiles();
@@ -934,6 +935,7 @@ void TaskTrackTunnelManager::DeleteProfile()
     if(!PromptYesNo("Delete the selected machine profile?"))
         return;
 
+    session_credentials_.Clear(profiles_[selected_profile_]);
     profiles_.Remove(selected_profile_);
     selected_profile_ = min(selected_profile_, profiles_.GetCount() - 1);
     selected_service_ = profiles_[selected_profile_].services.IsEmpty() ? -1 : 0;
@@ -1193,8 +1195,8 @@ bool TaskTrackTunnelManager::CredentialAvailable(String& error) const
         return true;
     }
 
-    if(session_api_key_.IsEmpty()) {
-        error = "No session tunnel key is set.";
+    if(!session_credentials_.Contains(*profile)) {
+        error = "No session key is bound to this profile, tunnel and runtime.";
         return false;
     }
     return true;
@@ -1210,7 +1212,7 @@ bool TaskTrackTunnelManager::ReadCredential(String& secret, String& error) const
     if(profile->credential_source == MCP_TUNNEL_CREDENTIAL_ENVIRONMENT)
         secret = GetEnv("CONTROL_PLANE_API_KEY");
     else
-        secret = session_api_key_;
+        secret = session_credentials_.Read(*profile);
 
     if(secret.IsEmpty()) {
         error = "Tunnel credential is empty.";
@@ -1254,7 +1256,11 @@ void TaskTrackTunnelManager::SetCredential()
     if(dialog.Run() != IDOK)
         return;
 
-    session_api_key_ = dialog.GetSecret();
+    if(!session_credentials_.Set(*profile, dialog.GetSecret())) {
+        Exclamation("Set the machine ID, tunnel ID and runtime path before setting its key.");
+        return;
+    }
+    SaveProfiles();
     RefreshCredentialProjection();
     RefreshProjection();
 }
@@ -1265,7 +1271,8 @@ void TaskTrackTunnelManager::ClearCredential()
     if(!profile || profile->credential_source != MCP_TUNNEL_CREDENTIAL_SESSION)
         return;
 
-    session_api_key_.Clear();
+    session_credentials_.Clear(*profile);
+    SaveProfiles();
     RefreshCredentialProjection();
     RefreshProjection();
 }
@@ -1386,13 +1393,13 @@ void TaskTrackTunnelManager::RefreshProjection()
         state_subtitle = "Opening secure tunnel";
         primary_text = "Cancel";
     }
-    else if(state == McpTunnelRuntime::ERROR) {
+    else if(state == McpTunnelRuntime::FAULT) {
         state_color = DangerColor();
         beacon_face = dark_theme_ ? Color(60,39,43) : Color(255,241,242);
         state_title = "ERROR";
         state_subtitle = runtime_.GetLastError().IsEmpty()
             ? String("Tunnel could not be established") : runtime_.GetLastError();
-        primary_text = "Retry";
+        primary_text = runtime_.IsStarted() ? "Stop" : "Retry";
     }
 
     beacon_.SetCustomStyle(MakePanelStyle(beacon_face, 11, Blend(state_color, LineColor(), 130)));
@@ -1434,11 +1441,11 @@ void TaskTrackTunnelManager::RefreshProjection()
 
     Color tunnel_color = state == McpTunnelRuntime::READY ? OkColor()
                        : state == McpTunnelRuntime::CONNECTING ? ActivityColor()
-                       : state == McpTunnelRuntime::ERROR ? DangerColor()
+                       : state == McpTunnelRuntime::FAULT ? DangerColor()
                                                          : StoppedColor();
     String tunnel_text = state == McpTunnelRuntime::READY ? "Healthy"
                        : state == McpTunnelRuntime::CONNECTING ? "Connecting"
-                       : state == McpTunnelRuntime::ERROR ? "Fault"
+                       : state == McpTunnelRuntime::FAULT ? "Fault"
                                                          : "Stopped";
     status_value_[1].ClearSpans().EnableRich(true)
                     .AddBulletSpan(tunnel_color, DPI(7))
@@ -1458,7 +1465,7 @@ void TaskTrackTunnelManager::RefreshProjection()
     activity_live_.Show(runtime_.IsStarted());
     activity_footer_note_.SetText(state == McpTunnelRuntime::READY ? "TaskTrack traffic visible when its service is used"
                                 : state == McpTunnelRuntime::CONNECTING ? "Connecting to control plane"
-                                : state == McpTunnelRuntime::ERROR ? "Last connection attempt failed"
+                                : state == McpTunnelRuntime::FAULT ? "Last connection attempt failed"
                                                                   : "No TaskTrack remote traffic while stopped");
 
     bool can_edit = !runtime_.IsStarted();
@@ -1607,7 +1614,7 @@ String TaskTrackTunnelManager::BuildDiagnostics() const
     switch(runtime_.GetState()) {
     case McpTunnelRuntime::READY: out << "ready"; break;
     case McpTunnelRuntime::CONNECTING: out << "connecting"; break;
-    case McpTunnelRuntime::ERROR: out << "error"; break;
+    case McpTunnelRuntime::FAULT: out << "error"; break;
     default: out << "stopped"; break;
     }
 

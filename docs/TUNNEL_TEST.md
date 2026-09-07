@@ -65,8 +65,8 @@ Additional services are created disabled so merely adding one cannot change a
 working runtime.
 
 Duplicating a machine profile copies local runtime/service configuration but
-does **not** copy the tunnel ID or credential secret. The duplicate receives a
-new credential reference.
+does **not** copy the tunnel ID or credential reference. The duplicate starts in
+session mode and requires its own key, even when the original uses environment mode.
 
 Existing schema-1 TaskTrack tunnel profiles migrate automatically to schema 2
 with the previous TaskTrack MCP path represented as the `main` service.
@@ -80,7 +80,8 @@ For this RC the manager deliberately uses portable validation sources only.
 Choose **Session key (memory only)** and click **Set key**.
 
 The key is masked in the UI, held only in manager memory, and disappears when
-the manager closes. The profile does not persist it.
+the manager closes. The profile does not persist it. Set the tunnel ID and runtime
+path first; changing either, or the machine ID, invalidates the session key.
 
 This is the preferred manual validation path because it proves the tunnel flow
 without committing the product to an OS-specific secret store.
@@ -119,8 +120,10 @@ conceptually as:
 
 ```text
 tunnel-client.exe run
-  --control-plane.api-key file:<short-lived-launch-file>
+  --control-plane.api-key file:<private-pipe-reference>
   --control-plane.tunnel-id <tunnel>
+  --control-plane.base-url https://api.openai.com
+  --log.http-raw-unsafe=false
   --mcp.command "channel=main,command=<TaskTrackMcp.exe>"
   --mcp.command "channel=patchtrack,command=<patchtrack_mcp.exe>"
   --health.listen-addr 127.0.0.1:0
@@ -129,6 +132,18 @@ tunnel-client.exe run
 ```
 
 No API key is placed on argv.
+
+Windows uses a current-user-only named pipe with expected-reader PID verification
+and bounded handoff. POSIX uses `/dev/stdin` backed by the anonymous child stdin
+pipe (platform acceptance pending). Neither path writes a plaintext key file.
+Windows assigns the runtime to a kill-on-close Job Object before releasing the
+key. Stop ends the entire tree, including service-launched GUIs. One runtime is
+allowed per Windows user across sessions. This does not enforce machine-wide
+ownership across different users; POSIX ownership/containment is pending.
+
+Only OS/session plumbing is inherited. Ambient vendor profiles, arbitrary secret
+variables and proxy settings are excluded; custom proxies/CAs require a future
+explicit configuration interface.
 
 The generic child environment also carries:
 
@@ -212,7 +227,14 @@ The runtime-model tests cover:
 - 32-channel limit;
 - duplicate-profile tunnel/credential separation;
 - child runtime environment excludes OpenAI control/admin key variables;
-- short-lived file credential reference generation.
+- profile-bound session keys and invalidation;
+- Windows pipe EOF, expected reader and timeout cleanup;
+- Windows repeated start/stop, duplicate owner and runtime/manager crash containment.
+
+If the bundled vendor runtime is present, `verify.ps1` also runs the unchanged
+binary key-pipe compatibility test. It uses a dummy key, loopback control-plane
+endpoint and deliberately missing MCP executable; it proves key resolution, not
+live authentication or channel acceptance.
 
 ## Live acceptance
 
@@ -239,8 +261,9 @@ multi-channel acceptance:
 4. verify the runtime advertises/accepts both bindings;
 5. verify ChatGPT can address the additional channel distinctly;
 6. verify TaskTrack calls continue to reach TaskTrack;
-7. stop one child service during the test and verify the failure remains
-   service-specific.
+7. stop one child service: the unchanged runtime currently exits as a whole.
+   Verify the manager reports the exit and removes remaining Windows descendants.
+   Do not claim service-specific failure isolation or replay uncertain mutations.
 
 The official runtime supports the channel bindings used by the manager. The
 final ChatGPT product-side addressing of an additional named channel remains a

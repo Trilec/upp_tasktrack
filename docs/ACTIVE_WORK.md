@@ -2,10 +2,10 @@ BASE: f9d26703e85f9f11ae74bf1fa7ad21d6e7be8382
 TASK: Replace TaskTrack-only tunnel ownership with the machine-level multi-service MCP tunnel architecture.
 BUILD: 0.3.2-rc1
 PUBLISHED: 03f6ff13001fbd17c8270865654024e43cba2976 on main.
-STATUS: Machine profile + services[] + neutral runtime supervisor + portable RC credential flow are now on main; Windows/platform and live tunnel validation remain pending.
+STATUS: Local uncommitted security follow-up: profile-bound session keys, restricted environment, memory-only runtime handoff, Windows single-owner/job containment. See docs/TUNNEL_SECURITY_HANDOFF.md for completed pieces and validation.
 ARCHITECTURE: One machine profile owns one official OpenAI tunnel runtime; exactly one enabled main channel plus optional separate named MCP services. TaskTrack domain semantics remain separate.
-SECURITY: RC uses session-only memory key or CONTROL_PLANE_API_KEY; profile JSON never stores the secret. Current runtime handoff uses a short-lived file: reference and MCP children inherit no OpenAI control/admin key variables. Durable direction is a cross-platform U++ AES-256-GCM vault after security review.
+SECURITY: RC uses profile-bound session keys or explicit CONTROL_PLANE_API_KEY automation mode; profile JSON never stores the secret. Unchanged vendor file: resolver reads a private Windows named pipe or POSIX stdin pipe, with no plaintext key-file fallback. Child environment is allowlisted. Durable vault remains deferred.
 MIGRATION: Schema-1 TaskTrack tunnel profiles migrate to schema 2 with TaskTrack as main and preserve environment credential mode.
-VALIDATION: Added deterministic McpTunnelRuntimeTests to verify.ps1; live tunnel/browser acceptance still requires Curt's tunnel ID/key/runtime.
+VALIDATION: Windows full verify.ps1 passed using build-security-verification (all eight executables; runtime tests plus unchanged vendor pipe proof, 142 Core checks, unified MCP selftest, 27 Dashboard checks). Live tunnel/browser acceptance and POSIX tests remain pending; see TUNNEL_SECURITY_HANDOFF.md.
 DEPENDENCY: Validate first against current upp_Ui main; do not revive the previous disposable UiGraph exclusion workaround unless current upstream is proven broken.
-NEXT: Run the architecture/security red-team audit against main, then Windows compile/full verify + Overview/Setup/Services/session-key validation and live TaskTrack/second-channel acceptance.
+NEXT: User restart/publishing and manual GUI/live-channel acceptance. This bounded pass is finished; handoff is TUNNEL_SECURITY_HANDOFF.md. POSIX containment remains outstanding. Vendor stdio child crashes affect the entire runtime; no vendor changes, automatic restart or replay were made.

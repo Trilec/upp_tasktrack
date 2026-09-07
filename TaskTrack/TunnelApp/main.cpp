@@ -26,7 +26,6 @@ GUI_APP_MAIN
 {
     TaskTrackTunnelManagerOptions options;
     options.tunnel_id = GetEnv("TASKTRACK_TUNNEL_ID");
-    options.runtime_path = GetExeDirFile("tunnel-client.exe");
 
     const Vector<String>& cmd = CommandLine();
     for(int i = 0; i < cmd.GetCount(); ++i) {

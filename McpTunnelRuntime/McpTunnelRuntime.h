@@ -2,6 +2,7 @@
 #define _McpTunnelRuntime_McpTunnelRuntime_h_
 
 #include <Core/Core.h>
+#include "McpTunnelKeyPipe.h"
 
 namespace Upp {
 
@@ -24,6 +25,7 @@ struct McpTunnelProfile : Moveable<McpTunnelProfile> {
     String machine_id;
     String tunnel_id;
     String runtime_path;
+    String credential_ref;
     McpTunnelCredentialSource credential_source = MCP_TUNNEL_CREDENTIAL_SESSION;
     bool auto_connect = false;
     bool remember_profile = true;
@@ -49,6 +51,27 @@ Vector<String> McpTunnelBuildRunArgs(const McpTunnelProfile& profile,
                                      const String& health_url_file,
                                      const String& log_file);
 String McpTunnelBuildChildEnvironment(const McpTunnelProfile& profile);
+String McpTunnelBuildChildEnvironment(const McpTunnelProfile& profile,
+                                     const VectorMap<String, String>& environment);
+
+// Session credentials are bound to both profile identity and their intended recipient.
+// Secret bytes are owned (not reference-counted Strings) and wiped on removal.
+class McpTunnelSessionCredentials : NoCopy {
+    struct Entry : NoCopy {
+        String ref, profile_id, machine_id, tunnel_id, runtime_path;
+        Buffer<byte> bytes;
+        int size = 0;
+        ~Entry();
+        bool Matches(const McpTunnelProfile& profile) const;
+    };
+    Array<Entry> entries_;
+public:
+    bool Set(McpTunnelProfile& profile, const String& secret);
+    bool Contains(const McpTunnelProfile& profile) const;
+    String Read(const McpTunnelProfile& profile) const;
+    void Clear(McpTunnelProfile& profile);
+    void InvalidateChangedBinding(McpTunnelProfile& profile);
+};
 
 class McpTunnelRuntime : NoCopy {
 public:
@@ -56,7 +79,7 @@ public:
         STOPPED,
         CONNECTING,
         READY,
-        ERROR,
+        FAULT,
     };
 
     McpTunnelRuntime();
@@ -84,13 +107,15 @@ private:
     String health_url_;
     String health_url_file_;
     String runtime_log_file_;
-    String secret_file_;
+#ifdef PLATFORM_WIN32
+    McpTunnelKeyPipe key_pipe_;
+    HANDLE owner_ = NULL;
+    HANDLE job_ = NULL;
+#endif
     String runtime_output_;
     String last_error_;
 
     bool LoadHealthUrl();
-    bool CreateSecretFile(const String& secret);
-    void DeleteSecretFile();
     void DrainOutput();
     bool ProbeHealth(const String& suffix, int& status, String& error);
 };

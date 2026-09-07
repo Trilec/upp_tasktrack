@@ -110,6 +110,7 @@ ValueMap McpTunnelProfileToValue(const McpTunnelProfile& profile)
     out.Add("machine_id", profile.machine_id);
     out.Add("tunnel_id", profile.tunnel_id);
     out.Add("runtime_path", profile.runtime_path);
+    out.Add("credential_ref", profile.credential_ref);
     out.Add("credential_source", McpTunnelCredentialSourceId(profile.credential_source));
     out.Add("auto_connect", profile.auto_connect);
     out.Add("remember_profile", profile.remember_profile);
@@ -131,6 +132,7 @@ McpTunnelProfile McpTunnelProfileFromValue(const Value& value, int schema_versio
     profile.machine_id = AsString(value["machine_id"]);
     profile.tunnel_id = AsString(value["tunnel_id"]);
     profile.runtime_path = AsString(value["runtime_path"]);
+    profile.credential_ref = AsString(value["credential_ref"]);
     profile.credential_source = McpTunnelCredentialSourceFromId(AsString(value["credential_source"]));
     profile.auto_connect = !IsNull(value["auto_connect"]) && (bool)value["auto_connect"];
     profile.remember_profile = IsNull(value["remember_profile"]) || (bool)value["remember_profile"];
@@ -174,7 +176,7 @@ McpTunnelProfile McpTunnelDuplicateProfile(const McpTunnelProfile& source,
     out.name = new_name;
     out.machine_id = source.machine_id;
     out.runtime_path = source.runtime_path;
-    out.credential_source = source.credential_source;
+    out.credential_source = MCP_TUNNEL_CREDENTIAL_SESSION;
     out.auto_connect = false;
     out.remember_profile = source.remember_profile;
     for(const McpTunnelService& source_service : source.services) {
@@ -190,9 +192,77 @@ McpTunnelProfile McpTunnelDuplicateProfile(const McpTunnelProfile& source,
     return out;
 }
 
+McpTunnelSessionCredentials::Entry::~Entry()
+{
+    volatile byte* p = ~bytes;
+    for(int i = 0; i < size; ++i)
+        p[i] = 0;
+}
+
+bool McpTunnelSessionCredentials::Entry::Matches(const McpTunnelProfile& profile) const
+{
+    return ref == profile.credential_ref && profile_id == profile.id &&
+           machine_id == profile.machine_id && tunnel_id == profile.tunnel_id &&
+           runtime_path == profile.runtime_path;
+}
+
+bool McpTunnelSessionCredentials::Set(McpTunnelProfile& profile, const String& secret)
+{
+    if(secret.IsEmpty() || profile.id.IsEmpty() || profile.machine_id.IsEmpty() ||
+       profile.tunnel_id.IsEmpty() || profile.runtime_path.IsEmpty())
+        return false;
+    Clear(profile);
+    profile.credential_ref = AsString(Uuid::Create());
+    Entry& entry = entries_.Add();
+    entry.ref = profile.credential_ref;
+    entry.profile_id = profile.id;
+    entry.machine_id = profile.machine_id;
+    entry.tunnel_id = profile.tunnel_id;
+    entry.runtime_path = profile.runtime_path;
+    entry.bytes.Alloc(secret.GetCount());
+    entry.size = secret.GetCount();
+    memcpy(~entry.bytes, ~secret, entry.size);
+    return true;
+}
+
+bool McpTunnelSessionCredentials::Contains(const McpTunnelProfile& profile) const
+{
+    for(const Entry& entry : entries_)
+        if(entry.Matches(profile))
+            return true;
+    return false;
+}
+
+String McpTunnelSessionCredentials::Read(const McpTunnelProfile& profile) const
+{
+    for(const Entry& entry : entries_)
+        if(entry.Matches(profile))
+            return String((const char*)~entry.bytes, entry.size);
+    return String();
+}
+
+void McpTunnelSessionCredentials::Clear(McpTunnelProfile& profile)
+{
+    for(int i = entries_.GetCount() - 1; i >= 0; --i)
+        if(entries_[i].profile_id == profile.id)
+            entries_.Remove(i);
+    profile.credential_ref.Clear();
+}
+
+void McpTunnelSessionCredentials::InvalidateChangedBinding(McpTunnelProfile& profile)
+{
+    if(!profile.credential_ref.IsEmpty() && !Contains(profile))
+        Clear(profile);
+}
+
 bool McpTunnelValidateProfile(const McpTunnelProfile& profile, String& error)
 {
     error.Clear();
+    if(profile.id.Find('\0') >= 0 || profile.machine_id.Find('\0') >= 0 ||
+       profile.tunnel_id.Find('\0') >= 0 || profile.runtime_path.Find('\0') >= 0) {
+        error = "Profile identifiers and runtime path cannot contain NUL bytes.";
+        return false;
+    }
     if(profile.id.IsEmpty() || profile.name.IsEmpty()) {
         error = "Profile id and name are required.";
         return false;
@@ -276,6 +346,9 @@ Vector<String> McpTunnelBuildRunArgs(const McpTunnelProfile& profile,
     args.Add(control_plane_api_key_ref);
     args.Add("--control-plane.tunnel-id");
     args.Add(profile.tunnel_id);
+    args.Add("--control-plane.base-url");
+    args.Add("https://api.openai.com");
+    args.Add("--log.http-raw-unsafe=false");
 
     for(const McpTunnelService& service : profile.services) {
         if(!service.enabled)
@@ -295,18 +368,35 @@ Vector<String> McpTunnelBuildRunArgs(const McpTunnelProfile& profile,
 
 String McpTunnelBuildChildEnvironment(const McpTunnelProfile& profile)
 {
+    return McpTunnelBuildChildEnvironment(profile, Environment());
+}
+
+String McpTunnelBuildChildEnvironment(const McpTunnelProfile& profile,
+                                     const VectorMap<String, String>& environment)
+{
     Vector<String> entries;
-    const VectorMap<String, String>& environment = Environment();
+    // Only operating-system/session plumbing is inherited. In particular no
+    // vendor config selectors, proxy overrides, loader paths or credential bags.
+    static const char* allowed[] = {
+        "PATH", "PATHEXT", "SYSTEMROOT", "WINDIR", "COMSPEC", "TEMP", "TMP",
+        "USERPROFILE", "APPDATA", "LOCALAPPDATA", "PROGRAMDATA", "HOMEDRIVE",
+        "HOMEPATH", "USERNAME", "COMPUTERNAME", "HOME", "USER", "LOGNAME",
+        "TMPDIR", "LANG", "LC_ALL", "LC_CTYPE", "DISPLAY", "WAYLAND_DISPLAY",
+        "XDG_RUNTIME_DIR", "DBUS_SESSION_BUS_ADDRESS", "XAUTHORITY"
+    };
+    Index<String> names;
     for(int i = 0; i < environment.GetCount(); ++i) {
         String name = environment.GetKey(i);
-        if(!CompareNoCase(name, "CONTROL_PLANE_API_KEY") ||
-           !CompareNoCase(name, "OPENAI_API_KEY") ||
-           !CompareNoCase(name, "OPENAI_ADMIN_KEY") ||
-           !CompareNoCase(name, "MCP_TUNNEL_REMOTE") ||
-           !CompareNoCase(name, "MCP_TUNNEL_MACHINE_ID") ||
-           !CompareNoCase(name, "MCP_TUNNEL_PROFILE_ID") ||
-           !CompareNoCase(name, "TASKTRACK_TUNNEL_REMOTE"))
+        String canonical = ToUpper(name);
+        bool permit = false;
+        for(const char* item : allowed)
+            if(canonical == item) {
+                permit = true;
+                break;
+            }
+        if(!permit || names.Find(canonical) >= 0 || environment[i].Find('\0') >= 0)
             continue;
+        names.Add(canonical);
         entries.Add(name + "=" + environment[i]);
     }
 
@@ -331,7 +421,12 @@ McpTunnelRuntime::McpTunnelRuntime()
 McpTunnelRuntime::~McpTunnelRuntime()
 {
     Stop();
-    DeleteSecretFile();
+#ifdef PLATFORM_WIN32
+    // Last-resort kill-on-close if the bounded stop could not confirm exit.
+    // Keep the ownership handle until process exit in that exceptional case.
+    if(job_)
+        CloseHandle(job_);
+#endif
     if(!health_url_file_.IsEmpty())
         DeleteFile(health_url_file_);
     if(!runtime_log_file_.IsEmpty())
@@ -349,32 +444,7 @@ bool McpTunnelRuntime::LoadHealthUrl()
     while(url.EndsWith("/"))
         url = url.Left(url.GetCount() - 1);
     health_url_ = url;
-    DeleteSecretFile();
     return true;
-}
-
-bool McpTunnelRuntime::CreateSecretFile(const String& secret)
-{
-    DeleteSecretFile();
-    secret_file_ = GetTempFileName("mcp-tunnel-key-");
-    if(secret_file_.IsEmpty())
-        return false;
-    if(!SaveFile(secret_file_, secret)) {
-        secret_file_.Clear();
-        return false;
-    }
-#ifdef PLATFORM_POSIX
-    chmod(~secret_file_, 0600);
-#endif
-    return true;
-}
-
-void McpTunnelRuntime::DeleteSecretFile()
-{
-    if(secret_file_.IsEmpty())
-        return;
-    DeleteFile(secret_file_);
-    secret_file_.Clear();
 }
 
 void McpTunnelRuntime::DrainOutput()
@@ -402,7 +472,7 @@ bool McpTunnelRuntime::ProbeHealth(const String& suffix, int& status, String& er
     }
 
     HttpRequest request(~(health_url_ + suffix));
-    request.Timeout(2000);
+    request.RequestTimeout(2000).MaxRetries(0).MaxRedirect(0).MaxContentSize(4096);
     request.Execute();
     status = request.GetStatusCode();
     if(request.IsSuccess())
@@ -416,6 +486,8 @@ bool McpTunnelRuntime::ProbeHealth(const String& suffix, int& status, String& er
 bool McpTunnelRuntime::Start(const McpTunnelProfile& profile, const String& control_plane_api_key)
 {
     Stop();
+    if(started_) // A failed stop retains ownership; never start a second tree.
+        return false;
     last_error_.Clear();
 
     String validation_error;
@@ -427,21 +499,54 @@ bool McpTunnelRuntime::Start(const McpTunnelProfile& profile, const String& cont
         last_error_ = "The OpenAI tunnel runtime executable was not found.";
         return false;
     }
-    if(control_plane_api_key.IsEmpty()) {
-        last_error_ = "The control-plane API key is not available.";
+    if(control_plane_api_key.IsEmpty() || control_plane_api_key.GetCount() > 4096) {
+        last_error_ = "The control-plane API key must contain between 1 and 4096 bytes.";
         return false;
     }
 
-    DeleteSecretFile();
     if(!health_url_file_.IsEmpty())
         DeleteFile(health_url_file_);
     if(!runtime_log_file_.IsEmpty())
         DeleteFile(runtime_log_file_);
 
-    if(!CreateSecretFile(control_plane_api_key)) {
-        last_error_ = "Unable to create the short-lived tunnel credential file.";
+    String key_reference;
+#ifdef PLATFORM_WIN32
+    if(!key_pipe_.Open(last_error_))
+        return false;
+    key_reference = key_pipe_.GetReference();
+    String sid = McpTunnelWindowsUserSid();
+    Vector<WCHAR> owner_name = ToSystemCharsetW("Global\\McpTunnelRuntime-" + sid);
+    owner_name.Add(0);
+    // Object existence is the lease (rather than recursively acquiring a mutex
+    // twice on the GUI thread). Closing/crashing releases it automatically.
+    owner_ = CreateMutexW(NULL, FALSE, owner_name.begin());
+    DWORD owner_error = ::GetLastError();
+    if(!owner_ || owner_error == ERROR_ALREADY_EXISTS) {
+        if(owner_)
+            CloseHandle(owner_);
+        owner_ = NULL;
+        key_pipe_.Close();
+        last_error_ = "Another tunnel manager owns this Windows user's runtime, or ownership is unavailable.";
         return false;
     }
+    job_ = CreateJobObjectW(NULL, NULL);
+    JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits = {};
+    limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+    if(!job_ || !SetInformationJobObject(job_, JobObjectExtendedLimitInformation, &limits, sizeof(limits))) {
+        Stop();
+        last_error_ = "Cannot create the runtime process-tree container.";
+        return false;
+    }
+#else
+    // The official file: resolver can read the inherited anonymous stdin pipe.
+    // Fail closed on platforms without this device, never write a secret file.
+    struct stat stdin_info;
+    if(lstat("/dev/stdin", &stdin_info) != 0) {
+        last_error_ = "This platform has no /dev/stdin credential pipe reference.";
+        return false;
+    }
+    key_reference = "file:/dev/stdin";
+#endif
 
     health_url_file_ = GetTempFileName("mcp-tunnel-health-");
     SaveFile(health_url_file_, "");
@@ -452,22 +557,41 @@ bool McpTunnelRuntime::Start(const McpTunnelProfile& profile, const String& cont
     healthy_ = false;
     ready_ = false;
 
-    Vector<String> args = McpTunnelBuildRunArgs(profile, "file:" + secret_file_, health_url_file_, runtime_log_file_);
+    Vector<String> args = McpTunnelBuildRunArgs(profile, key_reference, health_url_file_, runtime_log_file_);
     String child_environment = McpTunnelBuildChildEnvironment(profile);
-    bool launched = process_.Start(~profile.runtime_path, args, ~child_environment);
+    process_.NoConvertCharset();
+    bool launched = process_.Start(~McpTunnelCommandForExecutable(profile.runtime_path), args, ~child_environment);
     child_environment.Clear();
 
     if(!launched) {
-        DeleteSecretFile();
+        Stop();
         last_error_ = "Unable to start the OpenAI tunnel runtime.";
         return false;
     }
 
     started_ = true;
+#ifdef PLATFORM_WIN32
+    // The unchanged vendor blocks reading the credential before it creates MCP
+    // children. Assign the job BEFORE releasing any key bytes. Fail closed if
+    // the host's job policy does not allow containment.
+    if(!AssignProcessToJobObject(job_, process_.GetProcessHandle())) {
+        Stop();
+        last_error_ = "Cannot contain the runtime process tree; no credential was released.";
+        return false;
+    }
+    String handoff_error;
+    if(!key_pipe_.Send(control_plane_api_key, GetProcessId(process_.GetProcessHandle()), 5000, handoff_error)) {
+        Stop();
+        last_error_ = handoff_error;
+        return false;
+    }
+#else
+    process_.Write(control_plane_api_key);
+#endif
+    process_.CloseWrite();
     for(int i = 0; i < 40; ++i) {
         DrainOutput();
         if(LoadHealthUrl()) {
-            DeleteSecretFile();
             break;
         }
         if(!process_.IsRunning())
@@ -475,27 +599,30 @@ bool McpTunnelRuntime::Start(const McpTunnelProfile& profile, const String& cont
         Sleep(100);
     }
     Refresh();
-    if(!started_)
-        DeleteSecretFile();
     return started_;
 }
 
 void McpTunnelRuntime::Refresh()
 {
     DrainOutput();
+#ifdef PLATFORM_WIN32
+    bool running = started_ && WaitForSingleObject(process_.GetProcessHandle(), 0) == WAIT_TIMEOUT;
+#else
     bool running = started_ && process_.IsRunning();
+#endif
     if(!running) {
         if(started_) {
-            String output;
-            int code = process_.Finish(output);
-            runtime_output_ << output;
+            int code = process_.GetExitCode();
+#ifdef PLATFORM_WIN32
+            DWORD actual_code = 0;
+            if(GetExitCodeProcess(process_.GetProcessHandle(), &actual_code))
+                code = (int)actual_code;
+#endif
+            Stop();
             last_error_ = Format("Tunnel runtime exited with code %d.", code);
-            process_.Kill();
         }
-        started_ = false;
         healthy_ = false;
         ready_ = false;
-        DeleteSecretFile();
         return;
     }
 
@@ -513,9 +640,38 @@ void McpTunnelRuntime::Refresh()
 
 void McpTunnelRuntime::Stop()
 {
+#ifdef PLATFORM_WIN32
+    key_pipe_.Close();
+    if(job_) {
+        TerminateJobObject(job_, 255);
+        bool empty = false;
+        for(int i = 0; i < 500; ++i) {
+            JOBOBJECT_BASIC_ACCOUNTING_INFORMATION accounting = {};
+            if(QueryInformationJobObject(job_, JobObjectBasicAccountingInformation,
+                                         &accounting, sizeof(accounting), NULL) && !accounting.ActiveProcesses) {
+                empty = true;
+                break;
+            }
+            Sleep(10);
+        }
+        if(!empty) {
+            started_ = true;
+            healthy_ = ready_ = false;
+            last_error_ = "Runtime process-tree shutdown did not complete; ownership retained. Retry Stop.";
+            return;
+        }
+        CloseHandle(job_);
+        job_ = NULL;
+    }
+#endif
     if(started_)
         process_.Kill();
-    DeleteSecretFile();
+#ifdef PLATFORM_WIN32
+    if(owner_) {
+        CloseHandle(owner_);
+        owner_ = NULL;
+    }
+#endif
     started_ = false;
     healthy_ = false;
     ready_ = false;
@@ -526,7 +682,7 @@ void McpTunnelRuntime::Stop()
 McpTunnelRuntime::State McpTunnelRuntime::GetState() const
 {
     if(!last_error_.IsEmpty() && !ready_)
-        return ERROR;
+        return FAULT;
     if(ready_)
         return READY;
     if(started_)

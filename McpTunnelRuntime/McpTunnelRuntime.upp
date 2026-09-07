@@ -5,4 +5,6 @@ uses
 
 file
     McpTunnelRuntime.h,
+    McpTunnelKeyPipe.h,
+    McpTunnelKeyPipe.cpp,
     McpTunnelRuntime.cpp;

@@ -40,7 +40,7 @@ private:
     bool loading_service_ = false;
 
     McpTunnelRuntime runtime_;
-    String session_api_key_;
+    McpTunnelSessionCredentials session_credentials_;
 
     UiPanel root_;
     UiTitleCard header_;

@@ -1,5 +1,25 @@
 # Machine MCP Tunnel Architecture
 
+## Product purpose
+
+PatchTrack began as a dedicated code-patching tool to make agent edits more
+reliable. TaskTrack provides native human-question workflows and agent-maintained
+project dashboards, so people can consider questions carefully and see current
+project status graphically. These remain separate products with separate contracts.
+
+The tunnel extends access to those local services from chatbots that cannot use
+the coding agent's local MCP connections. It is an additional access path, not a
+replacement for direct local MCP use. Two physical machines have separate tunnel
+identities and runtime credentials. Profiles organize each machine's connection;
+they are not a reason to combine the services or share keys between machines.
+
+The present implementation deliberately supervises the official runtime executable
+unchanged. A future U++-embedded transport is an optional footprint/packaging
+decision requiring its own protocol compatibility and maintenance assessment; it
+is not part of the current security work. Portable encrypted storage should give
+operators a practical way to retain their local keys, not introduce an enterprise
+identity system. Session-only keys remain usable while the vault is deferred.
+
 ## Decision
 
 TaskTrack uses a machine-level Secure MCP Tunnel architecture.
@@ -56,6 +76,7 @@ machine_id
 tunnel_id
 runtime_path
 credential_source
+credential_ref
 auto_connect
 remember_profile
 services[]
@@ -110,9 +131,31 @@ The official OpenAI tunnel runtime currently still requires a control-plane
 runtime API key. Its OAuth support applies to MCP/connector authentication and
 does not currently remove this runtime-key requirement.
 
-At launch the manager gives the official runtime a short-lived `file:`
-credential reference and strips OpenAI control/admin key variables from the
-runtime environment so stdio MCP child processes do not inherit them.
+Session entries are bound to profile, machine, tunnel and runtime path. Changing
+that recipient invalidates the entry; duplicates are unbound in session mode.
+Only an opaque credential reference is persisted, never the key.
+
+The official runtime stays unchanged. On Windows the existing `file:` resolver
+reads a private, local-only named pipe. The manager verifies the reader PID,
+bounds connect/write waits and closes the pipe to supply EOF. No plaintext key
+file is created. POSIX uses the inherited stdin pipe through `file:/dev/stdin`
+and requires platform acceptance testing. There is no disk-file fallback.
+
+The child environment contains only selected OS/session variables and the
+generic remote markers. Ambient credentials, vendor configuration selectors,
+proxy and loader overrides are excluded. The OpenAI control-plane URL is explicit
+and raw HTTP logging is disabled. Custom enterprise configuration needs a future
+explicit interface; environment overrides are not supported.
+
+Windows ownership is one runtime per user across sessions, enforced by an OS
+object independent of editable machine/profile IDs. Before releasing the key,
+the manager puts the runtime in a kill-on-close Job Object. Stop terminates the
+whole tree, including service-launched GUI descendants; a manager crash also
+closes the job. POSIX process-tree containment is still outstanding.
+
+Native channels separate routing, not failure domains: the unchanged vendor
+runtime shuts down on a stdio child failure. The manager reports that exit and
+cleans up its tree; it does not automatically restart or replay interrupted calls.
 
 No secret value is displayed or written to machine profile JSON or diagnostics.
 

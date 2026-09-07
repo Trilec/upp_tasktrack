@@ -4,7 +4,8 @@ param(
     [string]$UppRoot = $env:UPP_ROOT,
     [string]$RepoRoot = $PSScriptRoot,
     [string]$UiRoot = "",
-    [string]$AnimationRoot = ""
+    [string]$AnimationRoot = "",
+    [string]$OutputDir = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -64,7 +65,8 @@ if([string]::IsNullOrWhiteSpace($UppRoot)) {
 
 $umk = Join-Path $UppRoot "umk.exe"
 $assembly = "$RepoRoot,$UiRoot,$AnimationRoot,$UppRoot\uppsrc"
-$buildDir = Join-Path $RepoRoot "build"
+$buildDir = if([string]::IsNullOrWhiteSpace($OutputDir)) { Join-Path $RepoRoot "build" }
+            else { [IO.Path]::GetFullPath($OutputDir) }
 $buildVersion = Read-BuildVersion
 
 if(!(Test-Path -LiteralPath $umk)) { throw "umk.exe not found at $umk" }
@@ -99,7 +101,13 @@ Run-Step "Unified MCP binary identity" {
     if($versionOutput -notmatch 'dashboard schema version\s+1') { throw "Fresh MCP binary does not report dashboard schema 1" }
 }
 
-Run-Step "MCP tunnel runtime tests" { & (Join-Path $buildDir "McpTunnelRuntimeTests.exe") }
+$vendorRuntime = Join-Path $RepoRoot "tunnel-client\tunnel-client-runtime.exe"
+Run-Step "MCP tunnel runtime tests (including vendor compatibility when available)" {
+    if(Test-Path -LiteralPath $vendorRuntime) {
+        & (Join-Path $buildDir "McpTunnelRuntimeTests.exe") --vendor-runtime $vendorRuntime
+    }
+    else { & (Join-Path $buildDir "McpTunnelRuntimeTests.exe") }
+}
 Run-Step "Core/persistence tests" { & (Join-Path $buildDir "TaskTrackTests.exe") }
 Run-Step "Unified MCP selftest" { & $mcpPath --selftest }
 Run-Step "Dashboard Core/persistence tests" { & (Join-Path $buildDir "TaskTrackDashboardTests.exe") }
