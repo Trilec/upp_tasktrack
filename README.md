@@ -58,13 +58,15 @@ The wrapper builds:
 ```text
 build\TaskTrackGui.exe
 build\TaskTrackMcp.exe
+build\TaskTrackTunnelGui.exe
+build\McpTunnelRuntimeTests.exe
 build\TaskTrackTests.exe
 build\TaskTrackExample.exe
 build\TaskTrackDashboardGui.exe
 build\TaskTrackDashboardTests.exe
 ```
 
-and runs the deterministic human Core tests, the unified MCP self-test (human + dashboard tool families), and dashboard Core tests.
+and runs the deterministic machine-tunnel model tests, human Core tests, the unified MCP self-test (human + dashboard tool families), and dashboard Core tests.
 
 For a TheIDE assembly include the TaskTrack repository, `upp_Ui`, `upp_animation`, and U++ `uppsrc`.
 
@@ -85,6 +87,19 @@ Common deployment paths:
 
 - MCP-capable coding agent: `Agent → TaskTrackMcp.exe → native TaskTrack GUI/dashboard`
 - Non-MCP chat handoff: `Chat/agent → durable project-status handoff → TaskTrack-capable agent → TaskTrack dashboard`
+
+## Secure MCP Tunnel
+
+`TaskTrackTunnelGui.exe` manages an optional machine-level OpenAI Secure MCP
+Tunnel profile. One machine profile can bind multiple separate local MCP
+services to logical channels while TaskTrack remains its own domain/MCP service.
+For the RC validation path, the tunnel runtime key is either session-only
+(memory) or supplied through CONTROL_PLANE_API_KEY. The profile never persists
+the secret. A portable encrypted U++ vault is the intended durable-storage
+direction after the tunnel/multi-service flow is accepted.
+
+See [Machine tunnel architecture](docs/TUNNEL_ARCHITECTURE.md) and
+[Secure MCP tunnel setup/test](docs/TUNNEL_TEST.md).
 
 ## Dashboard workflow
 
@@ -115,6 +130,10 @@ TaskTrack/Core              human-decision model, persistence and recovery
 TaskTrack/Widgets           semantic human-question rendering
 TaskTrack/App               human-decision GUI
 TaskTrack/Mcp               single stdio MCP for human + dashboard tool families
+TaskTrack/TunnelCore        TaskTrack-specific tunnel probe/activity adapter
+TaskTrack/TunnelApp         native machine tunnel manager
+
+McpTunnelRuntime            neutral machine/profile/service/runtime supervision
 
 TaskTrack/DashboardCore     dashboard model, validation, revisions and recovery
 TaskTrack/DashboardWidgets  dashboard renderers + TaskTrackTimelineRail
@@ -128,6 +147,8 @@ skills                      optional agent workflow guidance
 ## Documentation
 
 - [Architecture](docs/ARCHITECTURE.md)
+- [Machine tunnel architecture](docs/TUNNEL_ARCHITECTURE.md)
+- [Secure MCP tunnel setup/test](docs/TUNNEL_TEST.md)
 - [Dashboard contract](docs/DASHBOARD.md)
 - [MCP contract](docs/MCP.md)
 - [Interaction lifecycle](docs/INTERACTION_LIFECYCLE.md)

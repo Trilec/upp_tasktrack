@@ -3,20 +3,11 @@
 
 #include <Core/Core.h>
 #include <Ui/Ui.h>
+#include <McpTunnelRuntime/McpTunnelRuntime.h>
 #include <TaskTrack/Core/TaskTrackBuild.h>
 #include <TaskTrack/TunnelCore/TaskTrackTunnelCore.h>
 
 namespace Upp {
-
-struct TaskTrackTunnelProfile : Moveable<TaskTrackTunnelProfile> {
-    String id;
-    String name;
-    String tunnel_id;
-    String runtime_path;
-    String mcp_path;
-    bool auto_connect = false;
-    bool remember_profile = true;
-};
 
 struct TaskTrackTunnelManagerOptions {
     String tunnel_id;
@@ -37,30 +28,19 @@ private:
     enum Page {
         PAGE_OVERVIEW = 0,
         PAGE_SETUP = 1,
-    };
-
-    enum RuntimeState {
-        STATE_STOPPED,
-        STATE_CONNECTING,
-        STATE_READY,
-        STATE_ERROR,
+        PAGE_SERVICES = 2,
     };
 
     TaskTrackTunnelManagerOptions options_;
-    Vector<TaskTrackTunnelProfile> profiles_;
+    Vector<McpTunnelProfile> profiles_;
     int selected_profile_ = -1;
+    int selected_service_ = -1;
     bool dark_theme_ = false;
     bool loading_profile_ = false;
+    bool loading_service_ = false;
 
-    LocalProcess runtime_process_;
-    bool runtime_started_ = false;
-    bool runtime_healthy_ = false;
-    bool runtime_ready_ = false;
-    String health_url_;
-    String health_url_file_;
-    String runtime_log_file_;
-    String runtime_output_;
-    String last_error_;
+    McpTunnelRuntime runtime_;
+    String session_api_key_;
 
     UiPanel root_;
     UiTitleCard header_;
@@ -68,11 +48,11 @@ private:
     UiToolButton theme_button_, help_button_, exit_button_;
 
     UiPanel nav_;
-    UiToolButton overview_button_, setup_button_;
+    UiToolButton overview_button_, setup_button_, services_button_;
     UiLabel nav_note_;
 
     UiStack pages_;
-    UiPanel overview_page_, setup_page_;
+    UiPanel overview_page_, setup_page_, services_page_;
 
     UiPanel hero_;
     UiPanel beacon_;
@@ -92,7 +72,7 @@ private:
     UiLabel activity_title_, activity_live_, activity_count_;
     UiTable activity_table_;
     UiTableModel activity_model_;
-    UiButton copy_diagnostics_button_, clear_activity_button_;
+    UiButton send_probe_button_, copy_diagnostics_button_, clear_activity_button_;
     UiLabel activity_footer_note_;
 
     UiPanel profile_bar_;
@@ -102,17 +82,29 @@ private:
 
     UiPanel setup_form_;
     UiLabel section_profile_, section_runtime_, section_launch_;
-    UiLabel profile_name_label_, tunnel_id_label_, credential_label_;
-    UiLineEdit profile_name_edit_, tunnel_id_edit_, credential_edit_;
+    UiLabel profile_name_label_, machine_id_label_, tunnel_id_label_, credential_label_;
+    UiLineEdit profile_name_edit_, machine_id_edit_, tunnel_id_edit_;
+    UiDropdown credential_source_dropdown_;
     UiLabel credential_status_;
+    UiButton credential_set_button_, credential_clear_button_;
     UiLabel credential_note_;
-    UiLabel runtime_path_label_, mcp_path_label_;
-    UiLineEdit runtime_path_edit_, mcp_path_edit_;
-    UiButton runtime_browse_button_, mcp_browse_button_;
+    UiLabel runtime_path_label_;
+    UiLineEdit runtime_path_edit_;
+    UiButton runtime_browse_button_;
     UiLabel auto_connect_label_, auto_connect_title_, auto_connect_note_;
     UiToggle auto_connect_toggle_;
     UiLabel remember_label_, remember_title_, remember_note_;
     UiToggle remember_toggle_;
+
+    UiPanel service_bar_, service_form_;
+    UiLabel service_select_caption_, section_service_;
+    UiDropdown service_dropdown_;
+    UiButton new_service_button_, duplicate_service_button_, delete_service_button_;
+    UiLabel service_name_label_, service_id_label_, service_channel_label_, service_command_label_;
+    UiLineEdit service_name_edit_, service_id_edit_, service_channel_edit_, service_command_edit_;
+    UiButton service_browse_button_;
+    UiLabel service_enabled_label_, service_enabled_title_, service_enabled_note_;
+    UiToggle service_enabled_toggle_;
 
     UiPanel footer_;
     UiLabel footer_build_, footer_mcp_, footer_dashboard_;
@@ -121,6 +113,7 @@ private:
     void BuildUi();
     void BuildOverview();
     void BuildSetup();
+    void BuildServices();
     void Wire();
 
     void ApplyTheme();
@@ -148,8 +141,8 @@ private:
     void LoadProfiles();
     void SaveProfiles();
     void EnsureDefaultProfile();
-    TaskTrackTunnelProfile* CurrentProfile();
-    const TaskTrackTunnelProfile* CurrentProfile() const;
+    McpTunnelProfile* CurrentProfile();
+    const McpTunnelProfile* CurrentProfile() const;
     String NewProfileId() const;
     void RebuildProfileDropdown();
     void LoadProfileIntoUi();
@@ -159,20 +152,32 @@ private:
     void DuplicateProfile();
     void DeleteProfile();
 
-    void BrowseRuntime();
-    void BrowseMcp();
+    McpTunnelService* CurrentService();
+    const McpTunnelService* CurrentService() const;
+    String NewServiceId(const String& base = "service") const;
+    String NewServiceChannel(const String& base = "service") const;
+    void RebuildServiceDropdown();
+    void LoadServiceIntoUi();
+    void SaveServiceFromUi();
+    void SelectServiceById(const String& id);
+    void NewService();
+    void DuplicateService();
+    void DeleteService();
 
-    String RuntimeMcpCommand() const;
-    bool LoadHealthUrl();
-    void DrainRuntimeOutput();
-    String RuntimeDiagnostics();
-    bool ProbeHealth(const String& suffix, int& status, String& error);
+    void BrowseRuntime();
+    void BrowseServiceCommand();
+
+    bool CredentialAvailable(String& error) const;
+    bool ReadCredential(String& secret, String& error) const;
+    void RefreshCredentialProjection();
+    void SetCredential();
+    void ClearCredential();
+
     void ConnectRuntime();
     void RefreshRuntimeStatus(bool show_dialog = false);
     void StopRuntime();
     void OpenHealth();
 
-    RuntimeState GetRuntimeState() const;
     void RefreshProjection();
     void RefreshActivity();
     void RefreshActivityTable(const TaskTrackTunnelActivity& activity);
@@ -185,6 +190,7 @@ private:
     void Tick();
 
     String ProfileStorePath() const;
+    const McpTunnelService* TaskTrackService() const;
 };
 
 }

@@ -2,6 +2,7 @@ description "TaskTrack native manager for the official OpenAI Secure MCP Tunnel 
 
 uses
     Ui,
+    McpTunnelRuntime,
     TaskTrack/Core,
     TaskTrack/TunnelCore;
 

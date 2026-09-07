@@ -1,0 +1,551 @@
+#include "McpTunnelRuntime.h"
+
+#ifdef PLATFORM_POSIX
+#include <sys/stat.h>
+#endif
+
+namespace Upp {
+
+namespace {
+
+String NormalizedId(String value)
+{
+    value = ToLower(TrimBoth(value));
+    String out;
+    bool dash = false;
+    for(int i = 0; i < value.GetCount(); ++i) {
+        int c = value[i];
+        if(IsAlNum(c) || c == '_' || c == '.') {
+            out.Cat(c);
+            dash = false;
+        }
+        else if(!dash && !out.IsEmpty()) {
+            out.Cat('-');
+            dash = true;
+        }
+    }
+    while(out.EndsWith("-"))
+        out = out.Left(out.GetCount() - 1);
+    return out;
+}
+
+bool IsCanonicalChannel(const String& channel)
+{
+    if(channel.IsEmpty())
+        return false;
+    for(int i = 0; i < channel.GetCount(); ++i) {
+        int c = channel[i];
+        if(!(IsAlNum(c) || c == '-' || c == '_' || c == '.'))
+            return false;
+    }
+    return true;
+}
+
+}
+
+String McpTunnelCredentialSourceId(McpTunnelCredentialSource source)
+{
+    return source == MCP_TUNNEL_CREDENTIAL_ENVIRONMENT ? "environment" : "session";
+}
+
+McpTunnelCredentialSource McpTunnelCredentialSourceFromId(const String& id)
+{
+    return id == "environment" ? MCP_TUNNEL_CREDENTIAL_ENVIRONMENT
+                               : MCP_TUNNEL_CREDENTIAL_SESSION;
+}
+
+String McpTunnelDefaultMachineId()
+{
+    String id = GetComputerName();
+    if(id.IsEmpty())
+        id = GetEnv("COMPUTERNAME");
+    if(id.IsEmpty())
+        id = GetEnv("HOSTNAME");
+    id = NormalizedId(id);
+    return id.IsEmpty() ? String("local-machine") : id;
+}
+
+String McpTunnelCommandForExecutable(const String& path)
+{
+    String command = TrimBoth(path);
+    command.Replace("\\", "/");
+    if(command.GetCount() >= 2 && command[0] == '"' && command[command.GetCount() - 1] == '"')
+        return command;
+    if(command.Find(' ') >= 0 || command.Find('\t') >= 0)
+        command = "\"" + command + "\"";
+    return command;
+}
+
+ValueMap McpTunnelServiceToValue(const McpTunnelService& service)
+{
+    ValueMap out;
+    out.Add("id", service.id);
+    out.Add("name", service.name);
+    out.Add("channel", service.channel);
+    out.Add("command", service.command);
+    out.Add("enabled", service.enabled);
+    return out;
+}
+
+McpTunnelService McpTunnelServiceFromValue(const Value& value)
+{
+    McpTunnelService service;
+    if(!value.Is<ValueMap>())
+        return service;
+    service.id = AsString(value["id"]);
+    service.name = AsString(value["name"]);
+    service.channel = AsString(value["channel"]);
+    service.command = AsString(value["command"]);
+    service.enabled = IsNull(value["enabled"]) || (bool)value["enabled"];
+    if(service.channel.IsEmpty())
+        service.channel = "main";
+    return service;
+}
+
+ValueMap McpTunnelProfileToValue(const McpTunnelProfile& profile)
+{
+    ValueMap out;
+    out.Add("id", profile.id);
+    out.Add("name", profile.name);
+    out.Add("machine_id", profile.machine_id);
+    out.Add("tunnel_id", profile.tunnel_id);
+    out.Add("runtime_path", profile.runtime_path);
+    out.Add("credential_source", McpTunnelCredentialSourceId(profile.credential_source));
+    out.Add("auto_connect", profile.auto_connect);
+    out.Add("remember_profile", profile.remember_profile);
+    ValueArray services;
+    for(const McpTunnelService& service : profile.services)
+        services.Add(McpTunnelServiceToValue(service));
+    out.Add("services", services);
+    return out;
+}
+
+McpTunnelProfile McpTunnelProfileFromValue(const Value& value, int schema_version)
+{
+    McpTunnelProfile profile;
+    if(!value.Is<ValueMap>())
+        return profile;
+
+    profile.id = AsString(value["id"]);
+    profile.name = AsString(value["name"]);
+    profile.machine_id = AsString(value["machine_id"]);
+    profile.tunnel_id = AsString(value["tunnel_id"]);
+    profile.runtime_path = AsString(value["runtime_path"]);
+    profile.credential_source = McpTunnelCredentialSourceFromId(AsString(value["credential_source"]));
+    profile.auto_connect = !IsNull(value["auto_connect"]) && (bool)value["auto_connect"];
+    profile.remember_profile = IsNull(value["remember_profile"]) || (bool)value["remember_profile"];
+
+    Value services_value = value["services"];
+    if(services_value.Is<ValueArray>()) {
+        ValueArray services = services_value;
+        for(int i = 0; i < services.GetCount(); ++i) {
+            McpTunnelService service = McpTunnelServiceFromValue(services[i]);
+            if(!service.id.IsEmpty())
+                profile.services.Add(pick(service));
+        }
+    }
+
+    // Schema 1 migration: the old TaskTrack profile contained one mcp_path.
+    if(schema_version <= 1 && profile.services.IsEmpty()) {
+        String old_mcp_path = AsString(value["mcp_path"]);
+        if(!old_mcp_path.IsEmpty()) {
+            McpTunnelService service;
+            service.id = "tasktrack";
+            service.name = "TaskTrack";
+            service.channel = "main";
+            service.command = McpTunnelCommandForExecutable(old_mcp_path);
+            profile.services.Add(pick(service));
+        }
+        // Existing installs used the environment contract. Preserve that on migration.
+        profile.credential_source = MCP_TUNNEL_CREDENTIAL_ENVIRONMENT;
+    }
+
+    if(profile.machine_id.IsEmpty())
+        profile.machine_id = McpTunnelDefaultMachineId();
+    return profile;
+}
+
+McpTunnelProfile McpTunnelDuplicateProfile(const McpTunnelProfile& source,
+                                           const String& new_id,
+                                           const String& new_name)
+{
+    McpTunnelProfile out;
+    out.id = new_id;
+    out.name = new_name;
+    out.machine_id = source.machine_id;
+    out.runtime_path = source.runtime_path;
+    out.credential_source = source.credential_source;
+    out.auto_connect = false;
+    out.remember_profile = source.remember_profile;
+    for(const McpTunnelService& source_service : source.services) {
+        McpTunnelService service;
+        service.id = source_service.id;
+        service.name = source_service.name;
+        service.channel = source_service.channel;
+        service.command = source_service.command;
+        service.enabled = source_service.enabled;
+        out.services.Add(pick(service));
+    }
+    // Deliberately do not copy tunnel_id or any credential secret.
+    return out;
+}
+
+bool McpTunnelValidateProfile(const McpTunnelProfile& profile, String& error)
+{
+    error.Clear();
+    if(profile.id.IsEmpty() || profile.name.IsEmpty()) {
+        error = "Profile id and name are required.";
+        return false;
+    }
+    if(profile.machine_id.IsEmpty()) {
+        error = "Machine id is required.";
+        return false;
+    }
+    if(profile.tunnel_id.IsEmpty()) {
+        error = "Tunnel ID is not set.";
+        return false;
+    }
+    if(profile.runtime_path.IsEmpty()) {
+        error = "Tunnel runtime executable is not set.";
+        return false;
+    }
+
+    Index<String> ids, channels;
+    int main_count = 0;
+    int enabled_count = 0;
+    for(const McpTunnelService& service : profile.services) {
+        if(!service.enabled)
+            continue;
+        enabled_count++;
+        if(service.id.IsEmpty() || service.name.IsEmpty()) {
+            error = "Every enabled service requires an id and display name.";
+            return false;
+        }
+        if(ids.Find(service.id) >= 0) {
+            error = "Enabled service ids must be unique.";
+            return false;
+        }
+        ids.Add(service.id);
+        if(!IsCanonicalChannel(service.channel)) {
+            error = "MCP channel names may contain only letters, digits, '.', '_' and '-'.";
+            return false;
+        }
+        if(service.channel == "harpoon") {
+            error = "The MCP channel name 'harpoon' is reserved by the OpenAI tunnel runtime.";
+            return false;
+        }
+        if(channels.Find(service.channel) >= 0) {
+            error = "Enabled MCP channels must be unique.";
+            return false;
+        }
+        channels.Add(service.channel);
+        if(service.channel == "main")
+            main_count++;
+        if(service.command.IsEmpty()) {
+            error = "Every enabled MCP service requires a command.";
+            return false;
+        }
+        if(service.command.Find(',') >= 0 || service.command.Find('\n') >= 0 || service.command.Find('\r') >= 0) {
+            error = "MCP service commands cannot contain commas or newlines in channel-qualified runtime bindings.";
+            return false;
+        }
+    }
+    if(enabled_count == 0) {
+        error = "At least one MCP service must be enabled.";
+        return false;
+    }
+    if(enabled_count > 32) {
+        error = "The OpenAI tunnel runtime supports at most 32 enabled MCP channels.";
+        return false;
+    }
+    if(main_count != 1) {
+        error = "Exactly one enabled MCP service must use the main channel.";
+        return false;
+    }
+    return true;
+}
+
+Vector<String> McpTunnelBuildRunArgs(const McpTunnelProfile& profile,
+                                     const String& control_plane_api_key_ref,
+                                     const String& health_url_file,
+                                     const String& log_file)
+{
+    Vector<String> args;
+    args.Add("run");
+    args.Add("--control-plane.api-key");
+    args.Add(control_plane_api_key_ref);
+    args.Add("--control-plane.tunnel-id");
+    args.Add(profile.tunnel_id);
+
+    for(const McpTunnelService& service : profile.services) {
+        if(!service.enabled)
+            continue;
+        args.Add("--mcp.command");
+        args.Add("channel=" + service.channel + ",command=" + service.command);
+    }
+
+    args.Add("--health.listen-addr");
+    args.Add("127.0.0.1:0");
+    args.Add("--health.url-file");
+    args.Add(health_url_file);
+    args.Add("--log.file");
+    args.Add(log_file);
+    return args;
+}
+
+String McpTunnelBuildChildEnvironment(const McpTunnelProfile& profile)
+{
+    Vector<String> entries;
+    const VectorMap<String, String>& environment = Environment();
+    for(int i = 0; i < environment.GetCount(); ++i) {
+        String name = environment.GetKey(i);
+        if(!CompareNoCase(name, "CONTROL_PLANE_API_KEY") ||
+           !CompareNoCase(name, "OPENAI_API_KEY") ||
+           !CompareNoCase(name, "OPENAI_ADMIN_KEY") ||
+           !CompareNoCase(name, "MCP_TUNNEL_REMOTE") ||
+           !CompareNoCase(name, "MCP_TUNNEL_MACHINE_ID") ||
+           !CompareNoCase(name, "MCP_TUNNEL_PROFILE_ID") ||
+           !CompareNoCase(name, "TASKTRACK_TUNNEL_REMOTE"))
+            continue;
+        entries.Add(name + "=" + environment[i]);
+    }
+
+    entries.Add("MCP_TUNNEL_REMOTE=1");
+    entries.Add("MCP_TUNNEL_MACHINE_ID=" + profile.machine_id);
+    entries.Add("MCP_TUNNEL_PROFILE_ID=" + profile.id);
+    Sort(entries);
+
+    String block;
+    for(const String& entry : entries) {
+        block << entry;
+        block.Cat(0);
+    }
+    block.Cat(0);
+    return block;
+}
+
+McpTunnelRuntime::McpTunnelRuntime()
+{
+}
+
+McpTunnelRuntime::~McpTunnelRuntime()
+{
+    Stop();
+    DeleteSecretFile();
+    if(!health_url_file_.IsEmpty())
+        DeleteFile(health_url_file_);
+    if(!runtime_log_file_.IsEmpty())
+        DeleteFile(runtime_log_file_);
+}
+
+bool McpTunnelRuntime::LoadHealthUrl()
+{
+    if(health_url_file_.IsEmpty() || !FileExists(health_url_file_))
+        return false;
+
+    String url = TrimBoth(LoadFile(health_url_file_));
+    if(url.IsEmpty())
+        return false;
+    while(url.EndsWith("/"))
+        url = url.Left(url.GetCount() - 1);
+    health_url_ = url;
+    DeleteSecretFile();
+    return true;
+}
+
+bool McpTunnelRuntime::CreateSecretFile(const String& secret)
+{
+    DeleteSecretFile();
+    secret_file_ = GetTempFileName("mcp-tunnel-key-");
+    if(secret_file_.IsEmpty())
+        return false;
+    if(!SaveFile(secret_file_, secret)) {
+        secret_file_.Clear();
+        return false;
+    }
+#ifdef PLATFORM_POSIX
+    chmod(~secret_file_, 0600);
+#endif
+    return true;
+}
+
+void McpTunnelRuntime::DeleteSecretFile()
+{
+    if(secret_file_.IsEmpty())
+        return;
+    DeleteFile(secret_file_);
+    secret_file_.Clear();
+}
+
+void McpTunnelRuntime::DrainOutput()
+{
+    if(!started_)
+        return;
+    for(int i = 0; i < 8; ++i) {
+        String out, err;
+        process_.Read2(out, err);
+        if(out.IsEmpty() && err.IsEmpty())
+            break;
+        runtime_output_ << out << err;
+        if(runtime_output_.GetCount() > 6000)
+            runtime_output_ = runtime_output_.Right(6000);
+    }
+}
+
+bool McpTunnelRuntime::ProbeHealth(const String& suffix, int& status, String& error)
+{
+    status = 0;
+    error.Clear();
+    if(health_url_.IsEmpty() && !LoadHealthUrl()) {
+        error = "Health URL is not available yet.";
+        return false;
+    }
+
+    HttpRequest request(~(health_url_ + suffix));
+    request.Timeout(2000);
+    request.Execute();
+    status = request.GetStatusCode();
+    if(request.IsSuccess())
+        return true;
+    error = request.GetErrorDesc();
+    if(error.IsEmpty())
+        error = Format("HTTP %d %s", status, request.GetReasonPhrase());
+    return false;
+}
+
+bool McpTunnelRuntime::Start(const McpTunnelProfile& profile, const String& control_plane_api_key)
+{
+    Stop();
+    last_error_.Clear();
+
+    String validation_error;
+    if(!McpTunnelValidateProfile(profile, validation_error)) {
+        last_error_ = validation_error;
+        return false;
+    }
+    if(!FileExists(profile.runtime_path)) {
+        last_error_ = "The OpenAI tunnel runtime executable was not found.";
+        return false;
+    }
+    if(control_plane_api_key.IsEmpty()) {
+        last_error_ = "The control-plane API key is not available.";
+        return false;
+    }
+
+    DeleteSecretFile();
+    if(!health_url_file_.IsEmpty())
+        DeleteFile(health_url_file_);
+    if(!runtime_log_file_.IsEmpty())
+        DeleteFile(runtime_log_file_);
+
+    if(!CreateSecretFile(control_plane_api_key)) {
+        last_error_ = "Unable to create the short-lived tunnel credential file.";
+        return false;
+    }
+
+    health_url_file_ = GetTempFileName("mcp-tunnel-health-");
+    SaveFile(health_url_file_, "");
+    runtime_log_file_ = GetTempFileName("mcp-tunnel-runtime-");
+    DeleteFile(runtime_log_file_);
+    runtime_output_.Clear();
+    health_url_.Clear();
+    healthy_ = false;
+    ready_ = false;
+
+    Vector<String> args = McpTunnelBuildRunArgs(profile, "file:" + secret_file_, health_url_file_, runtime_log_file_);
+    String child_environment = McpTunnelBuildChildEnvironment(profile);
+    bool launched = process_.Start(~profile.runtime_path, args, ~child_environment);
+    child_environment.Clear();
+
+    if(!launched) {
+        DeleteSecretFile();
+        last_error_ = "Unable to start the OpenAI tunnel runtime.";
+        return false;
+    }
+
+    started_ = true;
+    for(int i = 0; i < 40; ++i) {
+        DrainOutput();
+        if(LoadHealthUrl()) {
+            DeleteSecretFile();
+            break;
+        }
+        if(!process_.IsRunning())
+            break;
+        Sleep(100);
+    }
+    Refresh();
+    if(!started_)
+        DeleteSecretFile();
+    return started_;
+}
+
+void McpTunnelRuntime::Refresh()
+{
+    DrainOutput();
+    bool running = started_ && process_.IsRunning();
+    if(!running) {
+        if(started_) {
+            String output;
+            int code = process_.Finish(output);
+            runtime_output_ << output;
+            last_error_ = Format("Tunnel runtime exited with code %d.", code);
+            process_.Kill();
+        }
+        started_ = false;
+        healthy_ = false;
+        ready_ = false;
+        DeleteSecretFile();
+        return;
+    }
+
+    LoadHealthUrl();
+    int health_status = 0, ready_status = 0;
+    String health_error, ready_error;
+    healthy_ = ProbeHealth("/healthz", health_status, health_error);
+    ready_ = ProbeHealth("/readyz", ready_status, ready_error);
+
+    if(ready_ || healthy_)
+        last_error_.Clear();
+    else if(!health_error.IsEmpty())
+        last_error_ = health_error;
+}
+
+void McpTunnelRuntime::Stop()
+{
+    if(started_)
+        process_.Kill();
+    DeleteSecretFile();
+    started_ = false;
+    healthy_ = false;
+    ready_ = false;
+    health_url_.Clear();
+    last_error_.Clear();
+}
+
+McpTunnelRuntime::State McpTunnelRuntime::GetState() const
+{
+    if(!last_error_.IsEmpty() && !ready_)
+        return ERROR;
+    if(ready_)
+        return READY;
+    if(started_)
+        return CONNECTING;
+    return STOPPED;
+}
+
+String McpTunnelRuntime::GetDiagnostics() const
+{
+    String out = runtime_output_;
+    String log = runtime_log_file_.IsEmpty() ? String() : LoadFile(runtime_log_file_);
+    if(!IsNull(log) && !log.IsEmpty()) {
+        if(log.GetCount() > 3000)
+            log = log.Right(3000);
+        if(!out.IsEmpty())
+            out << "\n";
+        out << log;
+    }
+    return out;
+}
+
+}

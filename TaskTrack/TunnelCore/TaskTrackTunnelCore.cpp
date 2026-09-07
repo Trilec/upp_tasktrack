@@ -269,7 +269,8 @@ bool TaskTrackTunnelRecordSent(int response_bytes, bool is_error, String& error)
 
 bool TaskTrackTunnelIsRemoteSession()
 {
-    return GetEnv("TASKTRACK_TUNNEL_REMOTE") == "1";
+    return GetEnv("MCP_TUNNEL_REMOTE") == "1" ||
+           GetEnv("TASKTRACK_TUNNEL_REMOTE") == "1";
 }
 
 ValueMap TaskTrackTunnelProbeStatusValue()

@@ -19,32 +19,59 @@ String EllipsizeMiddle(const String& text, int keep = 12)
     return text.Left(keep) + "..." + text.Right(keep);
 }
 
-ValueMap ProfileToValue(const TaskTrackTunnelProfile& profile)
-{
-    ValueMap out;
-    out.Add("id", profile.id);
-    out.Add("name", profile.name);
-    out.Add("tunnel_id", profile.tunnel_id);
-    out.Add("runtime_path", profile.runtime_path);
-    out.Add("mcp_path", profile.mcp_path);
-    out.Add("auto_connect", profile.auto_connect);
-    out.Add("remember_profile", profile.remember_profile);
-    return out;
-}
+class ApiKeyDialog : public TopWindow {
+public:
+    typedef ApiKeyDialog CLASSNAME;
 
-TaskTrackTunnelProfile ProfileFromValue(const Value& value)
+    ApiKeyDialog()
+    {
+        Title("Set session tunnel key");
+        SetRect(0, 0, DPI(470), DPI(150));
+        SetMinSize(Size(DPI(430), DPI(150)));
+        Add(message_);
+        Add(secret_);
+        Add(save_);
+        Add(cancel_);
+
+        message_.SetText("The key is kept only in memory for this manager session and is never written to the machine profile.");
+        secret_.SetPlaceholder("OpenAI runtime API key").EnableVisibilityIcon(true);
+        save_.SetText("Use key");
+        cancel_.SetText("Cancel");
+        save_.WhenAction = [=] {
+            if(TrimBoth(secret_.GetTextUtf8()).IsEmpty()) {
+                Exclamation("Enter the runtime API key.");
+                return;
+            }
+            Break(IDOK);
+        };
+        cancel_.WhenAction = [=] { Break(IDCANCEL); };
+    }
+
+    String GetSecret() const { return TrimBoth(secret_.GetTextUtf8()); }
+
+    virtual void Layout() override
+    {
+        Size sz = GetSize();
+        const int pad = DPI(14);
+        message_.SetRect(pad, DPI(12), max(0, sz.cx - pad * 2), DPI(36));
+        secret_.SetRect(pad, DPI(53), max(0, sz.cx - pad * 2), DPI(32));
+        save_.SetRect(max(pad, sz.cx - DPI(190)), DPI(101), DPI(90), DPI(30));
+        cancel_.SetRect(max(pad, sz.cx - DPI(92)), DPI(101), DPI(78), DPI(30));
+    }
+
+private:
+    UiLabel message_;
+    UiPasswordEdit secret_;
+    UiButton save_, cancel_;
+};
+
+int EnabledServiceCount(const McpTunnelProfile& profile)
 {
-    TaskTrackTunnelProfile profile;
-    if(!value.Is<ValueMap>())
-        return profile;
-    profile.id = AsString(value["id"]);
-    profile.name = AsString(value["name"]);
-    profile.tunnel_id = AsString(value["tunnel_id"]);
-    profile.runtime_path = AsString(value["runtime_path"]);
-    profile.mcp_path = AsString(value["mcp_path"]);
-    profile.auto_connect = !IsNull(value["auto_connect"]) && (bool)value["auto_connect"];
-    profile.remember_profile = IsNull(value["remember_profile"]) || (bool)value["remember_profile"];
-    return profile;
+    int count = 0;
+    for(const McpTunnelService& service : profile.services)
+        if(service.enabled)
+            count++;
+    return count;
 }
 
 }
@@ -52,7 +79,7 @@ TaskTrackTunnelProfile ProfileFromValue(const Value& value)
 TaskTrackTunnelManager::TaskTrackTunnelManager(const TaskTrackTunnelManagerOptions& options)
     : options_(options)
 {
-    Title("TaskTrack Tunnel");
+    Title("MCP Tunnel");
     Icon(TunnelAppIcon(), TunnelAppIcon());
     Sizeable().Zoomable();
     SetRect(0, 0, DPI(920), DPI(610));
@@ -61,13 +88,19 @@ TaskTrackTunnelManager::TaskTrackTunnelManager(const TaskTrackTunnelManagerOptio
     LoadProfiles();
     EnsureDefaultProfile();
 
-    if(TaskTrackTunnelProfile *profile = CurrentProfile()) {
+    if(McpTunnelProfile *profile = CurrentProfile()) {
         if(!options_.tunnel_id.IsEmpty())
             profile->tunnel_id = options_.tunnel_id;
         if(!options_.runtime_path.IsEmpty())
             profile->runtime_path = options_.runtime_path;
-        if(profile->mcp_path.IsEmpty())
-            profile->mcp_path = GetExeDirFile("TaskTrackMcp.exe");
+        if(profile->services.IsEmpty()) {
+            McpTunnelService service;
+            service.id = "tasktrack";
+            service.name = "TaskTrack";
+            service.channel = "main";
+            service.command = McpTunnelCommandForExecutable(GetExeDirFile("TaskTrackMcp.exe"));
+            profile->services.Add(pick(service));
+        }
     }
 
     UiThemeContext context = UiTheme::GetContext();
@@ -85,9 +118,10 @@ TaskTrackTunnelManager::TaskTrackTunnelManager(const TaskTrackTunnelManagerOptio
 
     SetTimeCallback(-1000, [=] { Tick(); }, TIMER_REFRESH);
 
-    const TaskTrackTunnelProfile *profile = CurrentProfile();
+    const McpTunnelProfile *profile = CurrentProfile();
+    String credential_error;
     if(profile && profile->auto_connect && !profile->tunnel_id.IsEmpty()
-       && !GetEnv("CONTROL_PLANE_API_KEY").IsEmpty())
+       && CredentialAvailable(credential_error))
         PostCallback([=] { ConnectRuntime(); });
 }
 
@@ -96,8 +130,7 @@ TaskTrackTunnelManager::~TaskTrackTunnelManager()
     KillTimeCallback(TIMER_REFRESH);
     SaveProfileFromUi();
     SaveProfiles();
-    if(runtime_started_)
-        runtime_process_.Kill();
+    runtime_.Stop();
 }
 
 void TaskTrackTunnelManager::BuildUi()
@@ -110,8 +143,8 @@ void TaskTrackTunnelManager::BuildUi()
     root_.Add(pages_);
     root_.Add(footer_);
 
-    header_.SetTitle("TaskTrack Tunnel")
-           .SetSubTitle("Secure ChatGPT ↔ local TaskTrack connection")
+    header_.SetTitle("MCP Tunnel")
+           .SetSubTitle("Secure ChatGPT ↔ local MCP services")
            .SetMedia(TunnelAppIcon())
            .SetMediaSide(UiAlign::LEFT)
            .SetMediaAlign(UiAlign::CENTER, UiAlign::CENTER)
@@ -124,7 +157,7 @@ void TaskTrackTunnelManager::BuildUi()
     header_actions_.SetGap(DPI(5)).SetInset(0).SetAlignItems(UiCrossAlign::Center);
     header_actions_.AddSpacer(1).Expand(1);
     theme_button_.SetIcon(ICON_ACTION_DARK_MODE_48()).SetIconSize(DPI(16), DPI(16)).Tip("Toggle light/dark theme");
-    help_button_.SetIcon(ICON_DESIGN_HELP_48()).SetIconSize(DPI(16), DPI(16)).Tip("TaskTrack Tunnel help");
+    help_button_.SetIcon(ICON_DESIGN_HELP_48()).SetIconSize(DPI(16), DPI(16)).Tip("MCP Tunnel help");
     exit_button_.SetIcon(ICON_DESIGN_MODE_OFF_ON_48()).SetIconSize(DPI(16), DPI(16)).Tip("Close");
     header_actions_.Add(help_button_).Fixed(DPI(32));
     header_actions_.Add(theme_button_).Fixed(DPI(32));
@@ -132,16 +165,20 @@ void TaskTrackTunnelManager::BuildUi()
 
     nav_.Add(overview_button_);
     nav_.Add(setup_button_);
+    nav_.Add(services_button_);
     nav_.Add(nav_note_);
     overview_button_.SetText("Overview").SetCheckable();
     setup_button_.SetText("Setup").SetCheckable();
-    nav_note_.SetText("Local tunnel control").SetAlign(UiAlign::RIGHT, UiAlign::CENTER);
+    services_button_.SetText("Services").SetCheckable();
+    nav_note_.SetText("Machine tunnel control").SetAlign(UiAlign::RIGHT, UiAlign::CENTER);
 
     pages_.Add(overview_page_, "overview");
     pages_.Add(setup_page_, "setup");
+    pages_.Add(services_page_, "services");
 
     BuildOverview();
     BuildSetup();
+    BuildServices();
 
     footer_.Add(footer_build_);
     footer_.Add(footer_mcp_);
@@ -176,7 +213,7 @@ void TaskTrackTunnelManager::BuildOverview()
     hero_.Add(health_button_);
 
     state_eyebrow_.SetText("TUNNEL STATE");
-    profile_caption_.SetText("Profile");
+    profile_caption_.SetText("Machine");
     tunnel_caption_.SetText("Tunnel");
     sync_caption_.SetText("Last sync");
     primary_button_.SetText("Connect");
@@ -187,25 +224,27 @@ void TaskTrackTunnelManager::BuildOverview()
         status_cell_[i].Add(status_caption_[i]);
         status_cell_[i].Add(status_value_[i]);
     }
-    status_caption_[0].SetText("TASKTRACK MCP");
+    status_caption_[0].SetText("MAIN MCP");
     status_caption_[1].SetText("OPENAI TUNNEL");
-    status_caption_[2].SetText("REMOTE ACTIVITY");
-    status_caption_[3].SetText("BUILD");
+    status_caption_[2].SetText("TASKTRACK ACTIVITY");
+    status_caption_[3].SetText("SERVICES");
 
     activity_panel_.Add(activity_title_);
     activity_panel_.Add(activity_live_);
     activity_panel_.Add(activity_count_);
     activity_panel_.Add(activity_table_);
+    activity_panel_.Add(send_probe_button_);
     activity_panel_.Add(copy_diagnostics_button_);
     activity_panel_.Add(clear_activity_button_);
     activity_panel_.Add(activity_footer_note_);
 
-    activity_title_.SetText("Recent activity");
+    activity_title_.SetText("TaskTrack activity");
     activity_live_.EnableRich(true).ClearSpans().AddBulletSpan(OkColor(), DPI(6)).AddTextSpan("  live");
     activity_count_.SetText("Last 6 communications").SetAlign(UiAlign::RIGHT, UiAlign::CENTER);
+    send_probe_button_.SetText("Send probe");
     copy_diagnostics_button_.SetText("Copy diagnostics");
     clear_activity_button_.SetText("Clear activity");
-    activity_footer_note_.SetText("No remote traffic yet").SetAlign(UiAlign::RIGHT, UiAlign::CENTER);
+    activity_footer_note_.SetText("No TaskTrack remote traffic yet").SetAlign(UiAlign::RIGHT, UiAlign::CENTER);
 
     activity_table_.SetModel(activity_model_)
                    .ShowRowHeaders(false)
@@ -225,7 +264,7 @@ void TaskTrackTunnelManager::BuildSetup()
     profile_bar_.Add(duplicate_profile_button_);
     profile_bar_.Add(delete_profile_button_);
 
-    profile_select_caption_.SetText("Tunnel profile");
+    profile_select_caption_.SetText("Machine profile");
     new_profile_button_.SetText("+ New");
     duplicate_profile_button_.SetText("Duplicate");
     delete_profile_button_.SetText("Delete");
@@ -233,45 +272,89 @@ void TaskTrackTunnelManager::BuildSetup()
     Ctrl *controls[] = {
         &section_profile_, &section_runtime_, &section_launch_,
         &profile_name_label_, &profile_name_edit_,
+        &machine_id_label_, &machine_id_edit_,
         &tunnel_id_label_, &tunnel_id_edit_,
-        &credential_label_, &credential_edit_, &credential_status_, &credential_note_,
+        &credential_label_, &credential_source_dropdown_, &credential_status_,
+        &credential_set_button_, &credential_clear_button_, &credential_note_,
         &runtime_path_label_, &runtime_path_edit_, &runtime_browse_button_,
-        &mcp_path_label_, &mcp_path_edit_, &mcp_browse_button_,
         &auto_connect_label_, &auto_connect_toggle_, &auto_connect_title_, &auto_connect_note_,
         &remember_label_, &remember_toggle_, &remember_title_, &remember_note_
     };
     for(Ctrl *ctrl : controls)
         setup_form_.Add(*ctrl);
 
-    section_profile_.SetText("PROFILE");
+    section_profile_.SetText("MACHINE PROFILE");
     section_runtime_.SetText("RUNTIME");
     section_launch_.SetText("LAUNCH BEHAVIOUR");
 
     profile_name_label_.SetText("Profile name");
+    machine_id_label_.SetText("Machine ID");
     tunnel_id_label_.SetText("Tunnel ID");
-    credential_label_.SetText("Credential source");
-    credential_edit_.SetTextUtf8("CONTROL_PLANE_API_KEY");
-    credential_edit_.SetReadOnly();
-    credential_note_.SetText("The API key is read from the credential source and is never shown or stored in the profile.");
+    credential_label_.SetText("Credential");
+
+    credential_source_dropdown_.UseInternalModel();
+    credential_source_dropdown_.Clear();
+    credential_source_dropdown_.Add("Session key (memory only)", "session");
+    credential_source_dropdown_.Add("Environment variable", "environment");
+    credential_set_button_.SetText("Set key");
+    credential_clear_button_.SetText("Clear");
+    credential_note_.SetText("Testing only: use a session key or CONTROL_PLANE_API_KEY. Durable cross-platform authentication is intentionally not decided yet.");
 
     runtime_path_label_.SetText("Runtime executable");
-    mcp_path_label_.SetText("TaskTrack MCP");
     runtime_browse_button_.SetText("Browse");
-    mcp_browse_button_.SetText("Browse");
 
     auto_connect_label_.SetText("Auto-connect");
     auto_connect_title_.SetText("Auto-connect on launch");
-    auto_connect_note_.SetText("Start the selected tunnel profile when the app opens.");
+    auto_connect_note_.SetText("Start this machine tunnel and all enabled services when the manager opens.");
 
     remember_label_.SetText("Remember profile");
-    remember_title_.SetText("Remember tunnel profile");
-    remember_note_.SetText("Reopen with the last selected named profile.");
+    remember_title_.SetText("Remember machine profile");
+    remember_note_.SetText("Reopen with the last selected machine profile.");
+}
+
+void TaskTrackTunnelManager::BuildServices()
+{
+    services_page_.Add(service_bar_);
+    services_page_.Add(service_form_);
+
+    service_bar_.Add(service_select_caption_);
+    service_bar_.Add(service_dropdown_);
+    service_bar_.Add(new_service_button_);
+    service_bar_.Add(duplicate_service_button_);
+    service_bar_.Add(delete_service_button_);
+
+    service_select_caption_.SetText("MCP service");
+    new_service_button_.SetText("+ New");
+    duplicate_service_button_.SetText("Duplicate");
+    delete_service_button_.SetText("Delete");
+
+    Ctrl *controls[] = {
+        &section_service_,
+        &service_name_label_, &service_name_edit_,
+        &service_id_label_, &service_id_edit_,
+        &service_channel_label_, &service_channel_edit_,
+        &service_command_label_, &service_command_edit_, &service_browse_button_,
+        &service_enabled_label_, &service_enabled_toggle_, &service_enabled_title_, &service_enabled_note_
+    };
+    for(Ctrl *ctrl : controls)
+        service_form_.Add(*ctrl);
+
+    section_service_.SetText("SERVICE BINDING");
+    service_name_label_.SetText("Display name");
+    service_id_label_.SetText("Service ID");
+    service_channel_label_.SetText("MCP channel");
+    service_command_label_.SetText("MCP command");
+    service_browse_button_.SetText("Browse");
+    service_enabled_label_.SetText("Enabled");
+    service_enabled_title_.SetText("Expose this service");
+    service_enabled_note_.SetText("Enabled services are launched under one machine tunnel. Exactly one enabled service must use channel 'main'.");
 }
 
 void TaskTrackTunnelManager::Wire()
 {
     overview_button_.WhenAction = [=] { SelectPage(PAGE_OVERVIEW); };
     setup_button_.WhenAction = [=] { SelectPage(PAGE_SETUP); };
+    services_button_.WhenAction = [=] { SelectPage(PAGE_SERVICES); };
     theme_button_.WhenAction = [=] { ToggleTheme(); };
     help_button_.WhenAction = [=] { ShowHelp(); };
     exit_button_.WhenAction = [=] { Close(); };
@@ -279,19 +362,21 @@ void TaskTrackTunnelManager::Wire()
     footer_copy_.WhenAction = [=] { CopyDiagnostics(); };
 
     primary_button_.WhenAction = [=] {
-        RuntimeState state = GetRuntimeState();
-        if(state == STATE_READY || state == STATE_CONNECTING)
+        McpTunnelRuntime::State state = runtime_.GetState();
+        if(state == McpTunnelRuntime::READY || state == McpTunnelRuntime::CONNECTING)
             StopRuntime();
         else
             ConnectRuntime();
     };
     health_button_.WhenAction = [=] { OpenHealth(); };
+    send_probe_button_.WhenAction = [=] { SendProbe(); };
     copy_diagnostics_button_.WhenAction = [=] { CopyDiagnostics(); };
     clear_activity_button_.WhenAction = [=] { ClearActivity(); };
 
     profile_dropdown_.WhenSelectData = [=](const Value& value) {
         if(loading_profile_)
             return;
+        SaveServiceFromUi();
         SaveProfileFromUi();
         SelectProfileById(AsString(value));
     };
@@ -300,13 +385,41 @@ void TaskTrackTunnelManager::Wire()
     delete_profile_button_.WhenAction = [=] { DeleteProfile(); };
 
     profile_name_edit_.WhenChange = [=] { if(!loading_profile_) SaveProfileFromUi(); };
+    machine_id_edit_.WhenChange = [=] { if(!loading_profile_) SaveProfileFromUi(); };
     tunnel_id_edit_.WhenChange = [=] { if(!loading_profile_) SaveProfileFromUi(); };
     runtime_path_edit_.WhenChange = [=] { if(!loading_profile_) SaveProfileFromUi(); };
-    mcp_path_edit_.WhenChange = [=] { if(!loading_profile_) SaveProfileFromUi(); };
     auto_connect_toggle_.WhenAction = [=] { if(!loading_profile_) SaveProfileFromUi(); };
     remember_toggle_.WhenAction = [=] { if(!loading_profile_) SaveProfileFromUi(); };
     runtime_browse_button_.WhenAction = [=] { BrowseRuntime(); };
-    mcp_browse_button_.WhenAction = [=] { BrowseMcp(); };
+    credential_source_dropdown_.WhenSelectData = [=](const Value& value) {
+        if(loading_profile_)
+            return;
+        McpTunnelProfile *profile = CurrentProfile();
+        if(!profile)
+            return;
+        profile->credential_source = McpTunnelCredentialSourceFromId(AsString(value));
+        SaveProfiles();
+        RefreshCredentialProjection();
+        RefreshProjection();
+    };
+    credential_set_button_.WhenAction = [=] { SetCredential(); };
+    credential_clear_button_.WhenAction = [=] { ClearCredential(); };
+
+    service_dropdown_.WhenSelectData = [=](const Value& value) {
+        if(loading_service_)
+            return;
+        SaveServiceFromUi();
+        SelectServiceById(AsString(value));
+    };
+    new_service_button_.WhenAction = [=] { NewService(); };
+    duplicate_service_button_.WhenAction = [=] { DuplicateService(); };
+    delete_service_button_.WhenAction = [=] { DeleteService(); };
+    service_name_edit_.WhenChange = [=] { if(!loading_service_) SaveServiceFromUi(); };
+    service_id_edit_.WhenChange = [=] { if(!loading_service_) SaveServiceFromUi(); };
+    service_channel_edit_.WhenChange = [=] { if(!loading_service_) SaveServiceFromUi(); };
+    service_command_edit_.WhenChange = [=] { if(!loading_service_) SaveServiceFromUi(); };
+    service_enabled_toggle_.WhenAction = [=] { if(!loading_service_) SaveServiceFromUi(); };
+    service_browse_button_.WhenAction = [=] { BrowseServiceCommand(); };
 }
 
 Color TaskTrackTunnelManager::SurfaceColor() const { return dark_theme_ ? Color(29,34,41) : Color(251,252,254); }
@@ -369,6 +482,7 @@ void TaskTrackTunnelManager::ApplyTheme()
     root_.SetCustomStyle(MakePanelStyle(SurfaceColor(), 0, SurfaceColor()));
     overview_page_.SetCustomStyle(MakePanelStyle(SurfaceColor(), 0, SurfaceColor()));
     setup_page_.SetCustomStyle(MakePanelStyle(SurfaceColor(), 0, SurfaceColor()));
+    services_page_.SetCustomStyle(MakePanelStyle(SurfaceColor(), 0, SurfaceColor()));
     nav_.SetCustomStyle(MakePanelStyle(SurfaceColor(), 0, LineColor()));
     footer_.SetCustomStyle(MakePanelStyle(SubtleColor(), 0, LineColor()));
 
@@ -392,13 +506,17 @@ void TaskTrackTunnelManager::ApplyTheme()
 
     ConfigureNavButton(overview_button_);
     ConfigureNavButton(setup_button_);
+    ConfigureNavButton(services_button_);
     nav_note_.SetCustomStyle(MakeLabelStyle(SoftColor(), 10));
 
-    hero_.SetCustomStyle(MakePanelStyle(dark_theme_ ? Color(34,40,48) : White(), 10));
-    status_strip_.SetCustomStyle(MakePanelStyle(dark_theme_ ? Color(34,40,48) : White(), 10));
-    activity_panel_.SetCustomStyle(MakePanelStyle(dark_theme_ ? Color(34,40,48) : White(), 10));
-    profile_bar_.SetCustomStyle(MakePanelStyle(dark_theme_ ? Color(34,40,48) : White(), 10));
-    setup_form_.SetCustomStyle(MakePanelStyle(dark_theme_ ? Color(34,40,48) : White(), 10));
+    Color panel_face = dark_theme_ ? Color(34,40,48) : White();
+    hero_.SetCustomStyle(MakePanelStyle(panel_face, 10));
+    status_strip_.SetCustomStyle(MakePanelStyle(panel_face, 10));
+    activity_panel_.SetCustomStyle(MakePanelStyle(panel_face, 10));
+    profile_bar_.SetCustomStyle(MakePanelStyle(panel_face, 10));
+    setup_form_.SetCustomStyle(MakePanelStyle(panel_face, 10));
+    service_bar_.SetCustomStyle(MakePanelStyle(panel_face, 10));
+    service_form_.SetCustomStyle(MakePanelStyle(panel_face, 10));
 
     state_eyebrow_.SetCustomStyle(MakeLabelStyle(SoftColor(), 9, true));
     state_title_.SetCustomStyle(MakeLabelStyle(TextColor(), 27, true));
@@ -414,8 +532,8 @@ void TaskTrackTunnelManager::ApplyTheme()
     health_button_.SetCustomStyle(MakeButtonStyle(UiButtonRole::Subtle));
 
     for(int i = 0; i < 4; ++i) {
-        status_cell_[i].SetCustomStyle(MakePanelStyle(dark_theme_ ? Color(34,40,48) : White(), 0,
-                                                      i == 3 ? (dark_theme_ ? Color(34,40,48) : White()) : LineColor()));
+        status_cell_[i].SetCustomStyle(MakePanelStyle(panel_face, 0,
+                                                      i == 3 ? panel_face : LineColor()));
         status_caption_[i].SetCustomStyle(MakeLabelStyle(SoftColor(), 9, true));
         status_value_[i].SetCustomStyle(MakeLabelStyle(TextColor(), 11, true));
     }
@@ -431,8 +549,8 @@ void TaskTrackTunnelManager::ApplyTheme()
     table_style.show_grid = false;
     table_style.alternate_rows = false;
     table_style.row_height = DPI(31);
-    table_style.table_bg = dark_theme_ ? Color(34,40,48) : White();
-    table_style.alternate_row_bg = table_style.table_bg;
+    table_style.table_bg = panel_face;
+    table_style.alternate_row_bg = panel_face;
     table_style.hover_bg = dark_theme_ ? Color(43,51,61) : Color(246,248,250);
     table_style.cell_ink = TextColor();
     table_style.muted_ink = MutedColor();
@@ -440,6 +558,7 @@ void TaskTrackTunnelManager::ApplyTheme()
     activity_table_.SetCustomStyle(table_style);
 
     UiButton::Style small_button = MakeButtonStyle(UiButtonRole::Subtle);
+    send_probe_button_.SetCustomStyle(small_button);
     copy_diagnostics_button_.SetCustomStyle(small_button);
     clear_activity_button_.SetCustomStyle(small_button);
     footer_help_.SetCustomStyle(small_button);
@@ -448,23 +567,33 @@ void TaskTrackTunnelManager::ApplyTheme()
     duplicate_profile_button_.SetCustomStyle(small_button);
     delete_profile_button_.SetCustomStyle(MakeButtonStyle(UiButtonRole::Danger));
     runtime_browse_button_.SetCustomStyle(small_button);
-    mcp_browse_button_.SetCustomStyle(small_button);
+    credential_set_button_.SetCustomStyle(MakeButtonStyle(UiButtonRole::Accent));
+    credential_clear_button_.SetCustomStyle(small_button);
+    new_service_button_.SetCustomStyle(small_button);
+    duplicate_service_button_.SetCustomStyle(small_button);
+    delete_service_button_.SetCustomStyle(MakeButtonStyle(UiButtonRole::Danger));
+    service_browse_button_.SetCustomStyle(small_button);
 
     section_profile_.SetCustomStyle(MakeLabelStyle(SoftColor(), 9, true));
     section_runtime_.SetCustomStyle(MakeLabelStyle(SoftColor(), 9, true));
     section_launch_.SetCustomStyle(MakeLabelStyle(SoftColor(), 9, true));
+    section_service_.SetCustomStyle(MakeLabelStyle(SoftColor(), 9, true));
 
     UiLabel *form_labels[] = {
-        &profile_select_caption_, &profile_name_label_, &tunnel_id_label_, &credential_label_,
-        &runtime_path_label_, &mcp_path_label_, &auto_connect_label_, &remember_label_
+        &profile_select_caption_, &profile_name_label_, &machine_id_label_, &tunnel_id_label_,
+        &credential_label_, &runtime_path_label_, &auto_connect_label_, &remember_label_,
+        &service_select_caption_, &service_name_label_, &service_id_label_, &service_channel_label_,
+        &service_command_label_, &service_enabled_label_
     };
     for(UiLabel *label : form_labels)
         label->SetCustomStyle(MakeLabelStyle(MutedColor(), 10));
 
     auto_connect_title_.SetCustomStyle(MakeLabelStyle(TextColor(), 10, true));
     remember_title_.SetCustomStyle(MakeLabelStyle(TextColor(), 10, true));
+    service_enabled_title_.SetCustomStyle(MakeLabelStyle(TextColor(), 10, true));
     auto_connect_note_.SetCustomStyle(MakeLabelStyle(SoftColor(), 9));
     remember_note_.SetCustomStyle(MakeLabelStyle(SoftColor(), 9));
+    service_enabled_note_.SetCustomStyle(MakeLabelStyle(SoftColor(), 9));
     credential_note_.SetCustomStyle(MakeLabelStyle(SoftColor(), 9));
 
     footer_build_.SetCustomStyle(MakeLabelStyle(SoftColor(), 9));
@@ -477,6 +606,7 @@ void TaskTrackTunnelManager::ApplyTheme()
     help_button_.SetCustomStyle(utility_style);
     exit_button_.SetCustomStyle(UiTheme::ResolveToolButton(UiRole::Alert));
 
+    RefreshCredentialProjection();
     RefreshProjection();
     RefreshActivity();
     RefreshLayout();
@@ -525,10 +655,11 @@ void TaskTrackTunnelManager::ToggleTheme()
 
 void TaskTrackTunnelManager::SelectPage(int page)
 {
-    page = minmax(page, (int)PAGE_OVERVIEW, (int)PAGE_SETUP);
+    page = minmax(page, (int)PAGE_OVERVIEW, (int)PAGE_SERVICES);
     pages_.SetActivePage(page);
     overview_button_.SetChecked(page == PAGE_OVERVIEW);
     setup_button_.SetChecked(page == PAGE_SETUP);
+    services_button_.SetChecked(page == PAGE_SERVICES);
 }
 
 String TaskTrackTunnelManager::ProfileStorePath() const
@@ -540,6 +671,7 @@ void TaskTrackTunnelManager::LoadProfiles()
 {
     profiles_.Clear();
     selected_profile_ = -1;
+    selected_service_ = -1;
 
     String json = LoadFile(ProfileStorePath());
     if(IsNull(json) || json.IsEmpty())
@@ -550,19 +682,26 @@ void TaskTrackTunnelManager::LoadProfiles()
         if(!root.Is<ValueMap>())
             return;
 
+        int schema_version = IsNull(root["schema_version"]) ? 1 : (int)root["schema_version"];
         dark_theme_ = !IsNull(root["dark_theme"]) && (bool)root["dark_theme"];
         String selected_id = AsString(root["selected_profile"]);
         Value list_value = root["profiles"];
         if(list_value.Is<ValueArray>()) {
             ValueArray list = list_value;
             for(int i = 0; i < list.GetCount(); ++i) {
-                TaskTrackTunnelProfile profile = ProfileFromValue(list[i]);
+                McpTunnelProfile profile = McpTunnelProfileFromValue(list[i], schema_version);
                 if(profile.id.IsEmpty() || profile.name.IsEmpty())
                     continue;
                 if(profile.runtime_path.IsEmpty())
                     profile.runtime_path = GetExeDirFile("tunnel-client.exe");
-                if(profile.mcp_path.IsEmpty())
-                    profile.mcp_path = GetExeDirFile("TaskTrackMcp.exe");
+                if(profile.services.IsEmpty()) {
+                    McpTunnelService service;
+                    service.id = "tasktrack";
+                    service.name = "TaskTrack";
+                    service.channel = "main";
+                    service.command = McpTunnelCommandForExecutable(GetExeDirFile("TaskTrackMcp.exe"));
+                    profile.services.Add(pick(service));
+                }
                 profiles_.Add(pick(profile));
             }
         }
@@ -574,6 +713,7 @@ void TaskTrackTunnelManager::LoadProfiles()
     catch(CParser::Error) {
         profiles_.Clear();
         selected_profile_ = -1;
+        selected_service_ = -1;
     }
 }
 
@@ -583,18 +723,18 @@ void TaskTrackTunnelManager::SaveProfiles()
         return;
 
     ValueMap root;
-    root.Add("schema_version", 1);
+    root.Add("schema_version", 2);
     root.Add("dark_theme", dark_theme_);
 
     String selected_id;
-    const TaskTrackTunnelProfile *profile = CurrentProfile();
+    const McpTunnelProfile *profile = CurrentProfile();
     if(profile && profile->remember_profile)
         selected_id = profile->id;
     root.Add("selected_profile", selected_id);
 
     ValueArray list;
-    for(const TaskTrackTunnelProfile& item : profiles_)
-        list.Add(ProfileToValue(item));
+    for(const McpTunnelProfile& item : profiles_)
+        list.Add(McpTunnelProfileToValue(item));
     root.Add("profiles", list);
     SaveFile(ProfileStorePath(), AsJSON(root, true));
 }
@@ -602,27 +742,38 @@ void TaskTrackTunnelManager::SaveProfiles()
 void TaskTrackTunnelManager::EnsureDefaultProfile()
 {
     if(profiles_.IsEmpty()) {
-        TaskTrackTunnelProfile profile;
-        profile.id = "local-tasktrack";
-        profile.name = "Local TaskTrack";
+        McpTunnelProfile profile;
+        profile.id = "local-machine";
+        profile.name = "Local machine";
+        profile.machine_id = McpTunnelDefaultMachineId();
         profile.runtime_path = options_.runtime_path.IsEmpty()
             ? GetExeDirFile("tunnel-client.exe") : options_.runtime_path;
-        profile.mcp_path = GetExeDirFile("TaskTrackMcp.exe");
         profile.tunnel_id = options_.tunnel_id;
+        profile.credential_source = MCP_TUNNEL_CREDENTIAL_SESSION;
+
+        McpTunnelService service;
+        service.id = "tasktrack";
+        service.name = "TaskTrack";
+        service.channel = "main";
+        service.command = McpTunnelCommandForExecutable(GetExeDirFile("TaskTrackMcp.exe"));
+        profile.services.Add(pick(service));
+
         profiles_.Add(pick(profile));
         selected_profile_ = 0;
     }
     if(selected_profile_ < 0 || selected_profile_ >= profiles_.GetCount())
         selected_profile_ = 0;
+    if(McpTunnelProfile *profile = CurrentProfile())
+        selected_service_ = profile->services.IsEmpty() ? -1 : 0;
 }
 
-TaskTrackTunnelProfile* TaskTrackTunnelManager::CurrentProfile()
+McpTunnelProfile* TaskTrackTunnelManager::CurrentProfile()
 {
     return selected_profile_ >= 0 && selected_profile_ < profiles_.GetCount()
         ? &profiles_[selected_profile_] : nullptr;
 }
 
-const TaskTrackTunnelProfile* TaskTrackTunnelManager::CurrentProfile() const
+const McpTunnelProfile* TaskTrackTunnelManager::CurrentProfile() const
 {
     return selected_profile_ >= 0 && selected_profile_ < profiles_.GetCount()
         ? &profiles_[selected_profile_] : nullptr;
@@ -631,9 +782,9 @@ const TaskTrackTunnelProfile* TaskTrackTunnelManager::CurrentProfile() const
 String TaskTrackTunnelManager::NewProfileId() const
 {
     for(int n = 1;; ++n) {
-        String id = Format("profile-%d", n);
+        String id = Format("machine-%d", n);
         bool used = false;
-        for(const TaskTrackTunnelProfile& profile : profiles_)
+        for(const McpTunnelProfile& profile : profiles_)
             if(profile.id == id) {
                 used = true;
                 break;
@@ -649,27 +800,34 @@ void TaskTrackTunnelManager::RebuildProfileDropdown()
     profile_dropdown_.UseInternalModel();
     UiListModel& model = profile_dropdown_.Model();
     model.Clear();
-    for(const TaskTrackTunnelProfile& profile : profiles_)
+    for(const McpTunnelProfile& profile : profiles_)
         model.Add(profile.name, profile.id);
-    if(const TaskTrackTunnelProfile *profile = CurrentProfile())
+    if(const McpTunnelProfile *profile = CurrentProfile())
         profile_dropdown_.SelectByData(profile->id);
     loading_profile_ = false;
 }
 
 void TaskTrackTunnelManager::LoadProfileIntoUi()
 {
-    const TaskTrackTunnelProfile *profile = CurrentProfile();
+    const McpTunnelProfile *profile = CurrentProfile();
     if(!profile)
         return;
 
     loading_profile_ = true;
     profile_name_edit_.SetTextUtf8(profile->name);
+    machine_id_edit_.SetTextUtf8(profile->machine_id);
     tunnel_id_edit_.SetTextUtf8(profile->tunnel_id);
     runtime_path_edit_.SetTextUtf8(profile->runtime_path);
-    mcp_path_edit_.SetTextUtf8(profile->mcp_path);
+    credential_source_dropdown_.SelectByData(McpTunnelCredentialSourceId(profile->credential_source));
     auto_connect_toggle_.SetOn(profile->auto_connect);
     remember_toggle_.SetOn(profile->remember_profile);
     loading_profile_ = false;
+
+    if(selected_service_ < 0 || selected_service_ >= profile->services.GetCount())
+        selected_service_ = profile->services.IsEmpty() ? -1 : 0;
+    RebuildServiceDropdown();
+    LoadServiceIntoUi();
+    RefreshCredentialProjection();
     RefreshProjection();
 }
 
@@ -677,19 +835,20 @@ void TaskTrackTunnelManager::SaveProfileFromUi()
 {
     if(loading_profile_)
         return;
-    TaskTrackTunnelProfile *profile = CurrentProfile();
+    McpTunnelProfile *profile = CurrentProfile();
     if(!profile)
         return;
 
     profile->name = TrimBoth(profile_name_edit_.GetTextUtf8());
     if(profile->name.IsEmpty())
-        profile->name = "Unnamed profile";
+        profile->name = "Unnamed machine";
+    profile->machine_id = TrimBoth(machine_id_edit_.GetTextUtf8());
+    if(profile->machine_id.IsEmpty())
+        profile->machine_id = McpTunnelDefaultMachineId();
     profile->tunnel_id = TrimBoth(tunnel_id_edit_.GetTextUtf8());
     profile->runtime_path = TrimBoth(runtime_path_edit_.GetTextUtf8());
-    profile->mcp_path = TrimBoth(mcp_path_edit_.GetTextUtf8());
     profile->auto_connect = auto_connect_toggle_.IsOn();
     profile->remember_profile = remember_toggle_.IsOn();
-
     SaveProfiles();
     RebuildProfileDropdown();
     RefreshProjection();
@@ -700,6 +859,7 @@ void TaskTrackTunnelManager::SelectProfileById(const String& id)
     for(int i = 0; i < profiles_.GetCount(); ++i)
         if(profiles_[i].id == id) {
             selected_profile_ = i;
+            selected_service_ = profiles_[i].services.IsEmpty() ? -1 : 0;
             LoadProfileIntoUi();
             SaveProfiles();
             return;
@@ -708,19 +868,31 @@ void TaskTrackTunnelManager::SelectProfileById(const String& id)
 
 void TaskTrackTunnelManager::NewProfile()
 {
-    if(runtime_started_) {
+    if(runtime_.IsStarted()) {
         Exclamation("Stop the current tunnel before changing profiles.");
         return;
     }
 
+    SaveServiceFromUi();
     SaveProfileFromUi();
-    TaskTrackTunnelProfile profile;
+
+    McpTunnelProfile profile;
     profile.id = NewProfileId();
-    profile.name = "New profile";
+    profile.name = "New machine profile";
+    profile.machine_id = McpTunnelDefaultMachineId();
     profile.runtime_path = GetExeDirFile("tunnel-client.exe");
-    profile.mcp_path = GetExeDirFile("TaskTrackMcp.exe");
+    profile.credential_source = MCP_TUNNEL_CREDENTIAL_SESSION;
+
+    McpTunnelService service;
+    service.id = "tasktrack";
+    service.name = "TaskTrack";
+    service.channel = "main";
+    service.command = McpTunnelCommandForExecutable(GetExeDirFile("TaskTrackMcp.exe"));
+    profile.services.Add(pick(service));
+
     profiles_.Add(pick(profile));
     selected_profile_ = profiles_.GetCount() - 1;
+    selected_service_ = 0;
     RebuildProfileDropdown();
     LoadProfileIntoUi();
     SaveProfiles();
@@ -728,25 +900,22 @@ void TaskTrackTunnelManager::NewProfile()
 
 void TaskTrackTunnelManager::DuplicateProfile()
 {
-    if(runtime_started_) {
+    if(runtime_.IsStarted()) {
         Exclamation("Stop the current tunnel before changing profiles.");
         return;
     }
 
+    SaveServiceFromUi();
     SaveProfileFromUi();
-    const TaskTrackTunnelProfile *source = CurrentProfile();
+    const McpTunnelProfile *source = CurrentProfile();
     if(!source)
         return;
 
-    TaskTrackTunnelProfile profile;
-    profile.id = NewProfileId();
-    profile.name = source->name + " copy";
-    profile.runtime_path = source->runtime_path;
-    profile.mcp_path = source->mcp_path;
-    profile.auto_connect = false;
-    profile.remember_profile = source->remember_profile;
+    String id = NewProfileId();
+    McpTunnelProfile profile = McpTunnelDuplicateProfile(*source, id, source->name + " copy");
     profiles_.Add(pick(profile));
     selected_profile_ = profiles_.GetCount() - 1;
+    selected_service_ = profiles_[selected_profile_].services.IsEmpty() ? -1 : 0;
     RebuildProfileDropdown();
     LoadProfileIntoUi();
     SaveProfiles();
@@ -754,22 +923,229 @@ void TaskTrackTunnelManager::DuplicateProfile()
 
 void TaskTrackTunnelManager::DeleteProfile()
 {
-    if(runtime_started_) {
+    if(runtime_.IsStarted()) {
         Exclamation("Stop the current tunnel before changing profiles.");
         return;
     }
     if(profiles_.GetCount() <= 1) {
-        Exclamation("At least one tunnel profile must remain.");
+        Exclamation("At least one machine profile must remain.");
         return;
     }
-    if(!PromptYesNo("Delete the selected tunnel profile?"))
+    if(!PromptYesNo("Delete the selected machine profile?"))
         return;
 
     profiles_.Remove(selected_profile_);
     selected_profile_ = min(selected_profile_, profiles_.GetCount() - 1);
+    selected_service_ = profiles_[selected_profile_].services.IsEmpty() ? -1 : 0;
     RebuildProfileDropdown();
     LoadProfileIntoUi();
     SaveProfiles();
+}
+
+McpTunnelService* TaskTrackTunnelManager::CurrentService()
+{
+    McpTunnelProfile *profile = CurrentProfile();
+    return profile && selected_service_ >= 0 && selected_service_ < profile->services.GetCount()
+        ? &profile->services[selected_service_] : nullptr;
+}
+
+const McpTunnelService* TaskTrackTunnelManager::CurrentService() const
+{
+    const McpTunnelProfile *profile = CurrentProfile();
+    return profile && selected_service_ >= 0 && selected_service_ < profile->services.GetCount()
+        ? &profile->services[selected_service_] : nullptr;
+}
+
+String TaskTrackTunnelManager::NewServiceId(const String& base) const
+{
+    const McpTunnelProfile *profile = CurrentProfile();
+    if(!profile)
+        return base;
+    for(int n = 1;; ++n) {
+        String id = n == 1 ? base : Format("%s-%d", base, n);
+        bool used = false;
+        for(const McpTunnelService& service : profile->services)
+            if(service.id == id) {
+                used = true;
+                break;
+            }
+        if(!used)
+            return id;
+    }
+}
+
+String TaskTrackTunnelManager::NewServiceChannel(const String& base) const
+{
+    const McpTunnelProfile *profile = CurrentProfile();
+    if(!profile)
+        return base;
+    for(int n = 1;; ++n) {
+        String channel = n == 1 ? base : Format("%s-%d", base, n);
+        bool used = false;
+        for(const McpTunnelService& service : profile->services)
+            if(service.channel == channel) {
+                used = true;
+                break;
+            }
+        if(!used)
+            return channel;
+    }
+}
+
+void TaskTrackTunnelManager::RebuildServiceDropdown()
+{
+    loading_service_ = true;
+    service_dropdown_.UseInternalModel();
+    UiListModel& model = service_dropdown_.Model();
+    model.Clear();
+    const McpTunnelProfile *profile = CurrentProfile();
+    if(profile) {
+        for(const McpTunnelService& service : profile->services) {
+            String label = service.name;
+            if(!service.enabled)
+                label << " (disabled)";
+            model.Add(label, service.id);
+        }
+    }
+    if(const McpTunnelService *service = CurrentService())
+        service_dropdown_.SelectByData(service->id);
+    loading_service_ = false;
+}
+
+void TaskTrackTunnelManager::LoadServiceIntoUi()
+{
+    const McpTunnelService *service = CurrentService();
+    loading_service_ = true;
+    if(service) {
+        service_name_edit_.SetTextUtf8(service->name);
+        service_id_edit_.SetTextUtf8(service->id);
+        service_channel_edit_.SetTextUtf8(service->channel);
+        service_command_edit_.SetTextUtf8(service->command);
+        service_enabled_toggle_.SetOn(service->enabled);
+    }
+    else {
+        service_name_edit_.SetTextUtf8("");
+        service_id_edit_.SetTextUtf8("");
+        service_channel_edit_.SetTextUtf8("");
+        service_command_edit_.SetTextUtf8("");
+        service_enabled_toggle_.SetOn(false);
+    }
+    loading_service_ = false;
+}
+
+void TaskTrackTunnelManager::SaveServiceFromUi()
+{
+    if(loading_service_)
+        return;
+    McpTunnelService *service = CurrentService();
+    if(!service)
+        return;
+
+    String original_id = service->id;
+    service->name = TrimBoth(service_name_edit_.GetTextUtf8());
+    if(service->name.IsEmpty())
+        service->name = "Unnamed service";
+    service->id = TrimBoth(service_id_edit_.GetTextUtf8());
+    if(service->id.IsEmpty())
+        service->id = original_id;
+    service->channel = TrimBoth(service_channel_edit_.GetTextUtf8());
+    service->command = TrimBoth(service_command_edit_.GetTextUtf8());
+    service->enabled = service_enabled_toggle_.IsOn();
+
+    SaveProfiles();
+    RebuildServiceDropdown();
+    RefreshProjection();
+}
+
+void TaskTrackTunnelManager::SelectServiceById(const String& id)
+{
+    McpTunnelProfile *profile = CurrentProfile();
+    if(!profile)
+        return;
+    for(int i = 0; i < profile->services.GetCount(); ++i)
+        if(profile->services[i].id == id) {
+            selected_service_ = i;
+            LoadServiceIntoUi();
+            return;
+        }
+}
+
+void TaskTrackTunnelManager::NewService()
+{
+    if(runtime_.IsStarted()) {
+        Exclamation("Stop the current tunnel before changing services.");
+        return;
+    }
+    McpTunnelProfile *profile = CurrentProfile();
+    if(!profile)
+        return;
+
+    SaveServiceFromUi();
+    McpTunnelService service;
+    service.id = NewServiceId("service");
+    service.name = "New MCP service";
+    service.channel = NewServiceChannel("service");
+    service.enabled = false;
+    profile->services.Add(pick(service));
+    selected_service_ = profile->services.GetCount() - 1;
+    RebuildServiceDropdown();
+    LoadServiceIntoUi();
+    SaveProfiles();
+}
+
+void TaskTrackTunnelManager::DuplicateService()
+{
+    if(runtime_.IsStarted()) {
+        Exclamation("Stop the current tunnel before changing services.");
+        return;
+    }
+    McpTunnelProfile *profile = CurrentProfile();
+    const McpTunnelService *source = CurrentService();
+    if(!profile || !source)
+        return;
+
+    SaveServiceFromUi();
+    source = CurrentService();
+    McpTunnelService service;
+    service.id = NewServiceId(source->id + "-copy");
+    service.name = source->name + " copy";
+    service.channel = NewServiceChannel(source->channel + "-copy");
+    service.command = source->command;
+    service.enabled = false;
+    profile->services.Add(pick(service));
+    selected_service_ = profile->services.GetCount() - 1;
+    RebuildServiceDropdown();
+    LoadServiceIntoUi();
+    SaveProfiles();
+}
+
+void TaskTrackTunnelManager::DeleteService()
+{
+    if(runtime_.IsStarted()) {
+        Exclamation("Stop the current tunnel before changing services.");
+        return;
+    }
+    McpTunnelProfile *profile = CurrentProfile();
+    if(!profile || selected_service_ < 0)
+        return;
+    if(profile->services.GetCount() <= 1) {
+        Exclamation("At least one MCP service must remain.");
+        return;
+    }
+    if(!PromptYesNo("Delete the selected MCP service binding?"))
+        return;
+
+    bool was_main = profile->services[selected_service_].channel == "main";
+    profile->services.Remove(selected_service_);
+    selected_service_ = min(selected_service_, profile->services.GetCount() - 1);
+    if(was_main && selected_service_ >= 0) {
+        profile->services[selected_service_].channel = "main";
+        profile->services[selected_service_].enabled = true;
+    }
+    RebuildServiceDropdown();
+    LoadServiceIntoUi();
+    SaveProfiles();
+    RefreshProjection();
 }
 
 void TaskTrackTunnelManager::BrowseRuntime()
@@ -785,269 +1161,210 @@ void TaskTrackTunnelManager::BrowseRuntime()
     }
 }
 
-void TaskTrackTunnelManager::BrowseMcp()
+void TaskTrackTunnelManager::BrowseServiceCommand()
 {
     FileSel selector;
     selector.Type("Executable", "*.exe");
-    String current = mcp_path_edit_.GetTextUtf8();
+    String current = TrimBoth(service_command_edit_.GetTextUtf8());
+    if(current.GetCount() >= 2 && current[0] == '"' && current[current.GetCount() - 1] == '"')
+        current = current.Mid(1, current.GetCount() - 2);
     if(!current.IsEmpty())
         selector.Set(current);
-    if(selector.ExecuteOpen("Choose TaskTrack MCP")) {
-        mcp_path_edit_.SetTextUtf8(~selector);
-        SaveProfileFromUi();
+    if(selector.ExecuteOpen("Choose MCP server executable")) {
+        service_command_edit_.SetTextUtf8(McpTunnelCommandForExecutable(~selector));
+        SaveServiceFromUi();
     }
 }
 
-String TaskTrackTunnelManager::RuntimeMcpCommand() const
+bool TaskTrackTunnelManager::CredentialAvailable(String& error) const
 {
-    const TaskTrackTunnelProfile *profile = CurrentProfile();
-    String command = profile ? profile->mcp_path : String();
-    command.Replace("\\", "/");
-    if(command.Find(' ') >= 0 || command.Find('\t') >= 0)
-        command = "\"" + command + "\"";
-    return command;
-}
-
-bool TaskTrackTunnelManager::LoadHealthUrl()
-{
-    if(health_url_file_.IsEmpty() || !FileExists(health_url_file_))
+    error.Clear();
+    const McpTunnelProfile *profile = CurrentProfile();
+    if(!profile) {
+        error = "No machine profile is selected.";
         return false;
+    }
 
-    String url = TrimBoth(LoadFile(health_url_file_));
-    if(url.IsEmpty())
+    if(profile->credential_source == MCP_TUNNEL_CREDENTIAL_ENVIRONMENT) {
+        if(GetEnv("CONTROL_PLANE_API_KEY").IsEmpty()) {
+            error = "CONTROL_PLANE_API_KEY is not set.";
+            return false;
+        }
+        return true;
+    }
+
+    if(session_api_key_.IsEmpty()) {
+        error = "No session tunnel key is set.";
         return false;
-    while(url.EndsWith("/"))
-        url = url.Left(url.GetCount() - 1);
-    health_url_ = url;
+    }
     return true;
 }
 
-void TaskTrackTunnelManager::DrainRuntimeOutput()
+bool TaskTrackTunnelManager::ReadCredential(String& secret, String& error) const
 {
-    if(!runtime_started_)
-        return;
-    for(int i = 0; i < 8; ++i) {
-        String out, err;
-        runtime_process_.Read2(out, err);
-        if(out.IsEmpty() && err.IsEmpty())
-            break;
-        runtime_output_ << out << err;
-        if(runtime_output_.GetCount() > 6000)
-            runtime_output_ = runtime_output_.Right(6000);
-    }
-}
+    secret.Clear();
+    if(!CredentialAvailable(error))
+        return false;
 
-String TaskTrackTunnelManager::RuntimeDiagnostics()
-{
-    String out = runtime_output_;
-    String log = runtime_log_file_.IsEmpty() ? String() : LoadFile(runtime_log_file_);
-    if(!IsNull(log) && !log.IsEmpty()) {
-        if(log.GetCount() > 3000)
-            log = log.Right(3000);
-        if(!out.IsEmpty())
-            out << "\n";
-        out << log;
-    }
-    return out;
-}
+    const McpTunnelProfile *profile = CurrentProfile();
+    if(profile->credential_source == MCP_TUNNEL_CREDENTIAL_ENVIRONMENT)
+        secret = GetEnv("CONTROL_PLANE_API_KEY");
+    else
+        secret = session_api_key_;
 
-bool TaskTrackTunnelManager::ProbeHealth(const String& suffix, int& status, String& error)
-{
-    status = 0;
-    error.Clear();
-    if(health_url_.IsEmpty() && !LoadHealthUrl()) {
-        error = "Health URL is not available yet.";
+    if(secret.IsEmpty()) {
+        error = "Tunnel credential is empty.";
         return false;
     }
+    return true;
+}
 
-    HttpRequest request(~(health_url_ + suffix));
-    request.Timeout(2000);
-    request.Execute();
-    status = request.GetStatusCode();
-    if(request.IsSuccess())
-        return true;
-    error = request.GetErrorDesc();
-    if(error.IsEmpty())
-        error = Format("HTTP %d %s", status, request.GetReasonPhrase());
-    return false;
+void TaskTrackTunnelManager::RefreshCredentialProjection()
+{
+    const McpTunnelProfile *profile = CurrentProfile();
+    if(!profile)
+        return;
+
+    loading_profile_ = true;
+    credential_source_dropdown_.SelectByData(McpTunnelCredentialSourceId(profile->credential_source));
+    loading_profile_ = false;
+
+    String error;
+    bool available = CredentialAvailable(error);
+    credential_status_.ClearSpans().EnableRich(true)
+                      .AddBulletSpan(available ? OkColor() : DangerColor(), DPI(7))
+                      .AddTextSpan(available ? "  Available" : "  Not set",
+                                   available ? OkColor() : DangerColor(), true);
+
+    bool session_source = profile->credential_source == MCP_TUNNEL_CREDENTIAL_SESSION;
+    credential_set_button_.Enable(session_source && !runtime_.IsStarted());
+    credential_clear_button_.Enable(session_source && available && !runtime_.IsStarted());
+    credential_note_.SetText(session_source
+        ? "Session key is memory-only and disappears when this manager closes. It is sufficient for tunnel validation, not the final security design."
+        : "Testing/automation mode: CONTROL_PLANE_API_KEY is read at launch. Durable cross-platform authentication remains deliberately undecided.");
+}
+
+void TaskTrackTunnelManager::SetCredential()
+{
+    McpTunnelProfile *profile = CurrentProfile();
+    if(!profile || profile->credential_source != MCP_TUNNEL_CREDENTIAL_SESSION)
+        return;
+
+    ApiKeyDialog dialog;
+    if(dialog.Run() != IDOK)
+        return;
+
+    session_api_key_ = dialog.GetSecret();
+    RefreshCredentialProjection();
+    RefreshProjection();
+}
+
+void TaskTrackTunnelManager::ClearCredential()
+{
+    McpTunnelProfile *profile = CurrentProfile();
+    if(!profile || profile->credential_source != MCP_TUNNEL_CREDENTIAL_SESSION)
+        return;
+
+    session_api_key_.Clear();
+    RefreshCredentialProjection();
+    RefreshProjection();
 }
 
 void TaskTrackTunnelManager::ConnectRuntime()
 {
+    SaveServiceFromUi();
     SaveProfileFromUi();
-    const TaskTrackTunnelProfile *profile = CurrentProfile();
+    const McpTunnelProfile *profile = CurrentProfile();
     if(!profile)
         return;
 
-    last_error_.Clear();
-
-    if(profile->tunnel_id.IsEmpty()) {
-        last_error_ = "Tunnel ID is not set.";
-        RefreshProjection();
-        return;
-    }
-    if(!FileExists(profile->runtime_path)) {
-        last_error_ = "The OpenAI tunnel runtime executable was not found.";
-        RefreshProjection();
-        return;
-    }
-    if(!FileExists(profile->mcp_path)) {
-        last_error_ = "TaskTrackMcp.exe was not found.";
-        RefreshProjection();
-        return;
-    }
-    if(GetEnv("CONTROL_PLANE_API_KEY").IsEmpty()) {
-        last_error_ = "CONTROL_PLANE_API_KEY is not set.";
-        RefreshProjection();
-        return;
-    }
-    if(runtime_started_ && runtime_process_.IsRunning()) {
+    if(runtime_.IsStarted()) {
         RefreshRuntimeStatus(true);
         return;
     }
 
-    runtime_process_.Kill();
-    runtime_started_ = false;
-    runtime_healthy_ = false;
-    runtime_ready_ = false;
-    health_url_.Clear();
-    runtime_output_.Clear();
+    String validation_error;
+    if(!McpTunnelValidateProfile(*profile, validation_error)) {
+        Exclamation(validation_error);
+        RefreshProjection();
+        return;
+    }
 
-    health_url_file_ = GetTempFileName("tasktrack-tunnel-health-");
-    SaveFile(health_url_file_, "");
-    runtime_log_file_ = GetTempFileName("tasktrack-tunnel-runtime-");
-    DeleteFile(runtime_log_file_);
+    const McpTunnelService *tasktrack = TaskTrackService();
+    if(tasktrack && tasktrack->enabled && !tasktrack->command.IsEmpty()
+       && tasktrack->command.Find(' ') < 0 && !FileExists(tasktrack->command)) {
+        Exclamation("TaskTrackMcp.exe was not found at the configured service command.");
+        return;
+    }
+
+    String secret, credential_error;
+    if(!ReadCredential(secret, credential_error)) {
+        Exclamation(credential_error);
+        RefreshCredentialProjection();
+        return;
+    }
 
     String activity_error;
     TaskTrackTunnelResetActivity(activity_error);
 
-    String old_remote = GetEnv("TASKTRACK_TUNNEL_REMOTE");
-    SetEnv("TASKTRACK_TUNNEL_REMOTE", "1");
-
-    Vector<String> args;
-    args.Add("run");
-    args.Add("--control-plane.api-key");
-    args.Add("env:CONTROL_PLANE_API_KEY");
-    args.Add("--control-plane.tunnel-id");
-    args.Add(profile->tunnel_id);
-    args.Add("--mcp.command");
-    args.Add(RuntimeMcpCommand());
-    args.Add("--health.listen-addr");
-    args.Add("127.0.0.1:0");
-    args.Add("--health.url-file");
-    args.Add(health_url_file_);
-    args.Add("--log.file");
-    args.Add(runtime_log_file_);
-
-    bool started = runtime_process_.Start(~profile->runtime_path, args);
-    SetEnv("TASKTRACK_TUNNEL_REMOTE", old_remote);
-
-    if(!started) {
-        last_error_ = "Unable to start the OpenAI tunnel runtime.";
-        RefreshProjection();
-        return;
-    }
-
-    runtime_started_ = true;
+    bool started = runtime_.Start(*profile, secret);
+    secret.Clear();
     RefreshProjection();
 
-    for(int i = 0; i < 40; ++i) {
-        DrainRuntimeOutput();
-        if(LoadHealthUrl() || !runtime_process_.IsRunning())
-            break;
-        Sleep(100);
+    if(!started) {
+        String message = runtime_.GetLastError();
+        String diagnostics = runtime_.GetDiagnostics();
+        if(!diagnostics.IsEmpty())
+            message << "\n\n" << diagnostics;
+        Exclamation(message);
     }
-
-    RefreshRuntimeStatus(false);
 }
 
 void TaskTrackTunnelManager::RefreshRuntimeStatus(bool show_dialog)
 {
-    DrainRuntimeOutput();
-
-    bool running = runtime_started_ && runtime_process_.IsRunning();
-    if(!running) {
-        if(runtime_started_) {
-            String output;
-            int code = runtime_process_.Finish(output);
-            runtime_output_ << output;
-            last_error_ = Format("Tunnel runtime exited with code %d.", code);
-            runtime_process_.Kill();
-        }
-        runtime_started_ = false;
-        runtime_healthy_ = false;
-        runtime_ready_ = false;
-        RefreshProjection();
-
-        if(show_dialog && !last_error_.IsEmpty()) {
-            String message = last_error_;
-            String diagnostics = RuntimeDiagnostics();
-            if(!diagnostics.IsEmpty())
-                message << "\n\n" << diagnostics;
-            PromptOK(message);
-        }
-        return;
-    }
-
-    LoadHealthUrl();
-    int health_status = 0, ready_status = 0;
-    String health_error, ready_error;
-    runtime_healthy_ = ProbeHealth("/healthz", health_status, health_error);
-    runtime_ready_ = ProbeHealth("/readyz", ready_status, ready_error);
-
-    if(runtime_ready_)
-        last_error_.Clear();
-    else if(!runtime_healthy_ && !health_error.IsEmpty())
-        last_error_ = health_error;
-
+    runtime_.Refresh();
     RefreshProjection();
-
     if(show_dialog) {
         String message = BuildDiagnostics();
-        if(!ready_error.IsEmpty() && !runtime_ready_)
-            message << "\nreadyz: " << ready_error;
+        String diagnostics = runtime_.GetDiagnostics();
+        if(!diagnostics.IsEmpty())
+            message << "\n\nRuntime output:\n" << diagnostics;
         PromptOK(message);
     }
 }
 
 void TaskTrackTunnelManager::StopRuntime()
 {
-    if(runtime_started_)
-        runtime_process_.Kill();
-    runtime_started_ = false;
-    runtime_healthy_ = false;
-    runtime_ready_ = false;
-    health_url_.Clear();
-    last_error_.Clear();
+    runtime_.Stop();
     RefreshProjection();
 }
 
 void TaskTrackTunnelManager::OpenHealth()
 {
-    if(health_url_.IsEmpty())
+    if(runtime_.GetHealthUrl().IsEmpty())
         RefreshRuntimeStatus(false);
-    if(health_url_.IsEmpty()) {
+    if(runtime_.GetHealthUrl().IsEmpty()) {
         Exclamation("The tunnel runtime has not reported its health URL yet.");
         return;
     }
-    LaunchWebBrowser(health_url_ + "/readyz");
+    LaunchWebBrowser(runtime_.GetHealthUrl() + "/readyz");
 }
 
-TaskTrackTunnelManager::RuntimeState TaskTrackTunnelManager::GetRuntimeState() const
+const McpTunnelService* TaskTrackTunnelManager::TaskTrackService() const
 {
-    if(!last_error_.IsEmpty() && !runtime_ready_)
-        return STATE_ERROR;
-    if(runtime_ready_)
-        return STATE_READY;
-    if(runtime_started_)
-        return STATE_CONNECTING;
-    return STATE_STOPPED;
+    const McpTunnelProfile *profile = CurrentProfile();
+    if(!profile)
+        return nullptr;
+    for(const McpTunnelService& service : profile->services)
+        if(service.id == "tasktrack")
+            return &service;
+    return nullptr;
 }
 
 void TaskTrackTunnelManager::RefreshProjection()
 {
-    RuntimeState state = GetRuntimeState();
-    const TaskTrackTunnelProfile *profile = CurrentProfile();
+    McpTunnelRuntime::State state = runtime_.GetState();
+    const McpTunnelProfile *profile = CurrentProfile();
 
     Color state_color = StoppedColor();
     Color beacon_face = SubtleColor();
@@ -1055,25 +1372,26 @@ void TaskTrackTunnelManager::RefreshProjection()
     String state_subtitle = "Tunnel is not connected";
     String primary_text = "Connect";
 
-    if(state == STATE_READY) {
+    if(state == McpTunnelRuntime::READY) {
         state_color = OkColor();
         beacon_face = dark_theme_ ? Color(32,55,47) : Color(237,249,244);
         state_title = "READY";
-        state_subtitle = "Secure tunnel connected";
+        state_subtitle = "Machine tunnel connected";
         primary_text = "Stop";
     }
-    else if(state == STATE_CONNECTING) {
+    else if(state == McpTunnelRuntime::CONNECTING) {
         state_color = ActivityColor();
         beacon_face = dark_theme_ ? Color(58,48,32) : Color(253,246,233);
         state_title = "CONNECTING...";
         state_subtitle = "Opening secure tunnel";
         primary_text = "Cancel";
     }
-    else if(state == STATE_ERROR) {
+    else if(state == McpTunnelRuntime::ERROR) {
         state_color = DangerColor();
         beacon_face = dark_theme_ ? Color(60,39,43) : Color(255,241,242);
         state_title = "ERROR";
-        state_subtitle = last_error_.IsEmpty() ? String("Tunnel could not be established") : last_error_;
+        state_subtitle = runtime_.GetLastError().IsEmpty()
+            ? String("Tunnel could not be established") : runtime_.GetLastError();
         primary_text = "Retry";
     }
 
@@ -1082,16 +1400,16 @@ void TaskTrackTunnelManager::RefreshProjection()
     beacon_core_.SetAlign(UiAlign::CENTER, UiAlign::CENTER);
 
     state_title_.SetText(state_title);
-    state_title_.SetCustomStyle(MakeLabelStyle(state == STATE_READY ? TextColor() : state_color, 27, true));
+    state_title_.SetCustomStyle(MakeLabelStyle(state == McpTunnelRuntime::READY ? TextColor() : state_color, 27, true));
     state_subtitle_.SetText(state_subtitle);
     primary_button_.SetText(primary_text);
 
     if(profile) {
-        profile_value_.SetText(profile->name);
+        profile_value_.SetText(profile->machine_id.IsEmpty() ? profile->name : profile->machine_id);
         tunnel_value_.SetText(profile->tunnel_id.IsEmpty() ? String("Not configured") : EllipsizeMiddle(profile->tunnel_id, 10));
     }
     else {
-        profile_value_.SetText("No profile");
+        profile_value_.SetText("No machine");
         tunnel_value_.SetText("Not configured");
     }
 
@@ -1100,19 +1418,28 @@ void TaskTrackTunnelManager::RefreshProjection()
     bool has_activity = TaskTrackTunnelLoadActivity(activity, activity_error);
     sync_value_.SetText(has_activity && !activity.updated_at.IsEmpty() ? activity.updated_at : String("—"));
 
-    Color mcp_color = profile && FileExists(profile->mcp_path) ? OkColor() : DangerColor();
-    status_value_[0].ClearSpans().EnableRich(true)
-                    .AddBulletSpan(mcp_color, DPI(7))
-                    .AddTextSpan(profile && FileExists(profile->mcp_path) ? "  Online" : "  Missing", TextColor(), true);
+    const McpTunnelService *main_service = nullptr;
+    if(profile)
+        for(const McpTunnelService& service : profile->services)
+            if(service.enabled && service.channel == "main") {
+                main_service = &service;
+                break;
+            }
 
-    Color tunnel_color = state == STATE_READY ? OkColor()
-                       : state == STATE_CONNECTING ? ActivityColor()
-                       : state == STATE_ERROR ? DangerColor()
-                                              : StoppedColor();
-    String tunnel_text = state == STATE_READY ? "Healthy"
-                       : state == STATE_CONNECTING ? "Connecting"
-                       : state == STATE_ERROR ? "Fault"
-                                              : "Stopped";
+    bool main_configured = main_service && !main_service->command.IsEmpty();
+    status_value_[0].ClearSpans().EnableRich(true)
+                    .AddBulletSpan(main_configured ? OkColor() : DangerColor(), DPI(7))
+                    .AddTextSpan(main_configured ? "  " + main_service->name : String("  Missing"),
+                                 TextColor(), true);
+
+    Color tunnel_color = state == McpTunnelRuntime::READY ? OkColor()
+                       : state == McpTunnelRuntime::CONNECTING ? ActivityColor()
+                       : state == McpTunnelRuntime::ERROR ? DangerColor()
+                                                         : StoppedColor();
+    String tunnel_text = state == McpTunnelRuntime::READY ? "Healthy"
+                       : state == McpTunnelRuntime::CONNECTING ? "Connecting"
+                       : state == McpTunnelRuntime::ERROR ? "Fault"
+                                                         : "Stopped";
     status_value_[1].ClearSpans().EnableRich(true)
                     .AddBulletSpan(tunnel_color, DPI(7))
                     .AddTextSpan("  " + tunnel_text, TextColor(), true);
@@ -1122,35 +1449,45 @@ void TaskTrackTunnelManager::RefreshProjection()
     status_value_[2].ClearSpans().EnableRich(true)
                     .AddBulletSpan((received || sent) ? ActivityColor() : StoppedColor(), DPI(7))
                     .AddTextSpan(Format("  %lld in / %lld out", (long long)received, (long long)sent), TextColor(), true);
-    status_value_[3].SetText(TaskTrackBuildVersion());
 
-    activity_live_.Show(runtime_started_);
-    activity_footer_note_.SetText(state == STATE_READY ? "Traffic flowing normally"
-                                : state == STATE_CONNECTING ? "Connecting to control plane"
-                                : state == STATE_ERROR ? "Last connection attempt failed"
-                                                       : "No remote traffic while stopped");
+    int enabled_services = profile ? EnabledServiceCount(*profile) : 0;
+    status_value_[3].ClearSpans().EnableRich(true)
+                    .AddBulletSpan(enabled_services ? OkColor() : DangerColor(), DPI(7))
+                    .AddTextSpan(Format("  %d enabled", enabled_services), TextColor(), true);
 
-    bool can_edit_profile = !runtime_started_;
-    profile_dropdown_.Enable(can_edit_profile);
-    new_profile_button_.Enable(can_edit_profile);
-    duplicate_profile_button_.Enable(can_edit_profile);
-    delete_profile_button_.Enable(can_edit_profile && profiles_.GetCount() > 1);
-    profile_name_edit_.Enable(can_edit_profile);
-    tunnel_id_edit_.Enable(can_edit_profile);
-    runtime_path_edit_.Enable(can_edit_profile);
-    mcp_path_edit_.Enable(can_edit_profile);
-    runtime_browse_button_.Enable(can_edit_profile);
-    mcp_browse_button_.Enable(can_edit_profile);
-    auto_connect_toggle_.Enable(can_edit_profile);
-    remember_toggle_.Enable(can_edit_profile);
-    health_button_.Enable(runtime_started_ && !health_url_.IsEmpty());
+    activity_live_.Show(runtime_.IsStarted());
+    activity_footer_note_.SetText(state == McpTunnelRuntime::READY ? "TaskTrack traffic visible when its service is used"
+                                : state == McpTunnelRuntime::CONNECTING ? "Connecting to control plane"
+                                : state == McpTunnelRuntime::ERROR ? "Last connection attempt failed"
+                                                                  : "No TaskTrack remote traffic while stopped");
 
-    bool key_available = !GetEnv("CONTROL_PLANE_API_KEY").IsEmpty();
-    credential_status_.ClearSpans().EnableRich(true)
-                      .AddBulletSpan(key_available ? OkColor() : DangerColor(), DPI(7))
-                      .AddTextSpan(key_available ? "  Available" : "  Not set",
-                                   key_available ? OkColor() : DangerColor(), true);
+    bool can_edit = !runtime_.IsStarted();
+    profile_dropdown_.Enable(can_edit);
+    new_profile_button_.Enable(can_edit);
+    duplicate_profile_button_.Enable(can_edit);
+    delete_profile_button_.Enable(can_edit && profiles_.GetCount() > 1);
+    profile_name_edit_.Enable(can_edit);
+    machine_id_edit_.Enable(can_edit);
+    tunnel_id_edit_.Enable(can_edit);
+    credential_source_dropdown_.Enable(can_edit);
+    runtime_path_edit_.Enable(can_edit);
+    runtime_browse_button_.Enable(can_edit);
+    auto_connect_toggle_.Enable(can_edit);
+    remember_toggle_.Enable(can_edit);
 
+    service_dropdown_.Enable(can_edit);
+    new_service_button_.Enable(can_edit);
+    duplicate_service_button_.Enable(can_edit && CurrentService());
+    delete_service_button_.Enable(can_edit && profile && profile->services.GetCount() > 1);
+    service_name_edit_.Enable(can_edit && CurrentService());
+    service_id_edit_.Enable(can_edit && CurrentService());
+    service_channel_edit_.Enable(can_edit && CurrentService());
+    service_command_edit_.Enable(can_edit && CurrentService());
+    service_browse_button_.Enable(can_edit && CurrentService());
+    service_enabled_toggle_.Enable(can_edit && CurrentService());
+
+    health_button_.Enable(runtime_.IsStarted() && !runtime_.GetHealthUrl().IsEmpty());
+    RefreshCredentialProjection();
     RefreshActivity();
 }
 
@@ -1227,7 +1564,7 @@ void TaskTrackTunnelManager::SendProbe()
     probe.sequence++;
     probe.updated_at = AsString(GetSysTime());
     probe.source = "TaskTrackTunnelGui";
-    const TaskTrackTunnelProfile *profile = CurrentProfile();
+    const McpTunnelProfile *profile = CurrentProfile();
     probe.tunnel_id = profile ? profile->tunnel_id : String();
     probe.message = Format("TaskTrack local probe #%d", probe.sequence);
 
@@ -1252,41 +1589,54 @@ void TaskTrackTunnelManager::ClearActivity()
 
 String TaskTrackTunnelManager::BuildDiagnostics() const
 {
-    const TaskTrackTunnelProfile *profile = CurrentProfile();
+    const McpTunnelProfile *profile = CurrentProfile();
     TaskTrackTunnelActivity activity;
-    String error;
-    bool has_activity = TaskTrackTunnelLoadActivity(activity, error);
+    String activity_error;
+    bool has_activity = TaskTrackTunnelLoadActivity(activity, activity_error);
+    String credential_error;
+    bool credential_available = profile && CredentialAvailable(credential_error);
 
     String out;
-    out << "TaskTrack Tunnel diagnostics\n"
-        << "Build: " << TaskTrackBuildVersion() << "\n"
+    out << "MCP Tunnel diagnostics\n"
+        << "TaskTrack build: " << TaskTrackBuildVersion() << "\n"
         << "Profile: " << (profile ? profile->name : String("None")) << "\n"
+        << "Machine: " << (profile ? profile->machine_id : String()) << "\n"
         << "Tunnel: " << (profile ? profile->tunnel_id : String()) << "\n"
         << "State: ";
 
-    switch(GetRuntimeState()) {
-    case STATE_READY: out << "ready"; break;
-    case STATE_CONNECTING: out << "connecting"; break;
-    case STATE_ERROR: out << "error"; break;
+    switch(runtime_.GetState()) {
+    case McpTunnelRuntime::READY: out << "ready"; break;
+    case McpTunnelRuntime::CONNECTING: out << "connecting"; break;
+    case McpTunnelRuntime::ERROR: out << "error"; break;
     default: out << "stopped"; break;
     }
 
-    out << "\nRuntime process: " << BoolText(runtime_started_) << "\n"
-        << "Healthy: " << BoolText(runtime_healthy_) << "\n"
-        << "Ready: " << BoolText(runtime_ready_) << "\n"
-        << "Credential source: CONTROL_PLANE_API_KEY\n"
-        << "Credential available: " << BoolText(!GetEnv("CONTROL_PLANE_API_KEY").IsEmpty()) << "\n"
+    out << "\nRuntime process: " << BoolText(runtime_.IsStarted()) << "\n"
+        << "Healthy: " << BoolText(runtime_.IsHealthy()) << "\n"
+        << "Ready: " << BoolText(runtime_.IsReady()) << "\n"
+        << "Credential source: " << (profile ? McpTunnelCredentialSourceId(profile->credential_source) : String()) << "\n"
+        << "Credential available: " << BoolText(credential_available) << "\n"
         << "Secret value: [not exposed]\n"
-        << "Runtime executable: " << (profile ? profile->runtime_path : String()) << "\n"
-        << "TaskTrack MCP: " << (profile ? profile->mcp_path : String()) << "\n"
-        << "Remote activity: " << (has_activity ? AsString(activity.received) : String("0"))
-        << " in / " << (has_activity ? AsString(activity.sent) : String("0")) << " out\n";
+        << "Runtime executable: " << (profile ? profile->runtime_path : String()) << "\n";
+
+    if(profile) {
+        out << "Enabled services: " << EnabledServiceCount(*profile) << "\n";
+        for(const McpTunnelService& service : profile->services)
+            out << "Service: " << service.id
+                << " | channel=" << service.channel
+                << " | enabled=" << BoolText(service.enabled)
+                << " | command_configured=" << BoolText(!service.command.IsEmpty()) << "\n";
+    }
+
+    out << "TaskTrack remote activity: "
+        << (has_activity ? AsString(activity.received) : String("0")) << " in / "
+        << (has_activity ? AsString(activity.sent) : String("0")) << " out\n";
 
     if(has_activity && (!activity.last_method.IsEmpty() || !activity.last_tool.IsEmpty()))
-        out << "Last remote call: " << activity.last_method
+        out << "Last TaskTrack remote call: " << activity.last_method
             << (activity.last_tool.IsEmpty() ? String() : " / " + activity.last_tool) << "\n";
-    if(!last_error_.IsEmpty())
-        out << "Last error: " << last_error_ << "\n";
+    if(!runtime_.GetLastError().IsEmpty())
+        out << "Last runtime error: " << runtime_.GetLastError() << "\n";
     return out;
 }
 
@@ -1298,15 +1648,17 @@ void TaskTrackTunnelManager::CopyDiagnostics()
 void TaskTrackTunnelManager::ShowHelp()
 {
     PromptOK(
-        "TaskTrack Tunnel Manager\n\n"
-        "Overview shows whether the local TaskTrack MCP is reachable through the OpenAI Secure MCP Tunnel and displays recent remote MCP traffic.\n\n"
-        "Setup manages named, non-secret tunnel profiles. Tunnel IDs and executable paths may be stored locally. The CONTROL_PLANE_API_KEY secret is never stored or displayed by TaskTrack.\n\n"
-        "Use one tunnel/profile per local machine. Stop the active tunnel before switching profiles.");
+        "MCP Tunnel Manager\n\n"
+        "One machine profile owns one OpenAI Secure MCP Tunnel runtime. The Services page binds one or more separate local MCP servers to named tunnel channels.\n\n"
+        "TaskTrack remains its own MCP/domain service. Additional services do not share TaskTrack task or dashboard state.\n\n"
+        "For RC validation, use a session-only key or CONTROL_PLANE_API_KEY. The secret is never written to the machine profile.\n\n"
+        "The intended durable cross-platform direction is a U++ encrypted vault using Core/SSL AES-256-GCM. OAuth remains a separate MCP-auth concern and does not currently replace the tunnel runtime key.\n\n"
+        "Exactly one enabled service must use the main channel. Stop the active tunnel before changing the machine profile or service bindings.");
 }
 
 void TaskTrackTunnelManager::Tick()
 {
-    if(runtime_started_)
+    if(runtime_.IsStarted())
         RefreshRuntimeStatus(false);
     else
         RefreshProjection();
@@ -1327,7 +1679,8 @@ void TaskTrackTunnelManager::Layout()
 
     overview_button_.SetRect(DPI(15), DPI(8), DPI(92), DPI(34));
     setup_button_.SetRect(DPI(111), DPI(8), DPI(76), DPI(34));
-    nav_note_.SetRect(max(DPI(200), client.GetWidth() - DPI(180)), DPI(8), DPI(165), DPI(30));
+    services_button_.SetRect(DPI(191), DPI(8), DPI(88), DPI(34));
+    nav_note_.SetRect(max(DPI(300), client.GetWidth() - DPI(190)), DPI(8), DPI(175), DPI(30));
 
     Rect page = overview_page_.GetSize();
     const int pad = DPI(17);
@@ -1367,13 +1720,14 @@ void TaskTrackTunnelManager::Layout()
     }
 
     Rect ar = activity_panel_.GetSize();
-    activity_title_.SetRect(DPI(13), DPI(8), DPI(120), DPI(26));
-    activity_live_.SetRect(DPI(135), DPI(8), DPI(70), DPI(26));
+    activity_title_.SetRect(DPI(13), DPI(8), DPI(140), DPI(26));
+    activity_live_.SetRect(DPI(155), DPI(8), DPI(70), DPI(26));
     activity_count_.SetRect(max(0, ar.GetWidth() - DPI(190)), DPI(8), DPI(175), DPI(26));
     activity_table_.SetRect(DPI(13), DPI(42), max(0, ar.GetWidth() - DPI(26)), max(0, ar.GetHeight() - DPI(84)));
-    copy_diagnostics_button_.SetRect(DPI(10), max(0, ar.GetHeight() - DPI(36)), DPI(116), DPI(27));
-    clear_activity_button_.SetRect(DPI(133), max(0, ar.GetHeight() - DPI(36)), DPI(105), DPI(27));
-    activity_footer_note_.SetRect(max(DPI(245), ar.GetWidth() - DPI(220)), max(0, ar.GetHeight() - DPI(36)), DPI(205), DPI(27));
+    send_probe_button_.SetRect(DPI(10), max(0, ar.GetHeight() - DPI(36)), DPI(90), DPI(27));
+    copy_diagnostics_button_.SetRect(DPI(107), max(0, ar.GetHeight() - DPI(36)), DPI(116), DPI(27));
+    clear_activity_button_.SetRect(DPI(230), max(0, ar.GetHeight() - DPI(36)), DPI(105), DPI(27));
+    activity_footer_note_.SetRect(max(DPI(345), ar.GetWidth() - DPI(270)), max(0, ar.GetHeight() - DPI(36)), DPI(255), DPI(27));
 
     int table_w = max(DPI(300), ar.GetWidth() - DPI(18));
     activity_table_.SetColumnWidth(0, DPI(78));
@@ -1387,7 +1741,7 @@ void TaskTrackTunnelManager::Layout()
     int setup_width = max(0, sp.GetWidth() - pad * 2);
     profile_bar_.SetRect(pad, DPI(16), setup_width, DPI(75));
     setup_form_.SetRect(pad, DPI(16) + DPI(75) + gap, setup_width,
-                        max(DPI(330), sp.GetHeight() - DPI(16) - DPI(75) - gap - DPI(15)));
+                        max(DPI(350), sp.GetHeight() - DPI(16) - DPI(75) - gap - DPI(15)));
 
     Rect pr = profile_bar_.GetSize();
     profile_select_caption_.SetRect(DPI(13), DPI(8), DPI(180), DPI(18));
@@ -1404,21 +1758,23 @@ void TaskTrackTunnelManager::Layout()
     section_profile_.SetRect(label_x, y, field_w, DPI(16)); y += DPI(22);
     profile_name_label_.SetRect(label_x, y + DPI(4), DPI(125), DPI(20));
     profile_name_edit_.SetRect(field_x, y, field_w, DPI(28)); y += DPI(34);
+    machine_id_label_.SetRect(label_x, y + DPI(4), DPI(125), DPI(20));
+    machine_id_edit_.SetRect(field_x, y, field_w, DPI(28)); y += DPI(34);
     tunnel_id_label_.SetRect(label_x, y + DPI(4), DPI(125), DPI(20));
     tunnel_id_edit_.SetRect(field_x, y, field_w, DPI(28)); y += DPI(34);
+
     credential_label_.SetRect(label_x, y + DPI(4), DPI(125), DPI(20));
-    int credential_w = max(DPI(180), field_w - DPI(120));
-    credential_edit_.SetRect(field_x, y, credential_w, DPI(28));
-    credential_status_.SetRect(field_x + credential_w + DPI(5), y + DPI(2), DPI(110), DPI(24)); y += DPI(30);
-    credential_note_.SetRect(field_x, y, field_w, DPI(18)); y += DPI(24);
+    int source_w = max(DPI(200), field_w - DPI(120));
+    credential_source_dropdown_.SetRect(field_x, y, source_w, DPI(28));
+    credential_status_.SetRect(field_x + source_w + DPI(5), y + DPI(2), DPI(110), DPI(24)); y += DPI(34);
+    credential_set_button_.SetRect(field_x, y, DPI(78), DPI(28));
+    credential_clear_button_.SetRect(field_x + DPI(85), y, DPI(72), DPI(28));
+    credential_note_.SetRect(field_x + DPI(168), y + DPI(1), max(0, field_w - DPI(168)), DPI(28)); y += DPI(38);
 
     section_runtime_.SetRect(label_x, y, field_w, DPI(16)); y += DPI(22);
     runtime_path_label_.SetRect(label_x, y + DPI(4), DPI(125), DPI(20));
     runtime_path_edit_.SetRect(field_x, y, max(DPI(180), field_w - DPI(82)), DPI(28));
-    runtime_browse_button_.SetRect(field_x + max(DPI(180), field_w - DPI(75)), y, DPI(75), DPI(28)); y += DPI(34);
-    mcp_path_label_.SetRect(label_x, y + DPI(4), DPI(125), DPI(20));
-    mcp_path_edit_.SetRect(field_x, y, max(DPI(180), field_w - DPI(82)), DPI(28));
-    mcp_browse_button_.SetRect(field_x + max(DPI(180), field_w - DPI(75)), y, DPI(75), DPI(28)); y += DPI(36);
+    runtime_browse_button_.SetRect(field_x + max(DPI(180), field_w - DPI(75)), y, DPI(75), DPI(28)); y += DPI(38);
 
     section_launch_.SetRect(label_x, y, field_w, DPI(16)); y += DPI(22);
     auto_connect_label_.SetRect(label_x, y + DPI(3), DPI(125), DPI(20));
@@ -1429,6 +1785,38 @@ void TaskTrackTunnelManager::Layout()
     remember_toggle_.SetRect(field_x, y, DPI(38), DPI(22));
     remember_title_.SetRect(field_x + DPI(50), y - DPI(2), field_w - DPI(50), DPI(18));
     remember_note_.SetRect(field_x + DPI(50), y + DPI(15), field_w - DPI(50), DPI(16));
+
+    Rect svp = services_page_.GetSize();
+    int services_width = max(0, svp.GetWidth() - pad * 2);
+    service_bar_.SetRect(pad, DPI(16), services_width, DPI(75));
+    service_form_.SetRect(pad, DPI(16) + DPI(75) + gap, services_width,
+                          max(DPI(260), svp.GetHeight() - DPI(16) - DPI(75) - gap - DPI(15)));
+
+    Rect sbr = service_bar_.GetSize();
+    service_select_caption_.SetRect(DPI(13), DPI(8), DPI(180), DPI(18));
+    service_dropdown_.SetRect(DPI(13), DPI(30), min(DPI(430), max(DPI(220), sbr.GetWidth() - DPI(350))), DPI(32));
+    delete_service_button_.SetRect(max(0, sbr.GetWidth() - DPI(83)), DPI(30), DPI(70), DPI(31));
+    duplicate_service_button_.SetRect(max(0, sbr.GetWidth() - DPI(174)), DPI(30), DPI(84), DPI(31));
+    new_service_button_.SetRect(max(0, sbr.GetWidth() - DPI(248)), DPI(30), DPI(67), DPI(31));
+
+    Rect sfr = service_form_.GetSize();
+    const int slabel_x = DPI(14), sfield_x = DPI(155);
+    const int sfield_w = max(DPI(300), sfr.GetWidth() - sfield_x - DPI(14));
+    int sy = DPI(10);
+    section_service_.SetRect(slabel_x, sy, sfield_w, DPI(16)); sy += DPI(22);
+    service_name_label_.SetRect(slabel_x, sy + DPI(4), DPI(125), DPI(20));
+    service_name_edit_.SetRect(sfield_x, sy, sfield_w, DPI(28)); sy += DPI(34);
+    service_id_label_.SetRect(slabel_x, sy + DPI(4), DPI(125), DPI(20));
+    service_id_edit_.SetRect(sfield_x, sy, sfield_w, DPI(28)); sy += DPI(34);
+    service_channel_label_.SetRect(slabel_x, sy + DPI(4), DPI(125), DPI(20));
+    service_channel_edit_.SetRect(sfield_x, sy, sfield_w, DPI(28)); sy += DPI(34);
+    service_command_label_.SetRect(slabel_x, sy + DPI(4), DPI(125), DPI(20));
+    service_command_edit_.SetRect(sfield_x, sy, max(DPI(180), sfield_w - DPI(82)), DPI(28));
+    service_browse_button_.SetRect(sfield_x + max(DPI(180), sfield_w - DPI(75)), sy, DPI(75), DPI(28)); sy += DPI(38);
+    service_enabled_label_.SetRect(slabel_x, sy + DPI(3), DPI(125), DPI(20));
+    service_enabled_toggle_.SetRect(sfield_x, sy, DPI(38), DPI(22));
+    service_enabled_title_.SetRect(sfield_x + DPI(50), sy - DPI(2), sfield_w - DPI(50), DPI(18));
+    service_enabled_note_.SetRect(sfield_x + DPI(50), sy + DPI(15), sfield_w - DPI(50), DPI(32));
 
     Rect fo = footer_.GetSize();
     footer_build_.SetRect(DPI(11), DPI(4), DPI(145), DPI(22));

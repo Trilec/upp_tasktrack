@@ -7,15 +7,17 @@ namespace {
 String TunnelHelpText()
 {
     return
-        "TaskTrack Tunnel Manager\n"
-        "Native supervisor for the official OpenAI Secure MCP Tunnel runtime.\n\n"
+        "MCP Tunnel Manager\n"
+        "Native machine-level supervisor for the official OpenAI Secure MCP Tunnel runtime.\n\n"
         "Usage:\n"
         "  TaskTrackTunnelGui.exe\n"
         "  TaskTrackTunnelGui.exe --tunnel-id <tunnel_id>\n"
         "  TaskTrackTunnelGui.exe --client <path-to-tunnel-client.exe>\n"
         "  TaskTrackTunnelGui.exe --alias <local-alias>\n\n"
-        "The Tunnel Manager stores named non-secret profiles locally.\n"
-        "CONTROL_PLANE_API_KEY is inherited from the environment and is never stored by TaskTrack.";
+        "Machine profiles can expose multiple named local MCP services through one tunnel runtime.\n"
+        "For validation, use a session-only key or CONTROL_PLANE_API_KEY.\n"
+        "Durable cross-platform encrypted storage is intentionally deferred until the tunnel flow is accepted.\n"
+        "Secrets are never written to the TaskTrack profile or displayed in diagnostics.";
 }
 
 }

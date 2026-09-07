@@ -1,109 +1,256 @@
-# TaskTrack Secure MCP Tunnel
+# TaskTrack Machine MCP Tunnel
 
 TaskTrack `0.3.2-rc1` uses the official OpenAI Secure MCP Tunnel runtime.
-TaskTrack does not implement or fork the tunnel wire protocol. The native
-`TaskTrackTunnelGui.exe` manager supervises the official runtime-only Windows
-artifact and forwards the existing local stdio `TaskTrackMcp.exe`.
+TaskTrack does not implement or fork the tunnel wire protocol.
+
+The native `TaskTrackTunnelGui.exe` application now manages a **machine tunnel
+profile** rather than a TaskTrack-only tunnel. One running profile owns one
+OpenAI tunnel runtime and may expose multiple separate local STDIO MCP services
+through named logical channels.
+
+See [Machine tunnel architecture](TUNNEL_ARCHITECTURE.md).
 
 ## Runtime files
 
-Keep these together in a writable runtime/build directory:
+For the current TaskTrack service keep these available:
 
 - `TaskTrackMcp.exe`
 - `TaskTrackGui.exe`
 - `TaskTrackDashboardGui.exe`
 - `TaskTrackTunnelGui.exe`
-- official OpenAI tunnel runtime executable, named locally `tunnel-client.exe`
+- official OpenAI tunnel runtime executable, normally named
+  `tunnel-client.exe`
 
-The Platform download may be the narrow `tunnel-client-runtime` artifact.
-That binary exposes `run`, `--help` and `--version`. TaskTrack starts
-`run` directly; it does not require the full client's management command tree.
+Additional services may point at MCP executables elsewhere on the same machine.
 
-The runtime API key remains outside TaskTrack:
+The supported narrow OpenAI runtime artifact exposes `run`, `--help` and
+`--version`. The manager launches `run` directly and does not depend on the
+full client's `runtimes ...` command tree.
+
+## Machine profile
+
+A profile contains:
+
+- profile name;
+- explicit `machine_id`;
+- tunnel ID;
+- tunnel runtime executable path;
+- credential source/reference;
+- auto-connect;
+- remember-profile;
+- `services[]`.
+
+Each service contains:
+
+- service ID;
+- display name;
+- logical channel;
+- MCP command;
+- enabled state.
+
+Exactly one enabled service must use channel `main`. Enabled IDs and channels
+must be unique. The OpenAI-reserved `harpoon` channel cannot be used for a
+customer service.
+
+A new profile starts with:
+
+```text
+TaskTrack
+    channel = main
+    command = TaskTrackMcp.exe
+    enabled = true
+```
+
+Additional services are created disabled so merely adding one cannot change a
+working runtime.
+
+Duplicating a machine profile copies local runtime/service configuration but
+does **not** copy the tunnel ID or credential secret. The duplicate receives a
+new credential reference.
+
+Existing schema-1 TaskTrack tunnel profiles migrate automatically to schema 2
+with the previous TaskTrack MCP path represented as the `main` service.
+
+## Credential handling
+
+For this RC the manager deliberately uses portable validation sources only.
+
+### Session key
+
+Choose **Session key (memory only)** and click **Set key**.
+
+The key is masked in the UI, held only in manager memory, and disappears when
+the manager closes. The profile does not persist it.
+
+This is the preferred manual validation path because it proves the tunnel flow
+without committing the product to an OS-specific secret store.
+
+### Environment variable
+
+Automation and existing setups may choose **Environment variable** and set:
 
 ```powershell
 $env:CONTROL_PLANE_API_KEY="sk-..."
-.\TaskTrackTunnelGui.exe
 ```
 
-TaskTrack never persists or displays the secret value.
+The manager reads it at launch. The secret is not copied into profile JSON or
+diagnostics.
 
-## Tunnel Manager
+### Durable storage direction
 
-The native manager is intentionally a small desktop application rather than a
-diagnostic text window.
+After the tunnel and multi-service flow are accepted, the intended portable
+storage is a U++ encrypted vault using `Core/SSL` AES-256-GCM with PBKDF2.
+The UX target is:
+
+```text
+Stored credential   •••• / short fingerprint
+[Replace] [Clear]
+```
+
+The full key is never displayed.
+
+OAuth remains relevant for MCP/connector authentication, but the current OpenAI
+tunnel runtime still requires its own control-plane runtime API key.
+
+## Runtime launch
+
+For a two-service profile the manager launches the official runtime
+conceptually as:
+
+```text
+tunnel-client.exe run
+  --control-plane.api-key file:<short-lived-launch-file>
+  --control-plane.tunnel-id <tunnel>
+  --mcp.command "channel=main,command=<TaskTrackMcp.exe>"
+  --mcp.command "channel=patchtrack,command=<patchtrack_mcp.exe>"
+  --health.listen-addr 127.0.0.1:0
+  --health.url-file <temp-file>
+  --log.file <temp-file>
+```
+
+No API key is placed on argv.
+
+The generic child environment also carries:
+
+```text
+MCP_TUNNEL_REMOTE=1
+MCP_TUNNEL_MACHINE_ID=<machine-id>
+MCP_TUNNEL_PROFILE_ID=<profile-id>
+```
+
+TaskTrack recognizes `MCP_TUNNEL_REMOTE=1` for remote-activity recording and
+temporarily also accepts the retired `TASKTRACK_TUNNEL_REMOTE=1` marker for
+migration compatibility.
+
+## Manager pages
 
 ### Overview
 
-Overview answers five questions immediately:
+Overview shows:
 
-1. Is remote TaskTrack available?
-2. Which named profile/tunnel is active?
-3. Is the TaskTrack MCP executable present?
-4. Is remote traffic flowing?
-5. What were the most recent MCP request/result pairs?
+- machine/tunnel state;
+- configured `main` MCP service;
+- OpenAI runtime health;
+- TaskTrack-specific remote activity;
+- enabled service count;
+- recent TaskTrack request/result pairs.
 
-The Ready state is green. Connecting is amber. Faults are red. Stopped is
-neutral. The Recent activity table retains the last six remote communications
-with direction, MCP method/tool and result size/status.
+The state model is:
 
-Only MCP processes launched by the tunnel runtime increment the remote activity
-log. Ordinary local Codex/TaskTrack MCP traffic is excluded.
+- Ready;
+- Connecting;
+- Stopped;
+- Error.
+
+**Send probe** writes the existing TaskTrack-local diagnostic probe consumed by
+the read-only `tunnel_probe` MCP tool.
 
 ### Setup
 
-Setup manages named non-secret tunnel profiles. A profile contains:
+Setup manages:
 
-- friendly profile name;
+- machine profiles;
+- machine ID;
 - tunnel ID;
-- tunnel runtime executable path;
-- TaskTrack MCP executable path;
-- auto-connect preference;
-- remember-profile preference.
+- secure credential source;
+- runtime executable;
+- auto-connect;
+- remember-profile.
 
-The credential source is fixed to `CONTROL_PLANE_API_KEY` and the UI shows only
-whether it is available.
+### Services
 
-Use one logical tunnel/profile per local machine. Two local machines must not
-compete for the same stdio tunnel queue. A typical two-machine setup is:
+Services manages explicit channel bindings:
 
-```text
-Curt PC      -> TaskTrack profile/tunnel A -> ChatGPT plugin A
-Colleague PC -> TaskTrack profile/tunnel B -> ChatGPT plugin B
+- display name;
+- service ID;
+- channel;
+- command;
+- enabled state.
+
+Stop the tunnel before changing profiles or services.
+
+## Local deterministic validation
+
+From the repository root:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\verify.ps1 -UppRoot <U++ root>
+git diff --check
 ```
 
-Duplicate profile intentionally copies local runtime settings but leaves the
-new tunnel ID blank so a second deployment cannot accidentally reuse the same
-logical tunnel.
+The verification wrapper now includes `McpTunnelRuntimeTests.exe` in addition
+to the existing TaskTrack targets.
 
-## Browser connector
+The runtime-model tests cover:
 
-In ChatGPT plugin settings choose:
+- schema-2 profile round-trip;
+- schema-1 migration;
+- multi-service argument generation;
+- exactly-one-main validation;
+- unique service IDs/channels;
+- reserved channel rejection;
+- 32-channel limit;
+- duplicate-profile tunnel/credential separation;
+- child runtime environment excludes OpenAI control/admin key variables;
+- short-lived file credential reference generation.
 
-- Connection = Tunnel
-- the same tunnel ID as the local profile
-- Authentication = No Auth for the local stdio MCP path
+## Live acceptance
 
-The logical tunnel may appear in ChatGPT before a machine-side runtime is
-ready. Create/test the connector only after the Overview reports Ready.
+With Curt's real tunnel ID, runtime key and official runtime:
 
-Initial read acceptance:
+1. store/select the credential source;
+2. confirm TaskTrack is the enabled `main` service;
+3. Connect;
+4. confirm process running;
+5. confirm `/healthz` succeeds;
+6. confirm `/readyz` succeeds;
+7. from browser ChatGPT call `version`;
+8. click **Send probe**, then call `tunnel_probe`;
+9. call `list_dashboards`;
+10. verify TaskTrack remote activity increments;
+11. Stop and reconnect.
 
-1. `version` -> current TaskTrack build/schema identity;
-2. `tunnel_probe` -> proves the browser reached this exact local runtime;
-3. `list_dashboards` / `get_dashboard` -> normal dashboard reads.
+Then add a harmless second MCP service on a distinct channel and perform the
+multi-channel acceptance:
 
-`Send probe` writes only a small local diagnostic record. It is not task,
-dashboard, repository or human evidence.
+1. enable the second service;
+2. keep exactly one `main` service;
+3. reconnect;
+4. verify the runtime advertises/accepts both bindings;
+5. verify ChatGPT can address the additional channel distinctly;
+6. verify TaskTrack calls continue to reach TaskTrack;
+7. stop one child service during the test and verify the failure remains
+   service-specific.
+
+The official runtime supports the channel bindings used by the manager. The
+final ChatGPT product-side addressing of an additional named channel remains a
+live acceptance item until tested with the real account.
 
 ## Boundary
 
-The Secure MCP Tunnel is remote ingress to the existing MCP endpoint. It does
-not replace a future local U++ application bus:
+The machine tunnel layer owns transport/runtime only.
 
-```text
-ChatGPT -> Secure MCP Tunnel -> TaskTrackMcp -> local U++ application bus
-```
-
-Cloudflare, remote HTTP MCP, OAuth and a native U++ tunnel implementation remain
-out of scope for this release.
+TaskTrack remains authoritative for human decisions and project dashboards.
+PatchTrack remains authoritative for transactional file mutation when it is
+added as another service. No domain persistence or tool family is merged merely
+because the services share one machine tunnel.
