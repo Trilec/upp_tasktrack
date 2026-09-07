@@ -40,6 +40,7 @@ private:
     bool loading_service_ = false;
 
     McpTunnelRuntime runtime_;
+    String session_api_key_;
 
     UiPanel root_;
     UiTitleCard header_;
@@ -166,6 +167,8 @@ private:
     void BrowseRuntime();
     void BrowseServiceCommand();
 
+    bool CredentialAvailable(String& error) const;
+    bool ReadCredential(String& secret, String& error) const;
     void RefreshCredentialProjection();
     void SetCredential();
     void ClearCredential();
