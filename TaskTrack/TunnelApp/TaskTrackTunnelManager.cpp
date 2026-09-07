@@ -1318,13 +1318,11 @@ void TaskTrackTunnelManager::ConnectRuntime()
     }
 
     const McpTunnelService *tasktrack = TaskTrackService();
-    if(tasktrack && tasktrack->enabled && !tasktrack->command.IsEmpty()
-       && tasktrack->command.Find(' ') < 0 && !FileExists(tasktrack->command)) {
+    RefreshMcpBinaryIdentity(true);
+    if(tasktrack && tasktrack->enabled && mcp_binary_identity_ == MCP_BINARY_MISSING) {
         Exclamation("TaskTrackMcp.exe was not found at the configured service command.");
         return;
     }
-
-    RefreshMcpBinaryIdentity(true);
     if(tasktrack && tasktrack->enabled &&
        (mcp_binary_identity_ == MCP_BINARY_DIFFERENT ||
         mcp_binary_identity_ == MCP_BINARY_UNVERIFIED)) {
@@ -1732,7 +1730,7 @@ void TaskTrackTunnelManager::ClearActivity()
     RefreshProjection();
 }
 
-String TaskTrackTunnelManager::BuildDiagnostics() const
+String TaskTrackTunnelManager::BuildDiagnostics()
 {
     const McpTunnelProfile *profile = CurrentProfile();
     TaskTrackTunnelActivity activity;
@@ -1764,7 +1762,7 @@ String TaskTrackTunnelManager::BuildDiagnostics() const
         << "Secret value: [not exposed]\n"
         << "Runtime executable: " << (profile ? profile->runtime_path : String()) << "\n";
 
-    const_cast<TaskTrackTunnelManager *>(this)->RefreshMcpBinaryIdentity(true);
+    RefreshMcpBinaryIdentity(true);
     out << "TaskTrack MCP identity: " << McpBinaryIdentityText() << "\n"
         << "TaskTrack MCP path: " << mcp_binary_path_ << "\n"
         << "TaskTrack MCP SHA256: " << mcp_binary_actual_hash_ << "\n"
