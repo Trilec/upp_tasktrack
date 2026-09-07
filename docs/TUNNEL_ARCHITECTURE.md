@@ -34,7 +34,7 @@ OpenAI Secure MCP Tunnel
    |
 McpTunnelRuntime
    |-- main / tasktrack -> TaskTrackMcp.exe
-   |-- patchtrack       -> patchtrack_mcp.exe
+   |-- patchtrack       -> PatchTrackMcp.exe
    `-- future services -> their own MCP servers
 ```
 

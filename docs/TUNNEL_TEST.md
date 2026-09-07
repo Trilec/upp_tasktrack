@@ -125,7 +125,7 @@ tunnel-client.exe run
   --control-plane.base-url https://api.openai.com
   --log.http-raw-unsafe=false
   --mcp.command "channel=main,command=<TaskTrackMcp.exe>"
-  --mcp.command "channel=patchtrack,command=<patchtrack_mcp.exe>"
+  --mcp.command "channel=patchtrack,command=<PatchTrackMcp.exe>"
   --health.listen-addr 127.0.0.1:0
   --health.url-file <temp-file>
   --log.file <temp-file>
