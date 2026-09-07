@@ -77,13 +77,14 @@ Write-Host "TaskTrack build expected: $buildVersion"
 Run-Step "Build TaskTrack GUI" { Build-UppPackage -Package "TaskTrack/App" -Target "TaskTrackGui" -Gui }
 Run-Step "Build TaskTrack MCP" { Build-UppPackage -Package "TaskTrack/Mcp" -Target "TaskTrackMcp" }
 Run-Step "Build TaskTrack tunnel GUI" { Build-UppPackage -Package "TaskTrack/TunnelApp" -Target "TaskTrackTunnelGui" -Gui }
+Run-Step "Build MCP tunnel runtime tests" { Build-UppPackage -Package "tests/McpTunnelRuntimeTests" -Target "McpTunnelRuntimeTests" }
 Run-Step "Build TaskTrack tests" { Build-UppPackage -Package "tests/TaskTrackTests" -Target "TaskTrackTests" }
 Run-Step "Build TaskTrack example" { Build-UppPackage -Package "examples/TaskTrackExample" -Target "TaskTrackExample" }
 Run-Step "Build Dashboard GUI" { Build-UppPackage -Package "TaskTrack/DashboardApp" -Target "TaskTrackDashboardGui" -Gui }
 Run-Step "Build Dashboard tests" { Build-UppPackage -Package "tests/TaskTrackDashboardTests" -Target "TaskTrackDashboardTests" }
 
 foreach($exe in @("TaskTrackGui.exe", "TaskTrackMcp.exe", "TaskTrackTunnelGui.exe",
-                  "TaskTrackTests.exe", "TaskTrackExample.exe",
+                  "McpTunnelRuntimeTests.exe", "TaskTrackTests.exe", "TaskTrackExample.exe",
                   "TaskTrackDashboardGui.exe", "TaskTrackDashboardTests.exe")) {
     if(!(Test-Path -LiteralPath (Join-Path $buildDir $exe))) { throw "Expected build output is missing: $exe" }
 }
@@ -98,6 +99,7 @@ Run-Step "Unified MCP binary identity" {
     if($versionOutput -notmatch 'dashboard schema version\s+1') { throw "Fresh MCP binary does not report dashboard schema 1" }
 }
 
+Run-Step "MCP tunnel runtime tests" { & (Join-Path $buildDir "McpTunnelRuntimeTests.exe") }
 Run-Step "Core/persistence tests" { & (Join-Path $buildDir "TaskTrackTests.exe") }
 Run-Step "Unified MCP selftest" { & $mcpPath --selftest }
 Run-Step "Dashboard Core/persistence tests" { & (Join-Path $buildDir "TaskTrackDashboardTests.exe") }
