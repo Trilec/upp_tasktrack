@@ -48,6 +48,8 @@ bool McpTunnelValidateProfile(const McpTunnelProfile& profile, String& error);
 Vector<String> McpTunnelBuildRunArgs(const McpTunnelProfile& profile,
                                      const String& health_url_file,
                                      const String& log_file);
+String McpTunnelBuildChildEnvironment(const McpTunnelProfile& profile,
+                                      const String& control_plane_api_key);
 
 bool McpTunnelCredentialExists(const McpTunnelProfile& profile, String& error);
 bool McpTunnelReadCredential(const McpTunnelProfile& profile, String& secret, String& error);
