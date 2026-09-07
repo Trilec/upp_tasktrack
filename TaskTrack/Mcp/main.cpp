@@ -28,6 +28,7 @@ int UnifiedRunServer();
 int UnifiedRunOneShot(const String& file);
 int UnifiedRunSelfTest();
 String UnifiedMcpHelpText();
+String UnifiedExecutableSha256();
 
 } // namespace
 
@@ -54,6 +55,7 @@ CONSOLE_APP_MAIN
                << "task core version " << TaskTrackVersion() << "\n"
                << "task schema version 2\n"
                << "dashboard schema version " << TASKTRACK_DASHBOARD_SCHEMA_VERSION << "\n"
+               << "executable sha256 " << UnifiedExecutableSha256() << "\n"
                << "MCP protocol 2026-07-28\n";
         SetExitCode(0);
         return;
@@ -85,6 +87,19 @@ static const char *UNIFIED_PROTOCOL = "2026-07-28";
 String UnifiedDescription()
 {
     return "Durable human decisions and semantic project dashboards for AI-assisted workflows.";
+}
+
+String UnifiedExecutableSha256()
+{
+    static String hash;
+    static bool initialized = false;
+    if(!initialized) {
+        initialized = true;
+        String image = LoadFile(GetExeFilePath());
+        if(!IsNull(image))
+            hash = SHA256String(image);
+    }
+    return hash;
 }
 
 void PatchServerInfo(ValueMap& result)
@@ -131,6 +146,7 @@ Value UnifiedVersionResult(bool modern)
     out.Add("ok", true);
     out.Add("version", TaskTrackBuildVersion());
     out.Add("build_version", TaskTrackBuildVersion());
+    out.Add("executable_sha256", UnifiedExecutableSha256());
     out.Add("task_core_version", TaskTrackVersion());
     out.Add("schema_version", 2); // compatibility with the existing TaskTrack version response
     out.Add("task_schema_version", 2);
@@ -170,6 +186,7 @@ Value UnifiedTunnelProbeResult(bool modern)
 {
     ValueMap out = TaskTrackTunnelProbeStatusValue();
     out.Set("build_version", TaskTrackBuildVersion());
+    out.Set("executable_sha256", UnifiedExecutableSha256());
     out.Set("task_schema_version", 2);
     out.Set("dashboard_schema_version", TASKTRACK_DASHBOARD_SCHEMA_VERSION);
     out.Set("transport", "stdio");
