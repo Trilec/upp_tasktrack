@@ -68,6 +68,28 @@ build\TaskTrackDashboardTests.exe
 
 and runs the deterministic machine-tunnel model tests, human Core tests, the unified MCP self-test (human + dashboard tool families), and dashboard Core tests.
 
+### Stage a runnable bundle
+
+`build/` is compiler/test output. After verification, stage the production
+executables into a clean copyable bundle:
+
+```powershell
+.\verify.ps1 -UppRoot C:\upp -OutputDir .\build-release
+.\stage-bin.ps1 -BuildDir .\build-release
+```
+
+The current Windows bundle is generated at `bin/windows-x64/` and contains only
+the four production TaskTrack executables, the validated official OpenAI tunnel
+runtime, runtime README, SHA-256 manifest, TaskTrack license and required
+third-party notices/SBOM. Tests and examples remain in the build directory.
+
+The vendor runtime is checked against
+`tunnel-client/runtime-manifest.json` before staging and is written into the
+bundle as `tunnel-client.exe`, allowing `TaskTrackTunnelGui.exe` to find it
+beside itself without manual runtime-path configuration.
+
+See [Runtime bundle](bin/README.md).
+
 For a TheIDE assembly include the TaskTrack repository, `upp_Ui`, `upp_animation`, and U++ `uppsrc`.
 
 ## Connect to an agent host
@@ -142,6 +164,7 @@ TaskTrack/DashboardApp      read-only native dashboard viewer
 tests                      deterministic regression tests
 examples                   decision and dashboard examples
 skills                      optional agent workflow guidance
+bin                         generated, copyable runtime bundles (README tracked)
 ```
 
 ## Documentation
