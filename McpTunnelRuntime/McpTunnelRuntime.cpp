@@ -228,10 +228,11 @@ bool McpTunnelValidateProfile(const McpTunnelProfile& profile, String& error)
             error = "Every enabled service requires an id and display name.";
             return false;
         }
-        if(ids.FindAdd(service.id) >= 0 && ids.GetCount() != enabled_count) {
+        if(ids.Find(service.id) >= 0) {
             error = "Enabled service ids must be unique.";
             return false;
         }
+        ids.Add(service.id);
         if(!IsCanonicalChannel(service.channel)) {
             error = "MCP channel names may contain only letters, digits, '.', '_' and '-'.";
             return false;
