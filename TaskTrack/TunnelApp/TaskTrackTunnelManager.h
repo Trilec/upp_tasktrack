@@ -170,7 +170,6 @@ private:
     void SetCredential();
     void ClearCredential();
 
-    bool ProbeHealth(const String& suffix, int& status, String& error);
     void ConnectRuntime();
     void RefreshRuntimeStatus(bool show_dialog = false);
     void StopRuntime();
