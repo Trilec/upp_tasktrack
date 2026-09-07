@@ -1,6 +1,6 @@
 # TaskTrack Machine MCP Tunnel
 
-TaskTrack `0.3.2-rc1` uses the official OpenAI Secure MCP Tunnel runtime.
+TaskTrack `0.3.2-rc2` uses the official OpenAI Secure MCP Tunnel runtime.
 TaskTrack does not implement or fork the tunnel wire protocol.
 
 The native `TaskTrackTunnelGui.exe` application now manages a **machine tunnel
@@ -164,7 +164,8 @@ migration compatibility.
 Overview shows:
 
 - machine/tunnel state;
-- configured `main` MCP service;
+- configured `main` MCP service and whether the configured TaskTrack MCP matches the verified staged bundle;
+
 - OpenAI runtime health;
 - TaskTrack-specific remote activity;
 - enabled service count;
@@ -247,10 +248,12 @@ With Curt's real tunnel ID, runtime key and official runtime:
 5. confirm `/healthz` succeeds;
 6. confirm `/readyz` succeeds;
 7. from browser ChatGPT call `version`;
-8. click **Send probe**, then call `tunnel_probe`;
-9. call `list_dashboards`;
-10. verify TaskTrack remote activity increments;
-11. Stop and reconnect.
+8. require `build_version = 0.3.2-rc2`, `bundle_verified = true`, and compare `executable_sha256` + `bundle_source_commit` with `bin/windows-x64/manifest.json`;
+9. if these do not match, stop acceptance and restart/reconfigure the MCP host rather than testing stale code;
+10. click **Send probe**, then call `tunnel_probe` and confirm it reports the same executable/bundle identity;
+11. call `list_dashboards`;
+12. verify TaskTrack remote activity increments;
+13. Stop and reconnect; after reconnect, repeat `version` and require the same identity.
 
 Then add a harmless second MCP service on a distinct channel and perform the
 multi-channel acceptance:
