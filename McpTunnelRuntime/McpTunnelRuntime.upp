@@ -3,6 +3,9 @@ description "Neutral machine-level OpenAI Secure MCP Tunnel profile/runtime supp
 uses
     Core;
 
+library(WIN32)
+    advapi32;
+
 file
     McpTunnelRuntime.h,
     McpTunnelRuntime.cpp;
