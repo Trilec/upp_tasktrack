@@ -1651,7 +1651,8 @@ void TaskTrackTunnelManager::ShowHelp()
         "MCP Tunnel Manager\n\n"
         "One machine profile owns one OpenAI Secure MCP Tunnel runtime. The Services page binds one or more separate local MCP servers to named tunnel channels.\n\n"
         "TaskTrack remains its own MCP/domain service. Additional services do not share TaskTrack task or dashboard state.\n\n"
-        "Windows Credential Manager is the recommended API-key source. TaskTrack stores only the credential reference; the secret is passed only to the tunnel child process. Environment-variable mode remains available for compatibility.\n\n"
+        "For RC validation, use a session-only key or CONTROL_PLANE_API_KEY. The secret is never written to the machine profile.\n\n"
+        "The intended durable cross-platform direction is a U++ encrypted vault using Core/SSL AES-256-GCM. OAuth remains a separate MCP-auth concern and does not currently replace the tunnel runtime key.\n\n"
         "Exactly one enabled service must use the main channel. Stop the active tunnel before changing the machine profile or service bindings.");
 }
 
