@@ -141,6 +141,32 @@ CONSOLE_APP_MAIN
     t.Check(McpTunnelValidateProfile(disabled, error),
             "disabled secondary service made valid main profile fail");
 
+    McpTunnelProfile reserved = MakeProfile();
+    reserved.services[1].channel = "harpoon";
+    error.Clear();
+    t.Check(!McpTunnelValidateProfile(reserved, error),
+            "reserved harpoon channel was accepted");
+
+    McpTunnelProfile comma_command = MakeProfile();
+    comma_command.services[1].command = "C:/apps/tool,withcomma.exe";
+    error.Clear();
+    t.Check(!McpTunnelValidateProfile(comma_command, error),
+            "comma-delimited service command was accepted");
+
+    McpTunnelProfile too_many = MakeProfile();
+    too_many.services.Clear();
+    for(int i = 0; i < 33; ++i) {
+        McpTunnelService service;
+        service.id = Format("service-%d", i);
+        service.name = service.id;
+        service.channel = i == 0 ? String("main") : Format("channel-%d", i);
+        service.command = Format("C:/apps/service-%d.exe", i);
+        too_many.services.Add(pick(service));
+    }
+    error.Clear();
+    t.Check(!McpTunnelValidateProfile(too_many, error),
+            "more than 32 enabled channels were accepted");
+
     Cout() << "mcp-tunnel-runtime-tests: " << t.passed << " passed, "
            << t.failed.GetCount() << " failed\n";
     for(const String& failure : t.failed)
