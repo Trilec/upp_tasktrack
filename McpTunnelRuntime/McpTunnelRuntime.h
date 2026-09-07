@@ -6,7 +6,7 @@
 namespace Upp {
 
 enum McpTunnelCredentialSource {
-    MCP_TUNNEL_CREDENTIAL_WINDOWS = 0,
+    MCP_TUNNEL_CREDENTIAL_SESSION = 0,
     MCP_TUNNEL_CREDENTIAL_ENVIRONMENT = 1,
 };
 
@@ -24,8 +24,7 @@ struct McpTunnelProfile : Moveable<McpTunnelProfile> {
     String machine_id;
     String tunnel_id;
     String runtime_path;
-    McpTunnelCredentialSource credential_source = MCP_TUNNEL_CREDENTIAL_WINDOWS;
-    String credential_ref;
+    McpTunnelCredentialSource credential_source = MCP_TUNNEL_CREDENTIAL_SESSION;
     bool auto_connect = false;
     bool remember_profile = true;
     Vector<McpTunnelService> services;
@@ -33,7 +32,6 @@ struct McpTunnelProfile : Moveable<McpTunnelProfile> {
 
 String McpTunnelCredentialSourceId(McpTunnelCredentialSource source);
 McpTunnelCredentialSource McpTunnelCredentialSourceFromId(const String& id);
-String McpTunnelDefaultCredentialRef(const String& profile_id);
 String McpTunnelDefaultMachineId();
 String McpTunnelCommandForExecutable(const String& path);
 
@@ -51,11 +49,6 @@ Vector<String> McpTunnelBuildRunArgs(const McpTunnelProfile& profile,
                                      const String& health_url_file,
                                      const String& log_file);
 String McpTunnelBuildChildEnvironment(const McpTunnelProfile& profile);
-
-bool McpTunnelCredentialExists(const McpTunnelProfile& profile, String& error);
-bool McpTunnelReadCredential(const McpTunnelProfile& profile, String& secret, String& error);
-bool McpTunnelWriteCredential(const McpTunnelProfile& profile, const String& secret, String& error);
-bool McpTunnelDeleteCredential(const McpTunnelProfile& profile, String& error);
 
 class McpTunnelRuntime : NoCopy {
 public:
