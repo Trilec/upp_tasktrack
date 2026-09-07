@@ -98,7 +98,7 @@ TaskTrackTunnelManager::TaskTrackTunnelManager(const TaskTrackTunnelManagerOptio
             service.id = "tasktrack";
             service.name = "TaskTrack";
             service.channel = "main";
-            service.command = GetExeDirFile("TaskTrackMcp.exe");
+            service.command = McpTunnelCommandForExecutable(GetExeDirFile("TaskTrackMcp.exe"));
             profile->services.Add(pick(service));
         }
     }
@@ -701,7 +701,7 @@ void TaskTrackTunnelManager::LoadProfiles()
                     service.id = "tasktrack";
                     service.name = "TaskTrack";
                     service.channel = "main";
-                    service.command = GetExeDirFile("TaskTrackMcp.exe");
+                    service.command = McpTunnelCommandForExecutable(GetExeDirFile("TaskTrackMcp.exe"));
                     profile.services.Add(pick(service));
                 }
                 profiles_.Add(pick(profile));
@@ -758,7 +758,7 @@ void TaskTrackTunnelManager::EnsureDefaultProfile()
         service.id = "tasktrack";
         service.name = "TaskTrack";
         service.channel = "main";
-        service.command = GetExeDirFile("TaskTrackMcp.exe");
+        service.command = McpTunnelCommandForExecutable(GetExeDirFile("TaskTrackMcp.exe"));
         profile.services.Add(pick(service));
 
         profiles_.Add(pick(profile));
@@ -894,7 +894,7 @@ void TaskTrackTunnelManager::NewProfile()
     service.id = "tasktrack";
     service.name = "TaskTrack";
     service.channel = "main";
-    service.command = GetExeDirFile("TaskTrackMcp.exe");
+    service.command = McpTunnelCommandForExecutable(GetExeDirFile("TaskTrackMcp.exe"));
     profile.services.Add(pick(service));
 
     profiles_.Add(pick(profile));
@@ -1174,11 +1174,13 @@ void TaskTrackTunnelManager::BrowseServiceCommand()
 {
     FileSel selector;
     selector.Type("Executable", "*.exe");
-    String current = service_command_edit_.GetTextUtf8();
+    String current = TrimBoth(service_command_edit_.GetTextUtf8());
+    if(current.GetCount() >= 2 && current[0] == '"' && current[current.GetCount() - 1] == '"')
+        current = current.Mid(1, current.GetCount() - 2);
     if(!current.IsEmpty())
         selector.Set(current);
     if(selector.ExecuteOpen("Choose MCP server executable")) {
-        service_command_edit_.SetTextUtf8(~selector);
+        service_command_edit_.SetTextUtf8(McpTunnelCommandForExecutable(~selector));
         SaveServiceFromUi();
     }
 }
