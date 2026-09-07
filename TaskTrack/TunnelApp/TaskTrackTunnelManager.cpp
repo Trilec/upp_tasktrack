@@ -673,6 +673,7 @@ void TaskTrackTunnelManager::LoadProfiles()
 {
     profiles_.Clear();
     selected_profile_ = -1;
+    selected_service_ = -1;
 
     String json = LoadFile(ProfileStorePath());
     if(IsNull(json) || json.IsEmpty())
@@ -683,19 +684,26 @@ void TaskTrackTunnelManager::LoadProfiles()
         if(!root.Is<ValueMap>())
             return;
 
+        int schema_version = IsNull(root["schema_version"]) ? 1 : (int)root["schema_version"];
         dark_theme_ = !IsNull(root["dark_theme"]) && (bool)root["dark_theme"];
         String selected_id = AsString(root["selected_profile"]);
         Value list_value = root["profiles"];
         if(list_value.Is<ValueArray>()) {
             ValueArray list = list_value;
             for(int i = 0; i < list.GetCount(); ++i) {
-                McpTunnelProfile profile = ProfileFromValue(list[i]);
+                McpTunnelProfile profile = McpTunnelProfileFromValue(list[i], schema_version);
                 if(profile.id.IsEmpty() || profile.name.IsEmpty())
                     continue;
                 if(profile.runtime_path.IsEmpty())
                     profile.runtime_path = GetExeDirFile("tunnel-client.exe");
-                if(profile.mcp_path.IsEmpty())
-                    profile.mcp_path = GetExeDirFile("TaskTrackMcp.exe");
+                if(profile.services.IsEmpty()) {
+                    McpTunnelService service;
+                    service.id = "tasktrack";
+                    service.name = "TaskTrack";
+                    service.channel = "main";
+                    service.command = GetExeDirFile("TaskTrackMcp.exe");
+                    profile.services.Add(pick(service));
+                }
                 profiles_.Add(pick(profile));
             }
         }
@@ -707,6 +715,7 @@ void TaskTrackTunnelManager::LoadProfiles()
     catch(CParser::Error) {
         profiles_.Clear();
         selected_profile_ = -1;
+        selected_service_ = -1;
     }
 }
 
@@ -716,7 +725,7 @@ void TaskTrackTunnelManager::SaveProfiles()
         return;
 
     ValueMap root;
-    root.Add("schema_version", 1);
+    root.Add("schema_version", 2);
     root.Add("dark_theme", dark_theme_);
 
     String selected_id;
@@ -727,7 +736,7 @@ void TaskTrackTunnelManager::SaveProfiles()
 
     ValueArray list;
     for(const McpTunnelProfile& item : profiles_)
-        list.Add(ProfileToValue(item));
+        list.Add(McpTunnelProfileToValue(item));
     root.Add("profiles", list);
     SaveFile(ProfileStorePath(), AsJSON(root, true));
 }
@@ -736,17 +745,29 @@ void TaskTrackTunnelManager::EnsureDefaultProfile()
 {
     if(profiles_.IsEmpty()) {
         McpTunnelProfile profile;
-        profile.id = "local-tasktrack";
-        profile.name = "Local TaskTrack";
+        profile.id = "local-machine";
+        profile.name = "Local machine";
+        profile.machine_id = McpTunnelDefaultMachineId();
         profile.runtime_path = options_.runtime_path.IsEmpty()
             ? GetExeDirFile("tunnel-client.exe") : options_.runtime_path;
-        profile.mcp_path = GetExeDirFile("TaskTrackMcp.exe");
         profile.tunnel_id = options_.tunnel_id;
+        profile.credential_source = MCP_TUNNEL_CREDENTIAL_WINDOWS;
+        profile.credential_ref = McpTunnelDefaultCredentialRef(profile.id);
+
+        McpTunnelService service;
+        service.id = "tasktrack";
+        service.name = "TaskTrack";
+        service.channel = "main";
+        service.command = GetExeDirFile("TaskTrackMcp.exe");
+        profile.services.Add(pick(service));
+
         profiles_.Add(pick(profile));
         selected_profile_ = 0;
     }
     if(selected_profile_ < 0 || selected_profile_ >= profiles_.GetCount())
         selected_profile_ = 0;
+    if(McpTunnelProfile *profile = CurrentProfile())
+        selected_service_ = profile->services.IsEmpty() ? -1 : 0;
 }
 
 McpTunnelProfile* TaskTrackTunnelManager::CurrentProfile()
@@ -764,7 +785,7 @@ const McpTunnelProfile* TaskTrackTunnelManager::CurrentProfile() const
 String TaskTrackTunnelManager::NewProfileId() const
 {
     for(int n = 1;; ++n) {
-        String id = Format("profile-%d", n);
+        String id = Format("machine-%d", n);
         bool used = false;
         for(const McpTunnelProfile& profile : profiles_)
             if(profile.id == id) {
@@ -797,12 +818,19 @@ void TaskTrackTunnelManager::LoadProfileIntoUi()
 
     loading_profile_ = true;
     profile_name_edit_.SetTextUtf8(profile->name);
+    machine_id_edit_.SetTextUtf8(profile->machine_id);
     tunnel_id_edit_.SetTextUtf8(profile->tunnel_id);
     runtime_path_edit_.SetTextUtf8(profile->runtime_path);
-    mcp_path_edit_.SetTextUtf8(profile->mcp_path);
+    credential_source_dropdown_.SelectByData(McpTunnelCredentialSourceId(profile->credential_source));
     auto_connect_toggle_.SetOn(profile->auto_connect);
     remember_toggle_.SetOn(profile->remember_profile);
     loading_profile_ = false;
+
+    if(selected_service_ < 0 || selected_service_ >= profile->services.GetCount())
+        selected_service_ = profile->services.IsEmpty() ? -1 : 0;
+    RebuildServiceDropdown();
+    LoadServiceIntoUi();
+    RefreshCredentialProjection();
     RefreshProjection();
 }
 
@@ -816,12 +844,16 @@ void TaskTrackTunnelManager::SaveProfileFromUi()
 
     profile->name = TrimBoth(profile_name_edit_.GetTextUtf8());
     if(profile->name.IsEmpty())
-        profile->name = "Unnamed profile";
+        profile->name = "Unnamed machine";
+    profile->machine_id = TrimBoth(machine_id_edit_.GetTextUtf8());
+    if(profile->machine_id.IsEmpty())
+        profile->machine_id = McpTunnelDefaultMachineId();
     profile->tunnel_id = TrimBoth(tunnel_id_edit_.GetTextUtf8());
     profile->runtime_path = TrimBoth(runtime_path_edit_.GetTextUtf8());
-    profile->mcp_path = TrimBoth(mcp_path_edit_.GetTextUtf8());
     profile->auto_connect = auto_connect_toggle_.IsOn();
     profile->remember_profile = remember_toggle_.IsOn();
+    if(profile->credential_ref.IsEmpty())
+        profile->credential_ref = McpTunnelDefaultCredentialRef(profile->id);
 
     SaveProfiles();
     RebuildProfileDropdown();
@@ -833,6 +865,7 @@ void TaskTrackTunnelManager::SelectProfileById(const String& id)
     for(int i = 0; i < profiles_.GetCount(); ++i)
         if(profiles_[i].id == id) {
             selected_profile_ = i;
+            selected_service_ = profiles_[i].services.IsEmpty() ? -1 : 0;
             LoadProfileIntoUi();
             SaveProfiles();
             return;
@@ -841,19 +874,32 @@ void TaskTrackTunnelManager::SelectProfileById(const String& id)
 
 void TaskTrackTunnelManager::NewProfile()
 {
-    if(runtime_started_) {
+    if(runtime_.IsStarted()) {
         Exclamation("Stop the current tunnel before changing profiles.");
         return;
     }
 
+    SaveServiceFromUi();
     SaveProfileFromUi();
+
     McpTunnelProfile profile;
     profile.id = NewProfileId();
-    profile.name = "New profile";
+    profile.name = "New machine profile";
+    profile.machine_id = McpTunnelDefaultMachineId();
     profile.runtime_path = GetExeDirFile("tunnel-client.exe");
-    profile.mcp_path = GetExeDirFile("TaskTrackMcp.exe");
+    profile.credential_source = MCP_TUNNEL_CREDENTIAL_WINDOWS;
+    profile.credential_ref = McpTunnelDefaultCredentialRef(profile.id);
+
+    McpTunnelService service;
+    service.id = "tasktrack";
+    service.name = "TaskTrack";
+    service.channel = "main";
+    service.command = GetExeDirFile("TaskTrackMcp.exe");
+    profile.services.Add(pick(service));
+
     profiles_.Add(pick(profile));
     selected_profile_ = profiles_.GetCount() - 1;
+    selected_service_ = 0;
     RebuildProfileDropdown();
     LoadProfileIntoUi();
     SaveProfiles();
@@ -861,25 +907,22 @@ void TaskTrackTunnelManager::NewProfile()
 
 void TaskTrackTunnelManager::DuplicateProfile()
 {
-    if(runtime_started_) {
+    if(runtime_.IsStarted()) {
         Exclamation("Stop the current tunnel before changing profiles.");
         return;
     }
 
+    SaveServiceFromUi();
     SaveProfileFromUi();
     const McpTunnelProfile *source = CurrentProfile();
     if(!source)
         return;
 
-    McpTunnelProfile profile;
-    profile.id = NewProfileId();
-    profile.name = source->name + " copy";
-    profile.runtime_path = source->runtime_path;
-    profile.mcp_path = source->mcp_path;
-    profile.auto_connect = false;
-    profile.remember_profile = source->remember_profile;
+    String id = NewProfileId();
+    McpTunnelProfile profile = McpTunnelDuplicateProfile(*source, id, source->name + " copy");
     profiles_.Add(pick(profile));
     selected_profile_ = profiles_.GetCount() - 1;
+    selected_service_ = profiles_[selected_profile_].services.IsEmpty() ? -1 : 0;
     RebuildProfileDropdown();
     LoadProfileIntoUi();
     SaveProfiles();
@@ -887,22 +930,231 @@ void TaskTrackTunnelManager::DuplicateProfile()
 
 void TaskTrackTunnelManager::DeleteProfile()
 {
-    if(runtime_started_) {
+    if(runtime_.IsStarted()) {
         Exclamation("Stop the current tunnel before changing profiles.");
         return;
     }
     if(profiles_.GetCount() <= 1) {
-        Exclamation("At least one tunnel profile must remain.");
+        Exclamation("At least one machine profile must remain.");
         return;
     }
-    if(!PromptYesNo("Delete the selected tunnel profile?"))
+    if(!PromptYesNo("Delete the selected machine profile?\n\nA Windows Credential Manager key dedicated to this profile will also be removed."))
         return;
 
+    String credential_error;
+    McpTunnelDeleteCredential(profiles_[selected_profile_], credential_error);
     profiles_.Remove(selected_profile_);
     selected_profile_ = min(selected_profile_, profiles_.GetCount() - 1);
+    selected_service_ = profiles_[selected_profile_].services.IsEmpty() ? -1 : 0;
     RebuildProfileDropdown();
     LoadProfileIntoUi();
     SaveProfiles();
+}
+
+McpTunnelService* TaskTrackTunnelManager::CurrentService()
+{
+    McpTunnelProfile *profile = CurrentProfile();
+    return profile && selected_service_ >= 0 && selected_service_ < profile->services.GetCount()
+        ? &profile->services[selected_service_] : nullptr;
+}
+
+const McpTunnelService* TaskTrackTunnelManager::CurrentService() const
+{
+    const McpTunnelProfile *profile = CurrentProfile();
+    return profile && selected_service_ >= 0 && selected_service_ < profile->services.GetCount()
+        ? &profile->services[selected_service_] : nullptr;
+}
+
+String TaskTrackTunnelManager::NewServiceId(const String& base) const
+{
+    const McpTunnelProfile *profile = CurrentProfile();
+    if(!profile)
+        return base;
+    for(int n = 1;; ++n) {
+        String id = n == 1 ? base : Format("%s-%d", base, n);
+        bool used = false;
+        for(const McpTunnelService& service : profile->services)
+            if(service.id == id) {
+                used = true;
+                break;
+            }
+        if(!used)
+            return id;
+    }
+}
+
+String TaskTrackTunnelManager::NewServiceChannel(const String& base) const
+{
+    const McpTunnelProfile *profile = CurrentProfile();
+    if(!profile)
+        return base;
+    for(int n = 1;; ++n) {
+        String channel = n == 1 ? base : Format("%s-%d", base, n);
+        bool used = false;
+        for(const McpTunnelService& service : profile->services)
+            if(service.channel == channel) {
+                used = true;
+                break;
+            }
+        if(!used)
+            return channel;
+    }
+}
+
+void TaskTrackTunnelManager::RebuildServiceDropdown()
+{
+    loading_service_ = true;
+    service_dropdown_.UseInternalModel();
+    UiListModel& model = service_dropdown_.Model();
+    model.Clear();
+    const McpTunnelProfile *profile = CurrentProfile();
+    if(profile) {
+        for(const McpTunnelService& service : profile->services) {
+            String label = service.name;
+            if(!service.enabled)
+                label << " (disabled)";
+            model.Add(label, service.id);
+        }
+    }
+    if(const McpTunnelService *service = CurrentService())
+        service_dropdown_.SelectByData(service->id);
+    loading_service_ = false;
+}
+
+void TaskTrackTunnelManager::LoadServiceIntoUi()
+{
+    const McpTunnelService *service = CurrentService();
+    loading_service_ = true;
+    if(service) {
+        service_name_edit_.SetTextUtf8(service->name);
+        service_id_edit_.SetTextUtf8(service->id);
+        service_channel_edit_.SetTextUtf8(service->channel);
+        service_command_edit_.SetTextUtf8(service->command);
+        service_enabled_toggle_.SetOn(service->enabled);
+    }
+    else {
+        service_name_edit_.SetTextUtf8("");
+        service_id_edit_.SetTextUtf8("");
+        service_channel_edit_.SetTextUtf8("");
+        service_command_edit_.SetTextUtf8("");
+        service_enabled_toggle_.SetOn(false);
+    }
+    loading_service_ = false;
+}
+
+void TaskTrackTunnelManager::SaveServiceFromUi()
+{
+    if(loading_service_)
+        return;
+    McpTunnelService *service = CurrentService();
+    if(!service)
+        return;
+
+    String original_id = service->id;
+    service->name = TrimBoth(service_name_edit_.GetTextUtf8());
+    if(service->name.IsEmpty())
+        service->name = "Unnamed service";
+    service->id = TrimBoth(service_id_edit_.GetTextUtf8());
+    if(service->id.IsEmpty())
+        service->id = original_id;
+    service->channel = TrimBoth(service_channel_edit_.GetTextUtf8());
+    service->command = TrimBoth(service_command_edit_.GetTextUtf8());
+    service->enabled = service_enabled_toggle_.IsOn();
+
+    SaveProfiles();
+    RebuildServiceDropdown();
+    RefreshProjection();
+}
+
+void TaskTrackTunnelManager::SelectServiceById(const String& id)
+{
+    McpTunnelProfile *profile = CurrentProfile();
+    if(!profile)
+        return;
+    for(int i = 0; i < profile->services.GetCount(); ++i)
+        if(profile->services[i].id == id) {
+            selected_service_ = i;
+            LoadServiceIntoUi();
+            return;
+        }
+}
+
+void TaskTrackTunnelManager::NewService()
+{
+    if(runtime_.IsStarted()) {
+        Exclamation("Stop the current tunnel before changing services.");
+        return;
+    }
+    McpTunnelProfile *profile = CurrentProfile();
+    if(!profile)
+        return;
+
+    SaveServiceFromUi();
+    McpTunnelService service;
+    service.id = NewServiceId("service");
+    service.name = "New MCP service";
+    service.channel = NewServiceChannel("service");
+    service.enabled = false;
+    profile->services.Add(pick(service));
+    selected_service_ = profile->services.GetCount() - 1;
+    RebuildServiceDropdown();
+    LoadServiceIntoUi();
+    SaveProfiles();
+}
+
+void TaskTrackTunnelManager::DuplicateService()
+{
+    if(runtime_.IsStarted()) {
+        Exclamation("Stop the current tunnel before changing services.");
+        return;
+    }
+    McpTunnelProfile *profile = CurrentProfile();
+    const McpTunnelService *source = CurrentService();
+    if(!profile || !source)
+        return;
+
+    SaveServiceFromUi();
+    source = CurrentService();
+    McpTunnelService service;
+    service.id = NewServiceId(source->id + "-copy");
+    service.name = source->name + " copy";
+    service.channel = NewServiceChannel(source->channel + "-copy");
+    service.command = source->command;
+    service.enabled = false;
+    profile->services.Add(pick(service));
+    selected_service_ = profile->services.GetCount() - 1;
+    RebuildServiceDropdown();
+    LoadServiceIntoUi();
+    SaveProfiles();
+}
+
+void TaskTrackTunnelManager::DeleteService()
+{
+    if(runtime_.IsStarted()) {
+        Exclamation("Stop the current tunnel before changing services.");
+        return;
+    }
+    McpTunnelProfile *profile = CurrentProfile();
+    if(!profile || selected_service_ < 0)
+        return;
+    if(profile->services.GetCount() <= 1) {
+        Exclamation("At least one MCP service must remain.");
+        return;
+    }
+    if(!PromptYesNo("Delete the selected MCP service binding?"))
+        return;
+
+    bool was_main = profile->services[selected_service_].channel == "main";
+    profile->services.Remove(selected_service_);
+    selected_service_ = min(selected_service_, profile->services.GetCount() - 1);
+    if(was_main && selected_service_ >= 0) {
+        profile->services[selected_service_].channel = "main";
+        profile->services[selected_service_].enabled = true;
+    }
+    RebuildServiceDropdown();
+    LoadServiceIntoUi();
+    SaveProfiles();
+    RefreshProjection();
 }
 
 void TaskTrackTunnelManager::BrowseRuntime()
@@ -918,263 +1170,172 @@ void TaskTrackTunnelManager::BrowseRuntime()
     }
 }
 
-void TaskTrackTunnelManager::BrowseMcp()
+void TaskTrackTunnelManager::BrowseServiceCommand()
 {
     FileSel selector;
     selector.Type("Executable", "*.exe");
-    String current = mcp_path_edit_.GetTextUtf8();
+    String current = service_command_edit_.GetTextUtf8();
     if(!current.IsEmpty())
         selector.Set(current);
-    if(selector.ExecuteOpen("Choose TaskTrack MCP")) {
-        mcp_path_edit_.SetTextUtf8(~selector);
-        SaveProfileFromUi();
+    if(selector.ExecuteOpen("Choose MCP server executable")) {
+        service_command_edit_.SetTextUtf8(~selector);
+        SaveServiceFromUi();
     }
 }
 
-String TaskTrackTunnelManager::RuntimeMcpCommand() const
+void TaskTrackTunnelManager::RefreshCredentialProjection()
 {
     const McpTunnelProfile *profile = CurrentProfile();
-    String command = profile ? profile->mcp_path : String();
-    command.Replace("\\", "/");
-    if(command.Find(' ') >= 0 || command.Find('\t') >= 0)
-        command = "\"" + command + "\"";
-    return command;
-}
-
-bool TaskTrackTunnelManager::LoadHealthUrl()
-{
-    if(health_url_file_.IsEmpty() || !FileExists(health_url_file_))
-        return false;
-
-    String url = TrimBoth(LoadFile(health_url_file_));
-    if(url.IsEmpty())
-        return false;
-    while(url.EndsWith("/"))
-        url = url.Left(url.GetCount() - 1);
-    health_url_ = url;
-    return true;
-}
-
-void TaskTrackTunnelManager::DrainRuntimeOutput()
-{
-    if(!runtime_started_)
+    if(!profile)
         return;
-    for(int i = 0; i < 8; ++i) {
-        String out, err;
-        runtime_process_.Read2(out, err);
-        if(out.IsEmpty() && err.IsEmpty())
-            break;
-        runtime_output_ << out << err;
-        if(runtime_output_.GetCount() > 6000)
-            runtime_output_ = runtime_output_.Right(6000);
-    }
+
+    loading_profile_ = true;
+    credential_source_dropdown_.SelectByData(McpTunnelCredentialSourceId(profile->credential_source));
+    loading_profile_ = false;
+
+    String error;
+    bool available = McpTunnelCredentialExists(*profile, error);
+    credential_status_.ClearSpans().EnableRich(true)
+                      .AddBulletSpan(available ? OkColor() : DangerColor(), DPI(7))
+                      .AddTextSpan(available ? "  Available" : "  Not set",
+                                   available ? OkColor() : DangerColor(), true);
+
+    bool windows_source = profile->credential_source == MCP_TUNNEL_CREDENTIAL_WINDOWS;
+    credential_set_button_.Enable(windows_source && !runtime_.IsStarted());
+    credential_clear_button_.Enable(windows_source && available && !runtime_.IsStarted());
+    credential_note_.SetText(windows_source
+        ? "Stored by Windows Credential Manager for this profile. The secret is passed only to the tunnel child process."
+        : "Compatibility mode: CONTROL_PLANE_API_KEY must exist in the environment before launch.");
 }
 
-String TaskTrackTunnelManager::RuntimeDiagnostics()
+void TaskTrackTunnelManager::SetCredential()
 {
-    String out = runtime_output_;
-    String log = runtime_log_file_.IsEmpty() ? String() : LoadFile(runtime_log_file_);
-    if(!IsNull(log) && !log.IsEmpty()) {
-        if(log.GetCount() > 3000)
-            log = log.Right(3000);
-        if(!out.IsEmpty())
-            out << "\n";
-        out << log;
+    McpTunnelProfile *profile = CurrentProfile();
+    if(!profile || profile->credential_source != MCP_TUNNEL_CREDENTIAL_WINDOWS)
+        return;
+
+    ApiKeyDialog dialog;
+    if(dialog.Run() != IDOK)
+        return;
+
+    String secret = dialog.GetSecret();
+    String error;
+    bool ok = McpTunnelWriteCredential(*profile, secret, error);
+    secret.Clear();
+    if(!ok) {
+        Exclamation(error);
+        return;
     }
-    return out;
+    RefreshCredentialProjection();
+    RefreshProjection();
 }
 
-bool TaskTrackTunnelManager::ProbeHealth(const String& suffix, int& status, String& error)
+void TaskTrackTunnelManager::ClearCredential()
 {
-    status = 0;
-    error.Clear();
-    if(health_url_.IsEmpty() && !LoadHealthUrl()) {
-        error = "Health URL is not available yet.";
-        return false;
-    }
+    McpTunnelProfile *profile = CurrentProfile();
+    if(!profile || profile->credential_source != MCP_TUNNEL_CREDENTIAL_WINDOWS)
+        return;
+    if(!PromptYesNo("Remove the stored tunnel API key for this machine profile?"))
+        return;
 
-    HttpRequest request(~(health_url_ + suffix));
-    request.Timeout(2000);
-    request.Execute();
-    status = request.GetStatusCode();
-    if(request.IsSuccess())
-        return true;
-    error = request.GetErrorDesc();
-    if(error.IsEmpty())
-        error = Format("HTTP %d %s", status, request.GetReasonPhrase());
-    return false;
+    String error;
+    if(!McpTunnelDeleteCredential(*profile, error)) {
+        Exclamation(error);
+        return;
+    }
+    RefreshCredentialProjection();
+    RefreshProjection();
 }
 
 void TaskTrackTunnelManager::ConnectRuntime()
 {
+    SaveServiceFromUi();
     SaveProfileFromUi();
     const McpTunnelProfile *profile = CurrentProfile();
     if(!profile)
         return;
 
-    last_error_.Clear();
-
-    if(profile->tunnel_id.IsEmpty()) {
-        last_error_ = "Tunnel ID is not set.";
-        RefreshProjection();
-        return;
-    }
-    if(!FileExists(profile->runtime_path)) {
-        last_error_ = "The OpenAI tunnel runtime executable was not found.";
-        RefreshProjection();
-        return;
-    }
-    if(!FileExists(profile->mcp_path)) {
-        last_error_ = "TaskTrackMcp.exe was not found.";
-        RefreshProjection();
-        return;
-    }
-    if(GetEnv("CONTROL_PLANE_API_KEY").IsEmpty()) {
-        last_error_ = "CONTROL_PLANE_API_KEY is not set.";
-        RefreshProjection();
-        return;
-    }
-    if(runtime_started_ && runtime_process_.IsRunning()) {
+    if(runtime_.IsStarted()) {
         RefreshRuntimeStatus(true);
         return;
     }
 
-    runtime_process_.Kill();
-    runtime_started_ = false;
-    runtime_healthy_ = false;
-    runtime_ready_ = false;
-    health_url_.Clear();
-    runtime_output_.Clear();
+    String validation_error;
+    if(!McpTunnelValidateProfile(*profile, validation_error)) {
+        Exclamation(validation_error);
+        RefreshProjection();
+        return;
+    }
 
-    health_url_file_ = GetTempFileName("tasktrack-tunnel-health-");
-    SaveFile(health_url_file_, "");
-    runtime_log_file_ = GetTempFileName("tasktrack-tunnel-runtime-");
-    DeleteFile(runtime_log_file_);
+    const McpTunnelService *tasktrack = TaskTrackService();
+    if(tasktrack && tasktrack->enabled && !tasktrack->command.IsEmpty()
+       && tasktrack->command.Find(' ') < 0 && !FileExists(tasktrack->command)) {
+        Exclamation("TaskTrackMcp.exe was not found at the configured service command.");
+        return;
+    }
+
+    String secret, credential_error;
+    if(!McpTunnelReadCredential(*profile, secret, credential_error)) {
+        Exclamation(credential_error);
+        RefreshCredentialProjection();
+        return;
+    }
 
     String activity_error;
     TaskTrackTunnelResetActivity(activity_error);
 
-    String old_remote = GetEnv("TASKTRACK_TUNNEL_REMOTE");
-    SetEnv("TASKTRACK_TUNNEL_REMOTE", "1");
-
-    Vector<String> args;
-    args.Add("run");
-    args.Add("--control-plane.api-key");
-    args.Add("env:CONTROL_PLANE_API_KEY");
-    args.Add("--control-plane.tunnel-id");
-    args.Add(profile->tunnel_id);
-    args.Add("--mcp.command");
-    args.Add(RuntimeMcpCommand());
-    args.Add("--health.listen-addr");
-    args.Add("127.0.0.1:0");
-    args.Add("--health.url-file");
-    args.Add(health_url_file_);
-    args.Add("--log.file");
-    args.Add(runtime_log_file_);
-
-    bool started = runtime_process_.Start(~profile->runtime_path, args);
-    SetEnv("TASKTRACK_TUNNEL_REMOTE", old_remote);
-
-    if(!started) {
-        last_error_ = "Unable to start the OpenAI tunnel runtime.";
-        RefreshProjection();
-        return;
-    }
-
-    runtime_started_ = true;
+    bool started = runtime_.Start(*profile, secret);
+    secret.Clear();
     RefreshProjection();
 
-    for(int i = 0; i < 40; ++i) {
-        DrainRuntimeOutput();
-        if(LoadHealthUrl() || !runtime_process_.IsRunning())
-            break;
-        Sleep(100);
+    if(!started) {
+        String message = runtime_.GetLastError();
+        String diagnostics = runtime_.GetDiagnostics();
+        if(!diagnostics.IsEmpty())
+            message << "\n\n" << diagnostics;
+        Exclamation(message);
     }
-
-    RefreshRuntimeStatus(false);
 }
 
 void TaskTrackTunnelManager::RefreshRuntimeStatus(bool show_dialog)
 {
-    DrainRuntimeOutput();
-
-    bool running = runtime_started_ && runtime_process_.IsRunning();
-    if(!running) {
-        if(runtime_started_) {
-            String output;
-            int code = runtime_process_.Finish(output);
-            runtime_output_ << output;
-            last_error_ = Format("Tunnel runtime exited with code %d.", code);
-            runtime_process_.Kill();
-        }
-        runtime_started_ = false;
-        runtime_healthy_ = false;
-        runtime_ready_ = false;
-        RefreshProjection();
-
-        if(show_dialog && !last_error_.IsEmpty()) {
-            String message = last_error_;
-            String diagnostics = RuntimeDiagnostics();
-            if(!diagnostics.IsEmpty())
-                message << "\n\n" << diagnostics;
-            PromptOK(message);
-        }
-        return;
-    }
-
-    LoadHealthUrl();
-    int health_status = 0, ready_status = 0;
-    String health_error, ready_error;
-    runtime_healthy_ = ProbeHealth("/healthz", health_status, health_error);
-    runtime_ready_ = ProbeHealth("/readyz", ready_status, ready_error);
-
-    if(runtime_ready_)
-        last_error_.Clear();
-    else if(!runtime_healthy_ && !health_error.IsEmpty())
-        last_error_ = health_error;
-
+    runtime_.Refresh();
     RefreshProjection();
-
     if(show_dialog) {
         String message = BuildDiagnostics();
-        if(!ready_error.IsEmpty() && !runtime_ready_)
-            message << "\nreadyz: " << ready_error;
+        String diagnostics = runtime_.GetDiagnostics();
+        if(!diagnostics.IsEmpty())
+            message << "\n\nRuntime output:\n" << diagnostics;
         PromptOK(message);
     }
 }
 
 void TaskTrackTunnelManager::StopRuntime()
 {
-    if(runtime_started_)
-        runtime_process_.Kill();
-    runtime_started_ = false;
-    runtime_healthy_ = false;
-    runtime_ready_ = false;
-    health_url_.Clear();
-    last_error_.Clear();
+    runtime_.Stop();
     RefreshProjection();
 }
 
 void TaskTrackTunnelManager::OpenHealth()
 {
-    if(health_url_.IsEmpty())
+    if(runtime_.GetHealthUrl().IsEmpty())
         RefreshRuntimeStatus(false);
-    if(health_url_.IsEmpty()) {
+    if(runtime_.GetHealthUrl().IsEmpty()) {
         Exclamation("The tunnel runtime has not reported its health URL yet.");
         return;
     }
-    LaunchWebBrowser(health_url_ + "/readyz");
+    LaunchWebBrowser(runtime_.GetHealthUrl() + "/readyz");
 }
 
-TaskTrackTunnelManager::RuntimeState TaskTrackTunnelManager::GetRuntimeState() const
+const McpTunnelService* TaskTrackTunnelManager::TaskTrackService() const
 {
-    if(!last_error_.IsEmpty() && !runtime_ready_)
-        return STATE_ERROR;
-    if(runtime_ready_)
-        return STATE_READY;
-    if(runtime_started_)
-        return STATE_CONNECTING;
-    return STATE_STOPPED;
+    const McpTunnelProfile *profile = CurrentProfile();
+    if(!profile)
+        return nullptr;
+    for(const McpTunnelService& service : profile->services)
+        if(service.id == "tasktrack")
+            return &service;
+    return nullptr;
 }
 
 void TaskTrackTunnelManager::RefreshProjection()
