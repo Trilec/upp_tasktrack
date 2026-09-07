@@ -61,6 +61,12 @@ CONSOLE_APP_MAIN
 
     McpTunnelProfile profile = MakeProfile();
     String error;
+    t.Check(McpTunnelCommandForExecutable("C:/Program Files/TaskTrack/TaskTrackMcp.exe") ==
+            "\"C:/Program Files/TaskTrack/TaskTrackMcp.exe\"",
+            "executable command with spaces was not quoted");
+    t.Check(McpTunnelCommandForExecutable("C:\\TaskTrack\\TaskTrackMcp.exe") ==
+            "C:/TaskTrack/TaskTrackMcp.exe",
+            "executable command did not normalize Windows separators");
     t.Check(McpTunnelValidateProfile(profile, error), "valid two-service machine profile rejected: " + error);
 
     Vector<String> args = McpTunnelBuildRunArgs(profile, "health.url", "runtime.log");
