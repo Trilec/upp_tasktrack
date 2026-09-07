@@ -23,18 +23,31 @@ For the current bring-up candidate:
 TaskTrackMcp.exe --version
 ```
 
-reports the unified build identity plus both schemas:
+reports both the human-readable build and the identity of the exact executable
+that is running:
 
 ```text
 TaskTrack MCP
-version 0.3.1
+version 0.3.2-rc2
 task core version 0.2.1
 task schema version 2
 dashboard schema version 1
+executable sha256 <64-hex>
+bundle verified true|false
+bundle build <build from adjacent manifest.json>
+bundle source commit <verified source SHA from adjacent manifest.json>
 MCP protocol 2026-07-28
 ```
 
-The MCP `version` tool exposes the same build identity and schema fields.
+The MCP `version` tool exposes the same runtime identity in structured fields:
+`build_version`, `executable_sha256`, `bundle_verified`, `bundle_build`
+and `bundle_source_commit`.
+
+For a staged release/acceptance binary, `bundle_verified` must be true and the
+hash/source commit must match `bin/<platform>/manifest.json`. A stale host
+process can therefore be detected even when an older executable has the same
+MCP registration name. Restart the host's TaskTrack MCP connection after
+installing/staging a newer binary.
 
 ## Human-decision tools
 
