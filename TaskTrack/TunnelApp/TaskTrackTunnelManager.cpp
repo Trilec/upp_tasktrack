@@ -25,7 +25,7 @@ public:
 
     ApiKeyDialog()
     {
-        Title("Store OpenAI tunnel key");
+        Title("Set session tunnel key");
         SetRect(0, 0, DPI(470), DPI(150));
         SetMinSize(Size(DPI(430), DPI(150)));
         Add(message_);
@@ -33,9 +33,9 @@ public:
         Add(save_);
         Add(cancel_);
 
-        message_.SetText("The key is stored in Windows Credential Manager and is never written to the TaskTrack profile.");
+        message_.SetText("The key is kept only in memory for this manager session and is never written to the machine profile.");
         secret_.SetPlaceholder("OpenAI runtime API key").EnableVisibilityIcon(true);
-        save_.SetText("Store key");
+        save_.SetText("Use key");
         cancel_.SetText("Cancel");
         save_.WhenAction = [=] {
             if(TrimBoth(secret_.GetTextUtf8()).IsEmpty()) {
@@ -121,7 +121,7 @@ TaskTrackTunnelManager::TaskTrackTunnelManager(const TaskTrackTunnelManagerOptio
     const McpTunnelProfile *profile = CurrentProfile();
     String credential_error;
     if(profile && profile->auto_connect && !profile->tunnel_id.IsEmpty()
-       && McpTunnelCredentialExists(*profile, credential_error))
+       && CredentialAvailable(credential_error))
         PostCallback([=] { ConnectRuntime(); });
 }
 
@@ -294,11 +294,11 @@ void TaskTrackTunnelManager::BuildSetup()
 
     credential_source_dropdown_.UseInternalModel();
     credential_source_dropdown_.Clear();
-    credential_source_dropdown_.Add("Windows Credential Manager", "windows_credential_manager");
+    credential_source_dropdown_.Add("Session key (memory only)", "session");
     credential_source_dropdown_.Add("Environment variable", "environment");
     credential_set_button_.SetText("Set key");
-    credential_clear_button_.SetText("Remove");
-    credential_note_.SetText("Recommended: store the key in Windows Credential Manager. The profile stores only its credential reference.");
+    credential_clear_button_.SetText("Clear");
+    credential_note_.SetText("Testing only: use a session key or CONTROL_PLANE_API_KEY. Durable cross-platform authentication is intentionally not decided yet.");
 
     runtime_path_label_.SetText("Runtime executable");
     runtime_browse_button_.SetText("Browse");
@@ -398,8 +398,6 @@ void TaskTrackTunnelManager::Wire()
         if(!profile)
             return;
         profile->credential_source = McpTunnelCredentialSourceFromId(AsString(value));
-        if(profile->credential_ref.IsEmpty())
-            profile->credential_ref = McpTunnelDefaultCredentialRef(profile->id);
         SaveProfiles();
         RefreshCredentialProjection();
         RefreshProjection();
@@ -751,8 +749,7 @@ void TaskTrackTunnelManager::EnsureDefaultProfile()
         profile.runtime_path = options_.runtime_path.IsEmpty()
             ? GetExeDirFile("tunnel-client.exe") : options_.runtime_path;
         profile.tunnel_id = options_.tunnel_id;
-        profile.credential_source = MCP_TUNNEL_CREDENTIAL_WINDOWS;
-        profile.credential_ref = McpTunnelDefaultCredentialRef(profile.id);
+        profile.credential_source = MCP_TUNNEL_CREDENTIAL_SESSION;
 
         McpTunnelService service;
         service.id = "tasktrack";
@@ -852,9 +849,6 @@ void TaskTrackTunnelManager::SaveProfileFromUi()
     profile->runtime_path = TrimBoth(runtime_path_edit_.GetTextUtf8());
     profile->auto_connect = auto_connect_toggle_.IsOn();
     profile->remember_profile = remember_toggle_.IsOn();
-    if(profile->credential_ref.IsEmpty())
-        profile->credential_ref = McpTunnelDefaultCredentialRef(profile->id);
-
     SaveProfiles();
     RebuildProfileDropdown();
     RefreshProjection();
@@ -887,8 +881,7 @@ void TaskTrackTunnelManager::NewProfile()
     profile.name = "New machine profile";
     profile.machine_id = McpTunnelDefaultMachineId();
     profile.runtime_path = GetExeDirFile("tunnel-client.exe");
-    profile.credential_source = MCP_TUNNEL_CREDENTIAL_WINDOWS;
-    profile.credential_ref = McpTunnelDefaultCredentialRef(profile.id);
+    profile.credential_source = MCP_TUNNEL_CREDENTIAL_SESSION;
 
     McpTunnelService service;
     service.id = "tasktrack";
@@ -938,11 +931,9 @@ void TaskTrackTunnelManager::DeleteProfile()
         Exclamation("At least one machine profile must remain.");
         return;
     }
-    if(!PromptYesNo("Delete the selected machine profile?\n\nA Windows Credential Manager key dedicated to this profile will also be removed."))
+    if(!PromptYesNo("Delete the selected machine profile?"))
         return;
 
-    String credential_error;
-    McpTunnelDeleteCredential(profiles_[selected_profile_], credential_error);
     profiles_.Remove(selected_profile_);
     selected_profile_ = min(selected_profile_, profiles_.GetCount() - 1);
     selected_service_ = profiles_[selected_profile_].services.IsEmpty() ? -1 : 0;
@@ -1185,6 +1176,49 @@ void TaskTrackTunnelManager::BrowseServiceCommand()
     }
 }
 
+bool TaskTrackTunnelManager::CredentialAvailable(String& error) const
+{
+    error.Clear();
+    const McpTunnelProfile *profile = CurrentProfile();
+    if(!profile) {
+        error = "No machine profile is selected.";
+        return false;
+    }
+
+    if(profile->credential_source == MCP_TUNNEL_CREDENTIAL_ENVIRONMENT) {
+        if(GetEnv("CONTROL_PLANE_API_KEY").IsEmpty()) {
+            error = "CONTROL_PLANE_API_KEY is not set.";
+            return false;
+        }
+        return true;
+    }
+
+    if(session_api_key_.IsEmpty()) {
+        error = "No session tunnel key is set.";
+        return false;
+    }
+    return true;
+}
+
+bool TaskTrackTunnelManager::ReadCredential(String& secret, String& error) const
+{
+    secret.Clear();
+    if(!CredentialAvailable(error))
+        return false;
+
+    const McpTunnelProfile *profile = CurrentProfile();
+    if(profile->credential_source == MCP_TUNNEL_CREDENTIAL_ENVIRONMENT)
+        secret = GetEnv("CONTROL_PLANE_API_KEY");
+    else
+        secret = session_api_key_;
+
+    if(secret.IsEmpty()) {
+        error = "Tunnel credential is empty.";
+        return false;
+    }
+    return true;
+}
+
 void TaskTrackTunnelManager::RefreshCredentialProjection()
 {
     const McpTunnelProfile *profile = CurrentProfile();
@@ -1196,38 +1230,31 @@ void TaskTrackTunnelManager::RefreshCredentialProjection()
     loading_profile_ = false;
 
     String error;
-    bool available = McpTunnelCredentialExists(*profile, error);
+    bool available = CredentialAvailable(error);
     credential_status_.ClearSpans().EnableRich(true)
                       .AddBulletSpan(available ? OkColor() : DangerColor(), DPI(7))
                       .AddTextSpan(available ? "  Available" : "  Not set",
                                    available ? OkColor() : DangerColor(), true);
 
-    bool windows_source = profile->credential_source == MCP_TUNNEL_CREDENTIAL_WINDOWS;
-    credential_set_button_.Enable(windows_source && !runtime_.IsStarted());
-    credential_clear_button_.Enable(windows_source && available && !runtime_.IsStarted());
-    credential_note_.SetText(windows_source
-        ? "Stored by Windows Credential Manager. A short-lived launch file is consumed by the tunnel runtime and is not inherited by MCP services."
-        : "Compatibility mode: CONTROL_PLANE_API_KEY must exist in the environment before launch.");
+    bool session_source = profile->credential_source == MCP_TUNNEL_CREDENTIAL_SESSION;
+    credential_set_button_.Enable(session_source && !runtime_.IsStarted());
+    credential_clear_button_.Enable(session_source && available && !runtime_.IsStarted());
+    credential_note_.SetText(session_source
+        ? "Session key is memory-only and disappears when this manager closes. It is sufficient for tunnel validation, not the final security design."
+        : "Testing/automation mode: CONTROL_PLANE_API_KEY is read at launch. Durable cross-platform authentication remains deliberately undecided.");
 }
 
 void TaskTrackTunnelManager::SetCredential()
 {
     McpTunnelProfile *profile = CurrentProfile();
-    if(!profile || profile->credential_source != MCP_TUNNEL_CREDENTIAL_WINDOWS)
+    if(!profile || profile->credential_source != MCP_TUNNEL_CREDENTIAL_SESSION)
         return;
 
     ApiKeyDialog dialog;
     if(dialog.Run() != IDOK)
         return;
 
-    String secret = dialog.GetSecret();
-    String error;
-    bool ok = McpTunnelWriteCredential(*profile, secret, error);
-    secret.Clear();
-    if(!ok) {
-        Exclamation(error);
-        return;
-    }
+    session_api_key_ = dialog.GetSecret();
     RefreshCredentialProjection();
     RefreshProjection();
 }
@@ -1235,16 +1262,10 @@ void TaskTrackTunnelManager::SetCredential()
 void TaskTrackTunnelManager::ClearCredential()
 {
     McpTunnelProfile *profile = CurrentProfile();
-    if(!profile || profile->credential_source != MCP_TUNNEL_CREDENTIAL_WINDOWS)
-        return;
-    if(!PromptYesNo("Remove the stored tunnel API key for this machine profile?"))
+    if(!profile || profile->credential_source != MCP_TUNNEL_CREDENTIAL_SESSION)
         return;
 
-    String error;
-    if(!McpTunnelDeleteCredential(*profile, error)) {
-        Exclamation(error);
-        return;
-    }
+    session_api_key_.Clear();
     RefreshCredentialProjection();
     RefreshProjection();
 }
@@ -1277,7 +1298,7 @@ void TaskTrackTunnelManager::ConnectRuntime()
     }
 
     String secret, credential_error;
-    if(!McpTunnelReadCredential(*profile, secret, credential_error)) {
+    if(!ReadCredential(secret, credential_error)) {
         Exclamation(credential_error);
         RefreshCredentialProjection();
         return;
@@ -1573,7 +1594,7 @@ String TaskTrackTunnelManager::BuildDiagnostics() const
     String activity_error;
     bool has_activity = TaskTrackTunnelLoadActivity(activity, activity_error);
     String credential_error;
-    bool credential_available = profile && McpTunnelCredentialExists(*profile, credential_error);
+    bool credential_available = profile && CredentialAvailable(credential_error);
 
     String out;
     out << "MCP Tunnel diagnostics\n"
