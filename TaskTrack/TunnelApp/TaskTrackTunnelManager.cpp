@@ -204,11 +204,13 @@ void TaskTrackTunnelManager::BuildUi()
     footer_.Add(footer_build_);
     footer_.Add(footer_mcp_);
     footer_.Add(footer_dashboard_);
+    footer_.Add(footer_saved_);
     footer_.Add(footer_help_);
     footer_.Add(footer_copy_);
     footer_build_.SetText("TaskTrack " + TaskTrackBuildVersion());
     footer_mcp_.SetText("MCP schema 2");
     footer_dashboard_.SetText("Dashboard schema 1");
+    RefreshSaveProjection();
     footer_help_.SetText("Help");
     footer_copy_.SetText("Copy diagnostics");
 }
@@ -619,6 +621,7 @@ void TaskTrackTunnelManager::ApplyTheme()
     footer_build_.SetCustomStyle(MakeLabelStyle(SoftColor(), 9));
     footer_mcp_.SetCustomStyle(MakeLabelStyle(SoftColor(), 9));
     footer_dashboard_.SetCustomStyle(MakeLabelStyle(SoftColor(), 9));
+    footer_saved_.SetCustomStyle(MakeLabelStyle(profile_save_failed_ ? DangerColor() : SoftColor(), 9));
 
     UiToolButton::Style utility_style = UiTheme::ResolveToolButton(UiToolButtonRole::Standard);
     utility_style.metrics.radius = DPI(7);
@@ -702,6 +705,10 @@ void TaskTrackTunnelManager::LoadProfiles()
         if(!root.Is<ValueMap>())
             return;
 
+        profile_store_loaded_ = true;
+        profile_save_failed_ = false;
+        profile_save_error_.Clear();
+
         int schema_version = IsNull(root["schema_version"]) ? 1 : (int)root["schema_version"];
         dark_theme_ = !IsNull(root["dark_theme"]) && (bool)root["dark_theme"];
         String selected_id = AsString(root["selected_profile"]);
@@ -756,7 +763,30 @@ void TaskTrackTunnelManager::SaveProfiles()
     for(const McpTunnelProfile& item : profiles_)
         list.Add(McpTunnelProfileToValue(item));
     root.Add("profiles", list);
-    SaveFile(ProfileStorePath(), AsJSON(root, true));
+
+    String path = ProfileStorePath();
+    bool ok = SaveFile(path, AsJSON(root, true));
+    profile_store_loaded_ = ok;
+    profile_save_failed_ = !ok;
+    profile_save_error_ = ok ? String() : "Unable to write tunnel profile store.";
+    RefreshSaveProjection();
+}
+
+void TaskTrackTunnelManager::RefreshSaveProjection()
+{
+    String text;
+    if(profile_save_failed_)
+        text = "Auto-save  •  SAVE FAILED";
+    else if(profile_store_loaded_)
+        text = "Auto-save  •  Saved to disk";
+    else
+        text = "Auto-save  •  On";
+
+    footer_saved_.SetText(text);
+    String tip = ProfileStorePath();
+    if(profile_save_failed_ && !profile_save_error_.IsEmpty())
+        tip << "\n" << profile_save_error_;
+    footer_saved_.Tip(tip);
 }
 
 void TaskTrackTunnelManager::EnsureDefaultProfile()
@@ -1071,7 +1101,13 @@ void TaskTrackTunnelManager::SaveServiceFromUi()
     if(service->id.IsEmpty())
         service->id = original_id;
     service->channel = TrimBoth(service_channel_edit_.GetTextUtf8());
-    service->command = TrimBoth(service_command_edit_.GetTextUtf8());
+    String entered_command = TrimBoth(service_command_edit_.GetTextUtf8());
+    service->command = McpTunnelNormalizeServiceCommand(entered_command);
+    if(service->command != entered_command) {
+        loading_service_ = true;
+        service_command_edit_.SetTextUtf8(service->command);
+        loading_service_ = false;
+    }
     service->enabled = service_enabled_toggle_.IsOn();
 
     SaveProfiles();
@@ -1760,7 +1796,9 @@ String TaskTrackTunnelManager::BuildDiagnostics()
         << "Credential source: " << (profile ? McpTunnelCredentialSourceId(profile->credential_source) : String()) << "\n"
         << "Credential available: " << BoolText(credential_available) << "\n"
         << "Secret value: [not exposed]\n"
-        << "Runtime executable: " << (profile ? profile->runtime_path : String()) << "\n";
+        << "Runtime executable: " << (profile ? profile->runtime_path : String()) << "\n"
+        << "Profile store: " << ProfileStorePath() << "\n"
+        << "Profile save status: " << (profile_save_failed_ ? "failed" : (profile_store_loaded_ ? "saved" : "not yet saved")) << "\n";
 
     RefreshMcpBinaryIdentity(true);
     out << "TaskTrack MCP identity: " << McpBinaryIdentityText() << "\n"
@@ -1973,6 +2011,7 @@ void TaskTrackTunnelManager::Layout()
     footer_build_.SetRect(DPI(11), DPI(4), DPI(145), DPI(22));
     footer_mcp_.SetRect(DPI(165), DPI(4), DPI(100), DPI(22));
     footer_dashboard_.SetRect(DPI(275), DPI(4), DPI(130), DPI(22));
+    footer_saved_.SetRect(DPI(415), DPI(4), DPI(190), DPI(22));
     footer_copy_.SetRect(max(0, fo.GetWidth() - DPI(118)), DPI(2), DPI(108), DPI(26));
     footer_help_.SetRect(max(0, fo.GetWidth() - DPI(170)), DPI(2), DPI(46), DPI(26));
 }
