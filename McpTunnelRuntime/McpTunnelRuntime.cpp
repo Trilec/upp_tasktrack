@@ -88,6 +88,17 @@ String McpTunnelDefaultMachineId()
     return id.IsEmpty() ? String("local-machine") : id;
 }
 
+String McpTunnelCommandForExecutable(const String& path)
+{
+    String command = TrimBoth(path);
+    command.Replace("\\", "/");
+    if(command.GetCount() >= 2 && command[0] == '"' && command[command.GetCount() - 1] == '"')
+        return command;
+    if(command.Find(' ') >= 0 || command.Find('\t') >= 0)
+        command = "\"" + command + "\"";
+    return command;
+}
+
 ValueMap McpTunnelServiceToValue(const McpTunnelService& service)
 {
     ValueMap out;
@@ -167,7 +178,7 @@ McpTunnelProfile McpTunnelProfileFromValue(const Value& value, int schema_versio
             service.id = "tasktrack";
             service.name = "TaskTrack";
             service.channel = "main";
-            service.command = old_mcp_path;
+            service.command = McpTunnelCommandForExecutable(old_mcp_path);
             profile.services.Add(pick(service));
         }
         // Existing installs used the environment contract. Preserve that on migration.
