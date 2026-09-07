@@ -201,7 +201,7 @@ private:
     void SendProbe();
     void ClearActivity();
     void CopyDiagnostics();
-    String BuildDiagnostics() const;
+    String BuildDiagnostics();
 
     void ShowHelp();
     void Tick();
