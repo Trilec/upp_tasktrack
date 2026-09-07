@@ -430,6 +430,10 @@ bool McpTunnelWriteCredential(const McpTunnelProfile& profile, const String& sec
     }
 
 #ifdef PLATFORM_WIN32
+    if(secret.GetCount() > CRED_MAX_CREDENTIAL_BLOB_SIZE) {
+        error = "API key exceeds the Windows Credential Manager generic credential limit.";
+        return false;
+    }
     String target = CredentialTarget(profile);
     CREDENTIALA credential;
     Zero(credential);
