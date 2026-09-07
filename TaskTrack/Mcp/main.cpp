@@ -29,6 +29,9 @@ int UnifiedRunOneShot(const String& file);
 int UnifiedRunSelfTest();
 String UnifiedMcpHelpText();
 String UnifiedExecutableSha256();
+bool UnifiedBundleVerified();
+String UnifiedBundleBuild();
+String UnifiedBundleSourceCommit();
 
 } // namespace
 
@@ -56,6 +59,9 @@ CONSOLE_APP_MAIN
                << "task schema version 2\n"
                << "dashboard schema version " << TASKTRACK_DASHBOARD_SCHEMA_VERSION << "\n"
                << "executable sha256 " << UnifiedExecutableSha256() << "\n"
+               << "bundle verified " << (UnifiedBundleVerified() ? "true" : "false") << "\n"
+               << "bundle build " << UnifiedBundleBuild() << "\n"
+               << "bundle source commit " << UnifiedBundleSourceCommit() << "\n"
                << "MCP protocol 2026-07-28\n";
         SetExitCode(0);
         return;
@@ -100,6 +106,68 @@ String UnifiedExecutableSha256()
             hash = SHA256String(image);
     }
     return hash;
+}
+
+struct UnifiedBundleIdentity {
+    bool verified = false;
+    String build;
+    String source_commit;
+};
+
+const UnifiedBundleIdentity& UnifiedBundle()
+{
+    static UnifiedBundleIdentity identity;
+    static bool initialized = false;
+    if(initialized)
+        return identity;
+    initialized = true;
+
+    String json = LoadFile(GetExeDirFile("manifest.json"));
+    if(IsNull(json) || json.IsEmpty())
+        return identity;
+
+    try {
+        Value root = ParseJSON(json);
+        if(!root.Is<ValueMap>())
+            return identity;
+
+        identity.build = AsString(root["tasktrack_build"]);
+        identity.source_commit = AsString(root["source_commit"]);
+        String expected_hash;
+        Value files_value = root["files"];
+        if(files_value.Is<ValueArray>()) {
+            ValueArray files = files_value;
+            for(int i = 0; i < files.GetCount(); ++i) {
+                Value item = files[i];
+                if(item.Is<ValueMap>() && AsString(item["name"]) == "TaskTrackMcp.exe") {
+                    expected_hash = ToLower(AsString(item["sha256"]));
+                    break;
+                }
+            }
+        }
+
+        identity.verified = !expected_hash.IsEmpty() &&
+                            expected_hash == ToLower(UnifiedExecutableSha256()) &&
+                            (identity.build.IsEmpty() || identity.build == TaskTrackBuildVersion());
+    }
+    catch(CParser::Error) {
+    }
+    return identity;
+}
+
+bool UnifiedBundleVerified()
+{
+    return UnifiedBundle().verified;
+}
+
+String UnifiedBundleBuild()
+{
+    return UnifiedBundle().build;
+}
+
+String UnifiedBundleSourceCommit()
+{
+    return UnifiedBundle().source_commit;
 }
 
 void PatchServerInfo(ValueMap& result)
@@ -147,6 +215,9 @@ Value UnifiedVersionResult(bool modern)
     out.Add("version", TaskTrackBuildVersion());
     out.Add("build_version", TaskTrackBuildVersion());
     out.Add("executable_sha256", UnifiedExecutableSha256());
+    out.Add("bundle_verified", UnifiedBundleVerified());
+    out.Add("bundle_build", UnifiedBundleBuild());
+    out.Add("bundle_source_commit", UnifiedBundleSourceCommit());
     out.Add("task_core_version", TaskTrackVersion());
     out.Add("schema_version", 2); // compatibility with the existing TaskTrack version response
     out.Add("task_schema_version", 2);
@@ -187,6 +258,9 @@ Value UnifiedTunnelProbeResult(bool modern)
     ValueMap out = TaskTrackTunnelProbeStatusValue();
     out.Set("build_version", TaskTrackBuildVersion());
     out.Set("executable_sha256", UnifiedExecutableSha256());
+    out.Set("bundle_verified", UnifiedBundleVerified());
+    out.Set("bundle_build", UnifiedBundleBuild());
+    out.Set("bundle_source_commit", UnifiedBundleSourceCommit());
     out.Set("task_schema_version", 2);
     out.Set("dashboard_schema_version", TASKTRACK_DASHBOARD_SCHEMA_VERSION);
     out.Set("transport", "stdio");
