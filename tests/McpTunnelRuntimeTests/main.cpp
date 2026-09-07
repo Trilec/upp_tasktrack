@@ -75,6 +75,17 @@ CONSOLE_APP_MAIN
     t.Check(HasArgPair(args, "--health.url-file", "health.url"),
             "runtime args missing health URL file");
 
+    String old_key = GetEnv("CONTROL_PLANE_API_KEY");
+    String child_env = McpTunnelBuildChildEnvironment(profile, "test-secret");
+    t.Check(child_env.Find("CONTROL_PLANE_API_KEY=test-secret") >= 0,
+            "child environment missing runtime key");
+    t.Check(child_env.Find("MCP_TUNNEL_REMOTE=1") >= 0,
+            "child environment missing generic remote marker");
+    t.Check(child_env.Find("MCP_TUNNEL_MACHINE_ID=curt-main") >= 0,
+            "child environment missing machine identity");
+    t.Check(GetEnv("CONTROL_PLANE_API_KEY") == old_key,
+            "building child environment changed parent process environment");
+
     McpTunnelProfile duplicate = McpTunnelDuplicateProfile(profile, "curt-copy", "Curt copy");
     t.Check(duplicate.tunnel_id.IsEmpty(), "duplicated profile copied tunnel id");
     t.Check(duplicate.credential_ref != profile.credential_ref,
