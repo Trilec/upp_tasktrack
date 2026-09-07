@@ -42,6 +42,21 @@ private:
     McpTunnelRuntime runtime_;
     McpTunnelSessionCredentials session_credentials_;
 
+    enum McpBinaryIdentityState {
+        MCP_BINARY_UNKNOWN,
+        MCP_BINARY_CURRENT,
+        MCP_BINARY_DIFFERENT,
+        MCP_BINARY_UNVERIFIED,
+        MCP_BINARY_MISSING,
+    };
+    McpBinaryIdentityState mcp_binary_identity_ = MCP_BINARY_UNKNOWN;
+    String mcp_binary_command_;
+    String mcp_binary_path_;
+    String mcp_binary_actual_hash_;
+    String mcp_binary_expected_hash_;
+    String mcp_binary_bundle_build_;
+    String mcp_binary_source_commit_;
+
     UiPanel root_;
     UiTitleCard header_;
     UiBoxLayout header_actions_{UiDirection::H};
@@ -179,6 +194,8 @@ private:
     void OpenHealth();
 
     void RefreshProjection();
+    void RefreshMcpBinaryIdentity(bool force = false);
+    String McpBinaryIdentityText() const;
     void RefreshActivity();
     void RefreshActivityTable(const TaskTrackTunnelActivity& activity);
     void SendProbe();
