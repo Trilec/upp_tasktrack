@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "name": "OpenAI tunnel-client runtime",
+  "version": "0.0.14",
+  "platform": "windows-amd64",
+  "source_repository": "https://github.com/openai/tunnel-client",
+  "local_filename": "tunnel-client-runtime.exe",
+  "staged_filename": "tunnel-client.exe",
+  "sha256": "09eac072d392b8d27b7aea8cbc146ab3738934961278b6b69cb23513607a08d7",
+  "licenses_file": "tunnel-client-runtime-v0.0.14-windows-amd64-licenses.txt",
+  "sbom_file": "tunnel-client-runtime-v0.0.14-windows-amd64.spdx.json",
+  "validated_with_tasktrack_commit": "8ee534bbda579e83c09d9f56f2a4c6404e717765"
+}
