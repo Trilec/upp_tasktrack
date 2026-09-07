@@ -25,14 +25,18 @@ TaskTrackTunnelGui.exe
 tunnel-client.exe
 README.txt
 manifest.json
+verification-manifest.json
 LICENSE-TaskTrack.txt
 third-party/openai-tunnel-client/...
 ```
 
 The OpenAI runtime is copied from the local `tunnel-client/` source artifact and
 renamed to `tunnel-client.exe`, which is the tunnel manager's same-directory
-default. `stage-bin.ps1` verifies the vendor SHA-256 against
-`tunnel-client/runtime-manifest.json` before copying it.
+default. `verify.ps1` writes `verification-manifest.json` only after all deterministic
+checks pass. `stage-bin.ps1` then verifies every production executable against
+that manifest, requires the same clean Git commit, and verifies the vendor
+SHA-256 against both the verification record and
+`tunnel-client/runtime-manifest.json` before copying anything.
 
 Do not place runtime API keys, vault files, profile JSON, logs, or other secrets
 inside the staged bundle.
