@@ -444,4 +444,179 @@ bool McpTunnelDeleteCredential(const McpTunnelProfile& profile, String& error)
 #endif
 }
 
+
+McpTunnelRuntime::McpTunnelRuntime()
+{
+}
+
+McpTunnelRuntime::~McpTunnelRuntime()
+{
+    Stop();
+}
+
+bool McpTunnelRuntime::LoadHealthUrl()
+{
+    if(health_url_file_.IsEmpty() || !FileExists(health_url_file_))
+        return false;
+
+    String url = TrimBoth(LoadFile(health_url_file_));
+    if(url.IsEmpty())
+        return false;
+    while(url.EndsWith("/"))
+        url = url.Left(url.GetCount() - 1);
+    health_url_ = url;
+    return true;
+}
+
+void McpTunnelRuntime::DrainOutput()
+{
+    if(!started_)
+        return;
+    for(int i = 0; i < 8; ++i) {
+        String out, err;
+        process_.Read2(out, err);
+        if(out.IsEmpty() && err.IsEmpty())
+            break;
+        runtime_output_ << out << err;
+        if(runtime_output_.GetCount() > 6000)
+            runtime_output_ = runtime_output_.Right(6000);
+    }
+}
+
+bool McpTunnelRuntime::ProbeHealth(const String& suffix, int& status, String& error)
+{
+    status = 0;
+    error.Clear();
+    if(health_url_.IsEmpty() && !LoadHealthUrl()) {
+        error = "Health URL is not available yet.";
+        return false;
+    }
+
+    HttpRequest request(~(health_url_ + suffix));
+    request.Timeout(2000);
+    request.Execute();
+    status = request.GetStatusCode();
+    if(request.IsSuccess())
+        return true;
+    error = request.GetErrorDesc();
+    if(error.IsEmpty())
+        error = Format("HTTP %d %s", status, request.GetReasonPhrase());
+    return false;
+}
+
+bool McpTunnelRuntime::Start(const McpTunnelProfile& profile, const String& control_plane_api_key)
+{
+    Stop();
+    last_error_.Clear();
+
+    String validation_error;
+    if(!McpTunnelValidateProfile(profile, validation_error)) {
+        last_error_ = validation_error;
+        return false;
+    }
+    if(!FileExists(profile.runtime_path)) {
+        last_error_ = "The OpenAI tunnel runtime executable was not found.";
+        return false;
+    }
+    if(control_plane_api_key.IsEmpty()) {
+        last_error_ = "The control-plane API key is not available.";
+        return false;
+    }
+
+    health_url_file_ = GetTempFileName("mcp-tunnel-health-");
+    SaveFile(health_url_file_, "");
+    runtime_log_file_ = GetTempFileName("mcp-tunnel-runtime-");
+    DeleteFile(runtime_log_file_);
+    runtime_output_.Clear();
+    health_url_.Clear();
+    healthy_ = false;
+    ready_ = false;
+
+    Vector<String> args = McpTunnelBuildRunArgs(profile, health_url_file_, runtime_log_file_);
+    String child_environment = McpTunnelBuildChildEnvironment(profile, control_plane_api_key);
+    bool launched = process_.Start(~profile.runtime_path, args, ~child_environment);
+    child_environment.Clear();
+
+    if(!launched) {
+        last_error_ = "Unable to start the OpenAI tunnel runtime.";
+        return false;
+    }
+
+    started_ = true;
+    for(int i = 0; i < 40; ++i) {
+        DrainOutput();
+        if(LoadHealthUrl() || !process_.IsRunning())
+            break;
+        Sleep(100);
+    }
+    Refresh();
+    return started_;
+}
+
+void McpTunnelRuntime::Refresh()
+{
+    DrainOutput();
+    bool running = started_ && process_.IsRunning();
+    if(!running) {
+        if(started_) {
+            String output;
+            int code = process_.Finish(output);
+            runtime_output_ << output;
+            last_error_ = Format("Tunnel runtime exited with code %d.", code);
+            process_.Kill();
+        }
+        started_ = false;
+        healthy_ = false;
+        ready_ = false;
+        return;
+    }
+
+    LoadHealthUrl();
+    int health_status = 0, ready_status = 0;
+    String health_error, ready_error;
+    healthy_ = ProbeHealth("/healthz", health_status, health_error);
+    ready_ = ProbeHealth("/readyz", ready_status, ready_error);
+
+    if(ready_)
+        last_error_.Clear();
+    else if(!healthy_ && !health_error.IsEmpty())
+        last_error_ = health_error;
+}
+
+void McpTunnelRuntime::Stop()
+{
+    if(started_)
+        process_.Kill();
+    started_ = false;
+    healthy_ = false;
+    ready_ = false;
+    health_url_.Clear();
+    last_error_.Clear();
+}
+
+McpTunnelRuntime::State McpTunnelRuntime::GetState() const
+{
+    if(!last_error_.IsEmpty() && !ready_)
+        return ERROR;
+    if(ready_)
+        return READY;
+    if(started_)
+        return CONNECTING;
+    return STOPPED;
+}
+
+String McpTunnelRuntime::GetDiagnostics() const
+{
+    String out = runtime_output_;
+    String log = runtime_log_file_.IsEmpty() ? String() : LoadFile(runtime_log_file_);
+    if(!IsNull(log) && !log.IsEmpty()) {
+        if(log.GetCount() > 3000)
+            log = log.Right(3000);
+        if(!out.IsEmpty())
+            out << "\n";
+        out << log;
+    }
+    return out;
+}
+
 }
