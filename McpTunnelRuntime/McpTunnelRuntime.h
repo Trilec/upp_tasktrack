@@ -35,6 +35,7 @@ String McpTunnelCredentialSourceId(McpTunnelCredentialSource source);
 McpTunnelCredentialSource McpTunnelCredentialSourceFromId(const String& id);
 String McpTunnelDefaultCredentialRef(const String& profile_id);
 String McpTunnelDefaultMachineId();
+String McpTunnelCommandForExecutable(const String& path);
 
 ValueMap McpTunnelServiceToValue(const McpTunnelService& service);
 McpTunnelService McpTunnelServiceFromValue(const Value& value);
