@@ -294,13 +294,14 @@ bool McpTunnelValidateProfile(const McpTunnelProfile& profile, String& error)
 }
 
 Vector<String> McpTunnelBuildRunArgs(const McpTunnelProfile& profile,
+                                     const String& control_plane_api_key_ref,
                                      const String& health_url_file,
                                      const String& log_file)
 {
     Vector<String> args;
     args.Add("run");
     args.Add("--control-plane.api-key");
-    args.Add("env:CONTROL_PLANE_API_KEY");
+    args.Add(control_plane_api_key_ref);
     args.Add("--control-plane.tunnel-id");
     args.Add(profile.tunnel_id);
 
@@ -320,14 +321,15 @@ Vector<String> McpTunnelBuildRunArgs(const McpTunnelProfile& profile,
     return args;
 }
 
-String McpTunnelBuildChildEnvironment(const McpTunnelProfile& profile,
-                                      const String& control_plane_api_key)
+String McpTunnelBuildChildEnvironment(const McpTunnelProfile& profile)
 {
     Vector<String> entries;
     const VectorMap<String, String>& environment = Environment();
     for(int i = 0; i < environment.GetCount(); ++i) {
         String name = environment.GetKey(i);
         if(!CompareNoCase(name, "CONTROL_PLANE_API_KEY") ||
+           !CompareNoCase(name, "OPENAI_API_KEY") ||
+           !CompareNoCase(name, "OPENAI_ADMIN_KEY") ||
            !CompareNoCase(name, "MCP_TUNNEL_REMOTE") ||
            !CompareNoCase(name, "MCP_TUNNEL_MACHINE_ID") ||
            !CompareNoCase(name, "MCP_TUNNEL_PROFILE_ID") ||
@@ -336,7 +338,6 @@ String McpTunnelBuildChildEnvironment(const McpTunnelProfile& profile,
         entries.Add(name + "=" + environment[i]);
     }
 
-    entries.Add("CONTROL_PLANE_API_KEY=" + control_plane_api_key);
     entries.Add("MCP_TUNNEL_REMOTE=1");
     entries.Add("MCP_TUNNEL_MACHINE_ID=" + profile.machine_id);
     entries.Add("MCP_TUNNEL_PROFILE_ID=" + profile.id);
@@ -457,8 +458,6 @@ bool McpTunnelWriteCredential(const McpTunnelProfile& profile, const String& sec
 bool McpTunnelDeleteCredential(const McpTunnelProfile& profile, String& error)
 {
     error.Clear();
-    if(profile.credential_source != MCP_TUNNEL_CREDENTIAL_WINDOWS)
-        return true;
 #ifdef PLATFORM_WIN32
     String target = CredentialTarget(profile);
     if(CredDeleteA(~target, CRED_TYPE_GENERIC, 0))
@@ -481,6 +480,11 @@ McpTunnelRuntime::McpTunnelRuntime()
 McpTunnelRuntime::~McpTunnelRuntime()
 {
     Stop();
+    DeleteSecretFile();
+    if(!health_url_file_.IsEmpty())
+        DeleteFile(health_url_file_);
+    if(!runtime_log_file_.IsEmpty())
+        DeleteFile(runtime_log_file_);
 }
 
 bool McpTunnelRuntime::LoadHealthUrl()
@@ -495,6 +499,33 @@ bool McpTunnelRuntime::LoadHealthUrl()
         url = url.Left(url.GetCount() - 1);
     health_url_ = url;
     return true;
+}
+
+bool McpTunnelRuntime::CreateSecretFile(const String& secret)
+{
+    DeleteSecretFile();
+    secret_file_ = GetTempFileName("mcp-tunnel-key-");
+    if(secret_file_.IsEmpty())
+        return false;
+    if(!SaveFile(secret_file_, secret)) {
+        secret_file_.Clear();
+        return false;
+    }
+#ifdef PLATFORM_POSIX
+    chmod(~secret_file_, 0600);
+#endif
+#ifdef PLATFORM_WIN32
+    SetFileAttributesA(~secret_file_, FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_TEMPORARY);
+#endif
+    return true;
+}
+
+void McpTunnelRuntime::DeleteSecretFile()
+{
+    if(secret_file_.IsEmpty())
+        return;
+    DeleteFile(secret_file_);
+    secret_file_.Clear();
 }
 
 void McpTunnelRuntime::DrainOutput()
@@ -552,6 +583,17 @@ bool McpTunnelRuntime::Start(const McpTunnelProfile& profile, const String& cont
         return false;
     }
 
+    DeleteSecretFile();
+    if(!health_url_file_.IsEmpty())
+        DeleteFile(health_url_file_);
+    if(!runtime_log_file_.IsEmpty())
+        DeleteFile(runtime_log_file_);
+
+    if(!CreateSecretFile(control_plane_api_key)) {
+        last_error_ = "Unable to create the short-lived tunnel credential file.";
+        return false;
+    }
+
     health_url_file_ = GetTempFileName("mcp-tunnel-health-");
     SaveFile(health_url_file_, "");
     runtime_log_file_ = GetTempFileName("mcp-tunnel-runtime-");
@@ -561,12 +603,13 @@ bool McpTunnelRuntime::Start(const McpTunnelProfile& profile, const String& cont
     healthy_ = false;
     ready_ = false;
 
-    Vector<String> args = McpTunnelBuildRunArgs(profile, health_url_file_, runtime_log_file_);
-    String child_environment = McpTunnelBuildChildEnvironment(profile, control_plane_api_key);
+    Vector<String> args = McpTunnelBuildRunArgs(profile, "file:" + secret_file_, health_url_file_, runtime_log_file_);
+    String child_environment = McpTunnelBuildChildEnvironment(profile);
     bool launched = process_.Start(~profile.runtime_path, args, ~child_environment);
     child_environment.Clear();
 
     if(!launched) {
+        DeleteSecretFile();
         last_error_ = "Unable to start the OpenAI tunnel runtime.";
         return false;
     }
@@ -574,11 +617,17 @@ bool McpTunnelRuntime::Start(const McpTunnelProfile& profile, const String& cont
     started_ = true;
     for(int i = 0; i < 40; ++i) {
         DrainOutput();
-        if(LoadHealthUrl() || !process_.IsRunning())
+        if(LoadHealthUrl()) {
+            DeleteSecretFile();
+            break;
+        }
+        if(!process_.IsRunning())
             break;
         Sleep(100);
     }
     Refresh();
+    if(!started_)
+        DeleteSecretFile();
     return started_;
 }
 
@@ -606,9 +655,9 @@ void McpTunnelRuntime::Refresh()
     healthy_ = ProbeHealth("/healthz", health_status, health_error);
     ready_ = ProbeHealth("/readyz", ready_status, ready_error);
 
-    if(ready_)
+    if(ready_ || healthy_)
         last_error_.Clear();
-    else if(!healthy_ && !health_error.IsEmpty())
+    else if(!health_error.IsEmpty())
         last_error_ = health_error;
 }
 
@@ -616,6 +665,7 @@ void McpTunnelRuntime::Stop()
 {
     if(started_)
         process_.Kill();
+    DeleteSecretFile();
     started_ = false;
     healthy_ = false;
     ready_ = false;
