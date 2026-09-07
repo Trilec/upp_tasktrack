@@ -1,11 +1,11 @@
-BASE: f9d26703e85f9f11ae74bf1fa7ad21d6e7be8382
-TASK: Replace TaskTrack-only tunnel ownership with the machine-level multi-service MCP tunnel architecture.
+BASE: 931aa156f228d518a7ab39df90b9207a4f4a981b
+TASK: Security-harden the machine-level multi-service MCP tunnel manager after architecture red-team review.
 BUILD: 0.3.2-rc1
-PUBLISHED: 03f6ff13001fbd17c8270865654024e43cba2976 on main.
-STATUS: Local uncommitted security follow-up: profile-bound session keys, restricted environment, memory-only runtime handoff, Windows single-owner/job containment. See docs/TUNNEL_SECURITY_HANDOFF.md for completed pieces and validation.
-ARCHITECTURE: One machine profile owns one official OpenAI tunnel runtime; exactly one enabled main channel plus optional separate named MCP services. TaskTrack domain semantics remain separate.
-SECURITY: RC uses profile-bound session keys or explicit CONTROL_PLANE_API_KEY automation mode; profile JSON never stores the secret. Unchanged vendor file: resolver reads a private Windows named pipe or POSIX stdin pipe, with no plaintext key-file fallback. Child environment is allowlisted. Durable vault remains deferred.
-MIGRATION: Schema-1 TaskTrack tunnel profiles migrate to schema 2 with TaskTrack as main and preserve environment credential mode.
-VALIDATION: Windows full verify.ps1 passed using build-security-verification (all eight executables; runtime tests plus unchanged vendor pipe proof, 142 Core checks, unified MCP selftest, 27 Dashboard checks). Live tunnel/browser acceptance and POSIX tests remain pending; see TUNNEL_SECURITY_HANDOFF.md.
-DEPENDENCY: Validate first against current upp_Ui main; do not revive the previous disposable UiGraph exclusion workaround unless current upstream is proven broken.
-NEXT: User restart/publishing and manual GUI/live-channel acceptance. This bounded pass is finished; handoff is TUNNEL_SECURITY_HANDOFF.md. POSIX containment remains outstanding. Vendor stdio child crashes affect the entire runtime; no vendor changes, automatic restart or replay were made.
+PUBLISHED: 8ee534bbda579e83c09d9f56f2a4c6404e717765 on main.
+STATUS: Windows security hardening implemented and verified: profile-bound session credentials, controlled environment, memory-only vendor key handoff, per-user ownership and kill-on-close descendant containment. See docs/TUNNEL_SECURITY_HANDOFF.md.
+ARCHITECTURE: One machine profile owns one official OpenAI tunnel runtime; exactly one enabled main channel plus optional separate named MCP services. TaskTrack/PatchTrack domain semantics remain separate. Native channels are routing boundaries, not failure-isolation boundaries.
+SECURITY: Session keys are recipient-bound and memory-held; unchanged vendor file: resolver consumes a protected Windows named pipe. No plaintext key file fallback. Child environment is allowlisted; control-plane endpoint pinned and raw HTTP logging disabled. Durable cross-platform encrypted vault remains deferred.
+VALIDATION: Windows full verify passed in separate output dir; 92 runtime checks, 142 TaskTrack Core checks, unified MCP selftest, 27 Dashboard checks, git diff --check, and unchanged-vendor dummy-key pipe compatibility all passed.
+OPEN: POSIX handoff/process-tree validation; live GUI/tunnel/ChatGPT/multi-channel acceptance; durable vault; vendor stdio child failure still stops the whole runtime; asynchronous health UI remains deferred.
+AUDIT FOLLOW-UP: Strict upstream channel canonicalization and profile schema/persistence hardening from TUNNEL_ARCHITECTURE_AUDIT.md remain to be dispositioned before stable release.
+NEXT: Manual/live acceptance on current main, then close remaining audit follow-ups and portable vault/POSIX work before stable 0.3.2 as appropriate.
