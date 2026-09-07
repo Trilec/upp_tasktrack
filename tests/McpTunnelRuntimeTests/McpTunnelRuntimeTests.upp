@@ -1,0 +1,9 @@
+uses
+    Core,
+    McpTunnelRuntime;
+
+file
+    main.cpp;
+
+mainconfig
+    "" = "CONSOLE";
