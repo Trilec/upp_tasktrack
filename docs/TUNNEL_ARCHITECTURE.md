@@ -56,7 +56,6 @@ machine_id
 tunnel_id
 runtime_path
 credential_source
-credential_ref
 auto_connect
 remember_profile
 services[]
@@ -80,26 +79,42 @@ service on `main`.
 
 ## Credentials
 
-New Windows profiles default to Windows Credential Manager using a profile-local
-generic credential reference such as:
+Credential storage is intentionally separated from the machine/tunnel model.
 
-```text
-Trilec.McpTunnel/local-machine
-```
+For RC validation the manager supports:
 
-Only the reference is persisted in the profile JSON.
+- `session`: the runtime key is pasted once and held in memory only for the
+  lifetime of the manager process;
+- `environment`: `CONTROL_PLANE_API_KEY` is read at launch for automation
+  and compatibility.
 
-At launch the manager reads the secret into process memory and constructs a
-child-specific environment block for the official tunnel runtime. TaskTrack's
-own process environment is not modified.
+The machine profile never persists the secret.
 
-Environment-variable mode remains available for existing installs and automation:
+The intended durable cross-platform design is a U++ encrypted vault built on
+`Core/SSL` AES-256-GCM. Current U++ provides authenticated AES-256-GCM,
+PBKDF2-HMAC-SHA256 key derivation, random salt/IV generation, `SecureBuffer`
+and `SecureZero`.
 
-```text
-CONTROL_PLANE_API_KEY
-```
+A future vault should:
 
-No secret value is displayed or written to profile JSON or diagnostics.
+- store only authenticated ciphertext plus non-secret metadata;
+- unlock with a user-controlled secret or another explicit portable unlock
+  provider;
+- expose only stored/not-stored plus a short non-secret fingerprint/hint;
+- allow replace and clear without ever displaying the full key;
+- keep the vault backend independent of Windows/macOS/Linux credential stores;
+- allow optional platform keychain or SSH-agent providers later without making
+  them architectural requirements.
+
+The official OpenAI tunnel runtime currently still requires a control-plane
+runtime API key. Its OAuth support applies to MCP/connector authentication and
+does not currently remove this runtime-key requirement.
+
+At launch the manager gives the official runtime a short-lived `file:`
+credential reference and strips OpenAI control/admin key variables from the
+runtime environment so stdio MCP child processes do not inherit them.
+
+No secret value is displayed or written to machine profile JSON or diagnostics.
 
 ## Service routing
 
