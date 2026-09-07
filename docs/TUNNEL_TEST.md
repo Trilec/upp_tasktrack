@@ -73,34 +73,44 @@ with the previous TaskTrack MCP path represented as the `main` service.
 
 ## Credential handling
 
-### Recommended: Windows Credential Manager
+For this RC the manager deliberately uses portable validation sources only.
 
-New profiles default to Windows Credential Manager.
+### Session key
 
-Use **Set key** once in Setup. The secret is entered through a masked
-`UiPasswordEdit` and stored as a Windows generic credential under a
-profile-specific reference. TaskTrack profile JSON contains only the reference.
+Choose **Session key (memory only)** and click **Set key**.
 
-At runtime TaskTrack reads the secret into memory and passes
-`CONTROL_PLANE_API_KEY` only in the child environment supplied to
-`tunnel-client.exe`. TaskTrack does not set the variable in its own process
-environment.
+The key is masked in the UI, held only in manager memory, and disappears when
+the manager closes. The profile does not persist it.
 
-The key is never displayed by the manager and is excluded from copied
-diagnostics.
+This is the preferred manual validation path because it proves the tunnel flow
+without committing the product to an OS-specific secret store.
 
-Deleting a profile removes its dedicated Windows Credential Manager key.
+### Environment variable
 
-### Compatibility: environment variable
-
-Existing installs and automation may select **Environment variable** and set:
+Automation and existing setups may choose **Environment variable** and set:
 
 ```powershell
 $env:CONTROL_PLANE_API_KEY="sk-..."
 ```
 
-This preserves the original TaskTrack tunnel behavior but is not the default
-for new Windows profiles.
+The manager reads it at launch. The secret is not copied into profile JSON or
+diagnostics.
+
+### Durable storage direction
+
+After the tunnel and multi-service flow are accepted, the intended portable
+storage is a U++ encrypted vault using `Core/SSL` AES-256-GCM with PBKDF2.
+The UX target is:
+
+```text
+Stored credential   •••• / short fingerprint
+[Replace] [Clear]
+```
+
+The full key is never displayed.
+
+OAuth remains relevant for MCP/connector authentication, but the current OpenAI
+tunnel runtime still requires its own control-plane runtime API key.
 
 ## Runtime launch
 
@@ -109,7 +119,7 @@ conceptually as:
 
 ```text
 tunnel-client.exe run
-  --control-plane.api-key env:CONTROL_PLANE_API_KEY
+  --control-plane.api-key file:<short-lived-launch-file>
   --control-plane.tunnel-id <tunnel>
   --mcp.command "channel=main,command=<TaskTrackMcp.exe>"
   --mcp.command "channel=patchtrack,command=<patchtrack_mcp.exe>"
@@ -201,7 +211,8 @@ The runtime-model tests cover:
 - reserved channel rejection;
 - 32-channel limit;
 - duplicate-profile tunnel/credential separation;
-- child-only tunnel environment construction.
+- child runtime environment excludes OpenAI control/admin key variables;
+- short-lived file credential reference generation.
 
 ## Live acceptance
 
