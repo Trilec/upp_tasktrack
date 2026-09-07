@@ -54,6 +54,38 @@ function Show-BinaryIdentity {
     Write-Host "SHA256: $hash"
 }
 
+function Get-FileIdentity {
+    param([string]$Path, [string]$Name)
+    $item = Get-Item -LiteralPath $Path
+    [ordered]@{
+        name = $Name
+        size = $item.Length
+        sha256 = (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant()
+    }
+}
+
+function Read-GitIdentity {
+    param([string]$Root)
+    $gitCommand = Get-Command git.exe -ErrorAction SilentlyContinue
+    if(!$gitCommand) { $gitCommand = Get-Command git -ErrorAction SilentlyContinue }
+    if(!$gitCommand) { throw "git is required to record verified build provenance." }
+
+    $commit = (& $gitCommand.Source -C $Root rev-parse HEAD 2>&1 | Out-String).Trim()
+    if($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($commit)) {
+        throw "Unable to read repository HEAD for verification provenance."
+    }
+    $branchName = (& $gitCommand.Source -C $Root branch --show-current 2>&1 | Out-String).Trim()
+    if($LASTEXITCODE -ne 0) { $branchName = "" }
+    $status = (& $gitCommand.Source -C $Root status --porcelain=v1 --untracked-files=normal 2>&1 | Out-String)
+    if($LASTEXITCODE -ne 0) { throw "Unable to read repository working-tree state." }
+
+    [ordered]@{
+        commit = $commit
+        branch = $branchName
+        dirty = ![string]::IsNullOrWhiteSpace($status)
+    }
+}
+
 $repoParent = Split-Path -Parent (Resolve-Path -LiteralPath $RepoRoot).Path
 if([string]::IsNullOrWhiteSpace($UiRoot)) { $UiRoot = Join-Path $repoParent "upp_Ui" }
 if([string]::IsNullOrWhiteSpace($AnimationRoot)) { $AnimationRoot = Join-Path $repoParent "upp_animation" }
@@ -85,9 +117,17 @@ Run-Step "Build TaskTrack example" { Build-UppPackage -Package "examples/TaskTra
 Run-Step "Build Dashboard GUI" { Build-UppPackage -Package "TaskTrack/DashboardApp" -Target "TaskTrackDashboardGui" -Gui }
 Run-Step "Build Dashboard tests" { Build-UppPackage -Package "tests/TaskTrackDashboardTests" -Target "TaskTrackDashboardTests" }
 
-foreach($exe in @("TaskTrackGui.exe", "TaskTrackMcp.exe", "TaskTrackTunnelGui.exe",
-                  "McpTunnelRuntimeTests.exe", "TaskTrackTests.exe", "TaskTrackExample.exe",
-                  "TaskTrackDashboardGui.exe", "TaskTrackDashboardTests.exe")) {
+$expectedExecutables = @(
+    "TaskTrackGui.exe",
+    "TaskTrackMcp.exe",
+    "TaskTrackTunnelGui.exe",
+    "McpTunnelRuntimeTests.exe",
+    "TaskTrackTests.exe",
+    "TaskTrackExample.exe",
+    "TaskTrackDashboardGui.exe",
+    "TaskTrackDashboardTests.exe"
+)
+foreach($exe in $expectedExecutables) {
     if(!(Test-Path -LiteralPath (Join-Path $buildDir $exe))) { throw "Expected build output is missing: $exe" }
 }
 
@@ -112,5 +152,36 @@ Run-Step "Core/persistence tests" { & (Join-Path $buildDir "TaskTrackTests.exe")
 Run-Step "Unified MCP selftest" { & $mcpPath --selftest }
 Run-Step "Dashboard Core/persistence tests" { & (Join-Path $buildDir "TaskTrackDashboardTests.exe") }
 
+$gitIdentity = Read-GitIdentity -Root $RepoRoot
+$verifiedFiles = @()
+foreach($exe in $expectedExecutables) {
+    $verifiedFiles += Get-FileIdentity -Path (Join-Path $buildDir $exe) -Name $exe
+}
+
+$vendorIdentity = $null
+if(Test-Path -LiteralPath $vendorRuntime) {
+    $vendorIdentity = Get-FileIdentity -Path $vendorRuntime -Name "tunnel-client-runtime.exe"
+}
+
+$verificationManifest = [ordered]@{
+    schema_version = 1
+    status = "passed"
+    tasktrack_build = $buildVersion
+    source_commit = $gitIdentity.commit
+    source_branch = $gitIdentity.branch
+    source_dirty = $gitIdentity.dirty
+    platform = "windows-x64"
+    generated_utc = [DateTime]::UtcNow.ToString("o")
+    files = $verifiedFiles
+    vendor_runtime = $vendorIdentity
+}
+$verificationManifestPath = Join-Path $buildDir "verification-manifest.json"
+$verificationManifest | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $verificationManifestPath -Encoding UTF8
+
+Write-Host ""
+Write-Host "Verification manifest: $verificationManifestPath"
+if($gitIdentity.dirty) {
+    Write-Warning "Verification passed, but the source working tree is dirty. stage-bin.ps1 will refuse to create a deployable bundle from this build."
+}
 Write-Host ""
 Write-Host "verify.ps1: ok"
