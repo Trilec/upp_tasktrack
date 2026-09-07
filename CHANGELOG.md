@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.2-rc2 — 2026-09-07
+
+- Added exact MCP runtime identity: `version`, `tunnel_probe` and `--version` report the running `TaskTrackMcp.exe` SHA-256.
+- When running from a staged bundle, MCP identity also reports whether the executable matches `manifest.json`, the staged build label and the verified source commit.
+- Tunnel Manager compares its configured TaskTrack MCP against the staged bundle manifest and shows Current / Different / Unverified / Missing status.
+- A different or unverified TaskTrack MCP warns before tunnel connection but may still be run deliberately.
+- `verify.ps1` checks the MCP self-reported executable hash against the actual built file.
+- Runtime-bundle provenance remains enforced by `verification-manifest.json` and `stage-bin.ps1`.
+- Includes the machine-tunnel security hardening and verified runtime staging work completed after 0.3.2-rc1.
+
 ## 0.3.1 — 2026-09-03
 
 - Clarified the agent-facing human TaskTrack, dashboard and cross-agent handoff workflows.
