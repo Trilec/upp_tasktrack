@@ -1568,39 +1568,52 @@ String TaskTrackTunnelManager::BuildDiagnostics() const
 {
     const McpTunnelProfile *profile = CurrentProfile();
     TaskTrackTunnelActivity activity;
-    String error;
-    bool has_activity = TaskTrackTunnelLoadActivity(activity, error);
+    String activity_error;
+    bool has_activity = TaskTrackTunnelLoadActivity(activity, activity_error);
+    String credential_error;
+    bool credential_available = profile && McpTunnelCredentialExists(*profile, credential_error);
 
     String out;
-    out << "TaskTrack Tunnel diagnostics\n"
-        << "Build: " << TaskTrackBuildVersion() << "\n"
+    out << "MCP Tunnel diagnostics\n"
+        << "TaskTrack build: " << TaskTrackBuildVersion() << "\n"
         << "Profile: " << (profile ? profile->name : String("None")) << "\n"
+        << "Machine: " << (profile ? profile->machine_id : String()) << "\n"
         << "Tunnel: " << (profile ? profile->tunnel_id : String()) << "\n"
         << "State: ";
 
-    switch(GetRuntimeState()) {
-    case STATE_READY: out << "ready"; break;
-    case STATE_CONNECTING: out << "connecting"; break;
-    case STATE_ERROR: out << "error"; break;
+    switch(runtime_.GetState()) {
+    case McpTunnelRuntime::READY: out << "ready"; break;
+    case McpTunnelRuntime::CONNECTING: out << "connecting"; break;
+    case McpTunnelRuntime::ERROR: out << "error"; break;
     default: out << "stopped"; break;
     }
 
-    out << "\nRuntime process: " << BoolText(runtime_started_) << "\n"
-        << "Healthy: " << BoolText(runtime_healthy_) << "\n"
-        << "Ready: " << BoolText(runtime_ready_) << "\n"
-        << "Credential source: CONTROL_PLANE_API_KEY\n"
-        << "Credential available: " << BoolText(!GetEnv("CONTROL_PLANE_API_KEY").IsEmpty()) << "\n"
+    out << "\nRuntime process: " << BoolText(runtime_.IsStarted()) << "\n"
+        << "Healthy: " << BoolText(runtime_.IsHealthy()) << "\n"
+        << "Ready: " << BoolText(runtime_.IsReady()) << "\n"
+        << "Credential source: " << (profile ? McpTunnelCredentialSourceId(profile->credential_source) : String()) << "\n"
+        << "Credential available: " << BoolText(credential_available) << "\n"
         << "Secret value: [not exposed]\n"
-        << "Runtime executable: " << (profile ? profile->runtime_path : String()) << "\n"
-        << "TaskTrack MCP: " << (profile ? profile->mcp_path : String()) << "\n"
-        << "Remote activity: " << (has_activity ? AsString(activity.received) : String("0"))
-        << " in / " << (has_activity ? AsString(activity.sent) : String("0")) << " out\n";
+        << "Runtime executable: " << (profile ? profile->runtime_path : String()) << "\n";
+
+    if(profile) {
+        out << "Enabled services: " << EnabledServiceCount(*profile) << "\n";
+        for(const McpTunnelService& service : profile->services)
+            out << "Service: " << service.id
+                << " | channel=" << service.channel
+                << " | enabled=" << BoolText(service.enabled)
+                << " | command=" << service.command << "\n";
+    }
+
+    out << "TaskTrack remote activity: "
+        << (has_activity ? AsString(activity.received) : String("0")) << " in / "
+        << (has_activity ? AsString(activity.sent) : String("0")) << " out\n";
 
     if(has_activity && (!activity.last_method.IsEmpty() || !activity.last_tool.IsEmpty()))
-        out << "Last remote call: " << activity.last_method
+        out << "Last TaskTrack remote call: " << activity.last_method
             << (activity.last_tool.IsEmpty() ? String() : " / " + activity.last_tool) << "\n";
-    if(!last_error_.IsEmpty())
-        out << "Last error: " << last_error_ << "\n";
+    if(!runtime_.GetLastError().IsEmpty())
+        out << "Last runtime error: " << runtime_.GetLastError() << "\n";
     return out;
 }
 
@@ -1612,15 +1625,16 @@ void TaskTrackTunnelManager::CopyDiagnostics()
 void TaskTrackTunnelManager::ShowHelp()
 {
     PromptOK(
-        "TaskTrack Tunnel Manager\n\n"
-        "Overview shows whether the local TaskTrack MCP is reachable through the OpenAI Secure MCP Tunnel and displays recent remote MCP traffic.\n\n"
-        "Setup manages named, non-secret tunnel profiles. Tunnel IDs and executable paths may be stored locally. The CONTROL_PLANE_API_KEY secret is never stored or displayed by TaskTrack.\n\n"
-        "Use one tunnel/profile per local machine. Stop the active tunnel before switching profiles.");
+        "MCP Tunnel Manager\n\n"
+        "One machine profile owns one OpenAI Secure MCP Tunnel runtime. The Services page binds one or more separate local MCP servers to named tunnel channels.\n\n"
+        "TaskTrack remains its own MCP/domain service. Additional services do not share TaskTrack task or dashboard state.\n\n"
+        "Windows Credential Manager is the recommended API-key source. TaskTrack stores only the credential reference; the secret is passed only to the tunnel child process. Environment-variable mode remains available for compatibility.\n\n"
+        "Exactly one enabled service must use the main channel. Stop the active tunnel before changing the machine profile or service bindings.");
 }
 
 void TaskTrackTunnelManager::Tick()
 {
-    if(runtime_started_)
+    if(runtime_.IsStarted())
         RefreshRuntimeStatus(false);
     else
         RefreshProjection();
@@ -1641,7 +1655,8 @@ void TaskTrackTunnelManager::Layout()
 
     overview_button_.SetRect(DPI(15), DPI(8), DPI(92), DPI(34));
     setup_button_.SetRect(DPI(111), DPI(8), DPI(76), DPI(34));
-    nav_note_.SetRect(max(DPI(200), client.GetWidth() - DPI(180)), DPI(8), DPI(165), DPI(30));
+    services_button_.SetRect(DPI(191), DPI(8), DPI(88), DPI(34));
+    nav_note_.SetRect(max(DPI(300), client.GetWidth() - DPI(190)), DPI(8), DPI(175), DPI(30));
 
     Rect page = overview_page_.GetSize();
     const int pad = DPI(17);
@@ -1681,13 +1696,14 @@ void TaskTrackTunnelManager::Layout()
     }
 
     Rect ar = activity_panel_.GetSize();
-    activity_title_.SetRect(DPI(13), DPI(8), DPI(120), DPI(26));
-    activity_live_.SetRect(DPI(135), DPI(8), DPI(70), DPI(26));
+    activity_title_.SetRect(DPI(13), DPI(8), DPI(140), DPI(26));
+    activity_live_.SetRect(DPI(155), DPI(8), DPI(70), DPI(26));
     activity_count_.SetRect(max(0, ar.GetWidth() - DPI(190)), DPI(8), DPI(175), DPI(26));
     activity_table_.SetRect(DPI(13), DPI(42), max(0, ar.GetWidth() - DPI(26)), max(0, ar.GetHeight() - DPI(84)));
-    copy_diagnostics_button_.SetRect(DPI(10), max(0, ar.GetHeight() - DPI(36)), DPI(116), DPI(27));
-    clear_activity_button_.SetRect(DPI(133), max(0, ar.GetHeight() - DPI(36)), DPI(105), DPI(27));
-    activity_footer_note_.SetRect(max(DPI(245), ar.GetWidth() - DPI(220)), max(0, ar.GetHeight() - DPI(36)), DPI(205), DPI(27));
+    send_probe_button_.SetRect(DPI(10), max(0, ar.GetHeight() - DPI(36)), DPI(90), DPI(27));
+    copy_diagnostics_button_.SetRect(DPI(107), max(0, ar.GetHeight() - DPI(36)), DPI(116), DPI(27));
+    clear_activity_button_.SetRect(DPI(230), max(0, ar.GetHeight() - DPI(36)), DPI(105), DPI(27));
+    activity_footer_note_.SetRect(max(DPI(345), ar.GetWidth() - DPI(270)), max(0, ar.GetHeight() - DPI(36)), DPI(255), DPI(27));
 
     int table_w = max(DPI(300), ar.GetWidth() - DPI(18));
     activity_table_.SetColumnWidth(0, DPI(78));
@@ -1701,7 +1717,7 @@ void TaskTrackTunnelManager::Layout()
     int setup_width = max(0, sp.GetWidth() - pad * 2);
     profile_bar_.SetRect(pad, DPI(16), setup_width, DPI(75));
     setup_form_.SetRect(pad, DPI(16) + DPI(75) + gap, setup_width,
-                        max(DPI(330), sp.GetHeight() - DPI(16) - DPI(75) - gap - DPI(15)));
+                        max(DPI(350), sp.GetHeight() - DPI(16) - DPI(75) - gap - DPI(15)));
 
     Rect pr = profile_bar_.GetSize();
     profile_select_caption_.SetRect(DPI(13), DPI(8), DPI(180), DPI(18));
@@ -1718,21 +1734,23 @@ void TaskTrackTunnelManager::Layout()
     section_profile_.SetRect(label_x, y, field_w, DPI(16)); y += DPI(22);
     profile_name_label_.SetRect(label_x, y + DPI(4), DPI(125), DPI(20));
     profile_name_edit_.SetRect(field_x, y, field_w, DPI(28)); y += DPI(34);
+    machine_id_label_.SetRect(label_x, y + DPI(4), DPI(125), DPI(20));
+    machine_id_edit_.SetRect(field_x, y, field_w, DPI(28)); y += DPI(34);
     tunnel_id_label_.SetRect(label_x, y + DPI(4), DPI(125), DPI(20));
     tunnel_id_edit_.SetRect(field_x, y, field_w, DPI(28)); y += DPI(34);
+
     credential_label_.SetRect(label_x, y + DPI(4), DPI(125), DPI(20));
-    int credential_w = max(DPI(180), field_w - DPI(120));
-    credential_edit_.SetRect(field_x, y, credential_w, DPI(28));
-    credential_status_.SetRect(field_x + credential_w + DPI(5), y + DPI(2), DPI(110), DPI(24)); y += DPI(30);
-    credential_note_.SetRect(field_x, y, field_w, DPI(18)); y += DPI(24);
+    int source_w = max(DPI(200), field_w - DPI(120));
+    credential_source_dropdown_.SetRect(field_x, y, source_w, DPI(28));
+    credential_status_.SetRect(field_x + source_w + DPI(5), y + DPI(2), DPI(110), DPI(24)); y += DPI(34);
+    credential_set_button_.SetRect(field_x, y, DPI(78), DPI(28));
+    credential_clear_button_.SetRect(field_x + DPI(85), y, DPI(72), DPI(28));
+    credential_note_.SetRect(field_x + DPI(168), y + DPI(1), max(0, field_w - DPI(168)), DPI(28)); y += DPI(38);
 
     section_runtime_.SetRect(label_x, y, field_w, DPI(16)); y += DPI(22);
     runtime_path_label_.SetRect(label_x, y + DPI(4), DPI(125), DPI(20));
     runtime_path_edit_.SetRect(field_x, y, max(DPI(180), field_w - DPI(82)), DPI(28));
-    runtime_browse_button_.SetRect(field_x + max(DPI(180), field_w - DPI(75)), y, DPI(75), DPI(28)); y += DPI(34);
-    mcp_path_label_.SetRect(label_x, y + DPI(4), DPI(125), DPI(20));
-    mcp_path_edit_.SetRect(field_x, y, max(DPI(180), field_w - DPI(82)), DPI(28));
-    mcp_browse_button_.SetRect(field_x + max(DPI(180), field_w - DPI(75)), y, DPI(75), DPI(28)); y += DPI(36);
+    runtime_browse_button_.SetRect(field_x + max(DPI(180), field_w - DPI(75)), y, DPI(75), DPI(28)); y += DPI(38);
 
     section_launch_.SetRect(label_x, y, field_w, DPI(16)); y += DPI(22);
     auto_connect_label_.SetRect(label_x, y + DPI(3), DPI(125), DPI(20));
@@ -1743,6 +1761,38 @@ void TaskTrackTunnelManager::Layout()
     remember_toggle_.SetRect(field_x, y, DPI(38), DPI(22));
     remember_title_.SetRect(field_x + DPI(50), y - DPI(2), field_w - DPI(50), DPI(18));
     remember_note_.SetRect(field_x + DPI(50), y + DPI(15), field_w - DPI(50), DPI(16));
+
+    Rect svp = services_page_.GetSize();
+    int services_width = max(0, svp.GetWidth() - pad * 2);
+    service_bar_.SetRect(pad, DPI(16), services_width, DPI(75));
+    service_form_.SetRect(pad, DPI(16) + DPI(75) + gap, services_width,
+                          max(DPI(260), svp.GetHeight() - DPI(16) - DPI(75) - gap - DPI(15)));
+
+    Rect sbr = service_bar_.GetSize();
+    service_select_caption_.SetRect(DPI(13), DPI(8), DPI(180), DPI(18));
+    service_dropdown_.SetRect(DPI(13), DPI(30), min(DPI(430), max(DPI(220), sbr.GetWidth() - DPI(350))), DPI(32));
+    delete_service_button_.SetRect(max(0, sbr.GetWidth() - DPI(83)), DPI(30), DPI(70), DPI(31));
+    duplicate_service_button_.SetRect(max(0, sbr.GetWidth() - DPI(174)), DPI(30), DPI(84), DPI(31));
+    new_service_button_.SetRect(max(0, sbr.GetWidth() - DPI(248)), DPI(30), DPI(67), DPI(31));
+
+    Rect sfr = service_form_.GetSize();
+    const int slabel_x = DPI(14), sfield_x = DPI(155);
+    const int sfield_w = max(DPI(300), sfr.GetWidth() - sfield_x - DPI(14));
+    int sy = DPI(10);
+    section_service_.SetRect(slabel_x, sy, sfield_w, DPI(16)); sy += DPI(22);
+    service_name_label_.SetRect(slabel_x, sy + DPI(4), DPI(125), DPI(20));
+    service_name_edit_.SetRect(sfield_x, sy, sfield_w, DPI(28)); sy += DPI(34);
+    service_id_label_.SetRect(slabel_x, sy + DPI(4), DPI(125), DPI(20));
+    service_id_edit_.SetRect(sfield_x, sy, sfield_w, DPI(28)); sy += DPI(34);
+    service_channel_label_.SetRect(slabel_x, sy + DPI(4), DPI(125), DPI(20));
+    service_channel_edit_.SetRect(sfield_x, sy, sfield_w, DPI(28)); sy += DPI(34);
+    service_command_label_.SetRect(slabel_x, sy + DPI(4), DPI(125), DPI(20));
+    service_command_edit_.SetRect(sfield_x, sy, max(DPI(180), sfield_w - DPI(82)), DPI(28));
+    service_browse_button_.SetRect(sfield_x + max(DPI(180), sfield_w - DPI(75)), sy, DPI(75), DPI(28)); sy += DPI(38);
+    service_enabled_label_.SetRect(slabel_x, sy + DPI(3), DPI(125), DPI(20));
+    service_enabled_toggle_.SetRect(sfield_x, sy, DPI(38), DPI(22));
+    service_enabled_title_.SetRect(sfield_x + DPI(50), sy - DPI(2), sfield_w - DPI(50), DPI(18));
+    service_enabled_note_.SetRect(sfield_x + DPI(50), sy + DPI(15), sfield_w - DPI(50), DPI(32));
 
     Rect fo = footer_.GetSize();
     footer_build_.SetRect(DPI(11), DPI(4), DPI(145), DPI(22));
