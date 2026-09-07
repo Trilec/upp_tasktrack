@@ -26,7 +26,7 @@ String NormalizedId(String value)
         }
     }
     while(out.EndsWith("-"))
-        out.Trim(out.GetCount() - 1);
+        out = out.Left(out.GetCount() - 1);
     return out;
 }
 
