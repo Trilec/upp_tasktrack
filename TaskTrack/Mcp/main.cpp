@@ -514,8 +514,10 @@ int UnifiedRunSelfTest()
     if(!has_response || probe_json.Find("read_only") < 0 ||
        probe_json.Find(TaskTrackBuildVersion()) < 0 ||
        probe_json.Find("executable_sha256") < 0 ||
-       probe_json.Find(UnifiedExecutableSha256()) < 0)
-        failures.Add("tunnel_probe tool is missing read-only/executable identity");
+       probe_json.Find(UnifiedExecutableSha256()) < 0 ||
+       probe_json.Find("bundle_verified") < 0 ||
+       probe_json.Find("bundle_source_commit") < 0)
+        failures.Add("tunnel_probe tool is missing read-only/runtime bundle identity");
 
     ValueMap call_params;
     call_params.Add("name", "version");
@@ -526,9 +528,12 @@ int UnifiedRunSelfTest()
     if(!has_response || version_json.Find(TaskTrackBuildVersion()) < 0 ||
        version_json.Find("executable_sha256") < 0 ||
        version_json.Find(UnifiedExecutableSha256()) < 0 ||
+       version_json.Find("bundle_verified") < 0 ||
+       version_json.Find("bundle_build") < 0 ||
+       version_json.Find("bundle_source_commit") < 0 ||
        version_json.Find("dashboard_schema_version") < 0 ||
        version_json.Find(Format(":%d", TASKTRACK_DASHBOARD_SCHEMA_VERSION)) < 0)
-        failures.Add("unified version tool is missing exact executable/dashboard identity");
+        failures.Add("unified version tool is missing exact runtime bundle/dashboard identity");
 
     if(failures.IsEmpty()) {
         Cout() << "tasktrack-unified-mcp-selftest: ok (dashboard "
