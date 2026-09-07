@@ -1340,7 +1340,7 @@ const McpTunnelService* TaskTrackTunnelManager::TaskTrackService() const
 
 void TaskTrackTunnelManager::RefreshProjection()
 {
-    RuntimeState state = GetRuntimeState();
+    McpTunnelRuntime::State state = runtime_.GetState();
     const McpTunnelProfile *profile = CurrentProfile();
 
     Color state_color = StoppedColor();
@@ -1349,25 +1349,26 @@ void TaskTrackTunnelManager::RefreshProjection()
     String state_subtitle = "Tunnel is not connected";
     String primary_text = "Connect";
 
-    if(state == STATE_READY) {
+    if(state == McpTunnelRuntime::READY) {
         state_color = OkColor();
         beacon_face = dark_theme_ ? Color(32,55,47) : Color(237,249,244);
         state_title = "READY";
-        state_subtitle = "Secure tunnel connected";
+        state_subtitle = "Machine tunnel connected";
         primary_text = "Stop";
     }
-    else if(state == STATE_CONNECTING) {
+    else if(state == McpTunnelRuntime::CONNECTING) {
         state_color = ActivityColor();
         beacon_face = dark_theme_ ? Color(58,48,32) : Color(253,246,233);
         state_title = "CONNECTING...";
         state_subtitle = "Opening secure tunnel";
         primary_text = "Cancel";
     }
-    else if(state == STATE_ERROR) {
+    else if(state == McpTunnelRuntime::ERROR) {
         state_color = DangerColor();
         beacon_face = dark_theme_ ? Color(60,39,43) : Color(255,241,242);
         state_title = "ERROR";
-        state_subtitle = last_error_.IsEmpty() ? String("Tunnel could not be established") : last_error_;
+        state_subtitle = runtime_.GetLastError().IsEmpty()
+            ? String("Tunnel could not be established") : runtime_.GetLastError();
         primary_text = "Retry";
     }
 
@@ -1376,16 +1377,16 @@ void TaskTrackTunnelManager::RefreshProjection()
     beacon_core_.SetAlign(UiAlign::CENTER, UiAlign::CENTER);
 
     state_title_.SetText(state_title);
-    state_title_.SetCustomStyle(MakeLabelStyle(state == STATE_READY ? TextColor() : state_color, 27, true));
+    state_title_.SetCustomStyle(MakeLabelStyle(state == McpTunnelRuntime::READY ? TextColor() : state_color, 27, true));
     state_subtitle_.SetText(state_subtitle);
     primary_button_.SetText(primary_text);
 
     if(profile) {
-        profile_value_.SetText(profile->name);
+        profile_value_.SetText(profile->machine_id.IsEmpty() ? profile->name : profile->machine_id);
         tunnel_value_.SetText(profile->tunnel_id.IsEmpty() ? String("Not configured") : EllipsizeMiddle(profile->tunnel_id, 10));
     }
     else {
-        profile_value_.SetText("No profile");
+        profile_value_.SetText("No machine");
         tunnel_value_.SetText("Not configured");
     }
 
@@ -1394,19 +1395,28 @@ void TaskTrackTunnelManager::RefreshProjection()
     bool has_activity = TaskTrackTunnelLoadActivity(activity, activity_error);
     sync_value_.SetText(has_activity && !activity.updated_at.IsEmpty() ? activity.updated_at : String("—"));
 
-    Color mcp_color = profile && FileExists(profile->mcp_path) ? OkColor() : DangerColor();
-    status_value_[0].ClearSpans().EnableRich(true)
-                    .AddBulletSpan(mcp_color, DPI(7))
-                    .AddTextSpan(profile && FileExists(profile->mcp_path) ? "  Online" : "  Missing", TextColor(), true);
+    const McpTunnelService *main_service = nullptr;
+    if(profile)
+        for(const McpTunnelService& service : profile->services)
+            if(service.enabled && service.channel == "main") {
+                main_service = &service;
+                break;
+            }
 
-    Color tunnel_color = state == STATE_READY ? OkColor()
-                       : state == STATE_CONNECTING ? ActivityColor()
-                       : state == STATE_ERROR ? DangerColor()
-                                              : StoppedColor();
-    String tunnel_text = state == STATE_READY ? "Healthy"
-                       : state == STATE_CONNECTING ? "Connecting"
-                       : state == STATE_ERROR ? "Fault"
-                                              : "Stopped";
+    bool main_configured = main_service && !main_service->command.IsEmpty();
+    status_value_[0].ClearSpans().EnableRich(true)
+                    .AddBulletSpan(main_configured ? OkColor() : DangerColor(), DPI(7))
+                    .AddTextSpan(main_configured ? "  " + main_service->name : String("  Missing"),
+                                 TextColor(), true);
+
+    Color tunnel_color = state == McpTunnelRuntime::READY ? OkColor()
+                       : state == McpTunnelRuntime::CONNECTING ? ActivityColor()
+                       : state == McpTunnelRuntime::ERROR ? DangerColor()
+                                                         : StoppedColor();
+    String tunnel_text = state == McpTunnelRuntime::READY ? "Healthy"
+                       : state == McpTunnelRuntime::CONNECTING ? "Connecting"
+                       : state == McpTunnelRuntime::ERROR ? "Fault"
+                                                         : "Stopped";
     status_value_[1].ClearSpans().EnableRich(true)
                     .AddBulletSpan(tunnel_color, DPI(7))
                     .AddTextSpan("  " + tunnel_text, TextColor(), true);
@@ -1416,35 +1426,45 @@ void TaskTrackTunnelManager::RefreshProjection()
     status_value_[2].ClearSpans().EnableRich(true)
                     .AddBulletSpan((received || sent) ? ActivityColor() : StoppedColor(), DPI(7))
                     .AddTextSpan(Format("  %lld in / %lld out", (long long)received, (long long)sent), TextColor(), true);
-    status_value_[3].SetText(TaskTrackBuildVersion());
 
-    activity_live_.Show(runtime_started_);
-    activity_footer_note_.SetText(state == STATE_READY ? "Traffic flowing normally"
-                                : state == STATE_CONNECTING ? "Connecting to control plane"
-                                : state == STATE_ERROR ? "Last connection attempt failed"
-                                                       : "No remote traffic while stopped");
+    int enabled_services = profile ? EnabledServiceCount(*profile) : 0;
+    status_value_[3].ClearSpans().EnableRich(true)
+                    .AddBulletSpan(enabled_services ? OkColor() : DangerColor(), DPI(7))
+                    .AddTextSpan(Format("  %d enabled", enabled_services), TextColor(), true);
 
-    bool can_edit_profile = !runtime_started_;
-    profile_dropdown_.Enable(can_edit_profile);
-    new_profile_button_.Enable(can_edit_profile);
-    duplicate_profile_button_.Enable(can_edit_profile);
-    delete_profile_button_.Enable(can_edit_profile && profiles_.GetCount() > 1);
-    profile_name_edit_.Enable(can_edit_profile);
-    tunnel_id_edit_.Enable(can_edit_profile);
-    runtime_path_edit_.Enable(can_edit_profile);
-    mcp_path_edit_.Enable(can_edit_profile);
-    runtime_browse_button_.Enable(can_edit_profile);
-    mcp_browse_button_.Enable(can_edit_profile);
-    auto_connect_toggle_.Enable(can_edit_profile);
-    remember_toggle_.Enable(can_edit_profile);
-    health_button_.Enable(runtime_started_ && !health_url_.IsEmpty());
+    activity_live_.Show(runtime_.IsStarted());
+    activity_footer_note_.SetText(state == McpTunnelRuntime::READY ? "TaskTrack traffic visible when its service is used"
+                                : state == McpTunnelRuntime::CONNECTING ? "Connecting to control plane"
+                                : state == McpTunnelRuntime::ERROR ? "Last connection attempt failed"
+                                                                  : "No TaskTrack remote traffic while stopped");
 
-    bool key_available = !GetEnv("CONTROL_PLANE_API_KEY").IsEmpty();
-    credential_status_.ClearSpans().EnableRich(true)
-                      .AddBulletSpan(key_available ? OkColor() : DangerColor(), DPI(7))
-                      .AddTextSpan(key_available ? "  Available" : "  Not set",
-                                   key_available ? OkColor() : DangerColor(), true);
+    bool can_edit = !runtime_.IsStarted();
+    profile_dropdown_.Enable(can_edit);
+    new_profile_button_.Enable(can_edit);
+    duplicate_profile_button_.Enable(can_edit);
+    delete_profile_button_.Enable(can_edit && profiles_.GetCount() > 1);
+    profile_name_edit_.Enable(can_edit);
+    machine_id_edit_.Enable(can_edit);
+    tunnel_id_edit_.Enable(can_edit);
+    credential_source_dropdown_.Enable(can_edit);
+    runtime_path_edit_.Enable(can_edit);
+    runtime_browse_button_.Enable(can_edit);
+    auto_connect_toggle_.Enable(can_edit);
+    remember_toggle_.Enable(can_edit);
 
+    service_dropdown_.Enable(can_edit);
+    new_service_button_.Enable(can_edit);
+    duplicate_service_button_.Enable(can_edit && CurrentService());
+    delete_service_button_.Enable(can_edit && profile && profile->services.GetCount() > 1);
+    service_name_edit_.Enable(can_edit && CurrentService());
+    service_id_edit_.Enable(can_edit && CurrentService());
+    service_channel_edit_.Enable(can_edit && CurrentService());
+    service_command_edit_.Enable(can_edit && CurrentService());
+    service_browse_button_.Enable(can_edit && CurrentService());
+    service_enabled_toggle_.Enable(can_edit && CurrentService());
+
+    health_button_.Enable(runtime_.IsStarted() && !runtime_.GetHealthUrl().IsEmpty());
+    RefreshCredentialProjection();
     RefreshActivity();
 }
 
