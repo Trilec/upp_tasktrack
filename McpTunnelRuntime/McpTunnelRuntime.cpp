@@ -247,6 +247,10 @@ bool McpTunnelValidateProfile(const McpTunnelProfile& profile, String& error)
             error = "MCP channel names may contain only letters, digits, '.', '_' and '-'.";
             return false;
         }
+        if(service.channel == "harpoon") {
+            error = "The MCP channel name 'harpoon' is reserved by the OpenAI tunnel runtime.";
+            return false;
+        }
         if(channels.Find(service.channel) >= 0) {
             error = "Enabled MCP channels must be unique.";
             return false;
@@ -258,9 +262,17 @@ bool McpTunnelValidateProfile(const McpTunnelProfile& profile, String& error)
             error = "Every enabled MCP service requires a command.";
             return false;
         }
+        if(service.command.Find(',') >= 0 || service.command.Find('\n') >= 0 || service.command.Find('\r') >= 0) {
+            error = "MCP service commands cannot contain commas or newlines in channel-qualified runtime bindings.";
+            return false;
+        }
     }
     if(enabled_count == 0) {
         error = "At least one MCP service must be enabled.";
+        return false;
+    }
+    if(enabled_count > 32) {
+        error = "The OpenAI tunnel runtime supports at most 32 enabled MCP channels.";
         return false;
     }
     if(main_count != 1) {
@@ -300,7 +312,7 @@ Vector<String> McpTunnelBuildRunArgs(const McpTunnelProfile& profile,
 String McpTunnelBuildChildEnvironment(const McpTunnelProfile& profile,
                                       const String& control_plane_api_key)
 {
-    String block;
+    Vector<String> entries;
     const VectorMap<String, String>& environment = Environment();
     for(int i = 0; i < environment.GetCount(); ++i) {
         String name = environment.GetKey(i);
@@ -310,18 +322,20 @@ String McpTunnelBuildChildEnvironment(const McpTunnelProfile& profile,
            !CompareNoCase(name, "MCP_TUNNEL_PROFILE_ID") ||
            !CompareNoCase(name, "TASKTRACK_TUNNEL_REMOTE"))
             continue;
-        block << name << "=" << environment[i];
-        block.Cat(0);
+        entries.Add(name + "=" + environment[i]);
     }
 
-    block << "CONTROL_PLANE_API_KEY=" << control_plane_api_key;
-    block.Cat(0);
-    block << "MCP_TUNNEL_REMOTE=1";
-    block.Cat(0);
-    block << "MCP_TUNNEL_MACHINE_ID=" << profile.machine_id;
-    block.Cat(0);
-    block << "MCP_TUNNEL_PROFILE_ID=" << profile.id;
-    block.Cat(0);
+    entries.Add("CONTROL_PLANE_API_KEY=" + control_plane_api_key);
+    entries.Add("MCP_TUNNEL_REMOTE=1");
+    entries.Add("MCP_TUNNEL_MACHINE_ID=" + profile.machine_id);
+    entries.Add("MCP_TUNNEL_PROFILE_ID=" + profile.id);
+    Sort(entries);
+
+    String block;
+    for(const String& entry : entries) {
+        block << entry;
+        block.Cat(0);
+    }
     block.Cat(0);
     return block;
 }
