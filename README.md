@@ -80,13 +80,17 @@ executables into a clean copyable bundle:
 
 The current Windows bundle is generated at `bin/windows-x64/` and contains only
 the four production TaskTrack executables, the validated official OpenAI tunnel
-runtime, runtime README, SHA-256 manifest, TaskTrack license and required
-third-party notices/SBOM. Tests and examples remain in the build directory.
+runtime, runtime README, verification manifest, SHA-256 bundle manifest,
+TaskTrack license and required third-party notices/SBOM. Tests and examples
+remain in the build directory.
 
-The vendor runtime is checked against
-`tunnel-client/runtime-manifest.json` before staging and is written into the
-bundle as `tunnel-client.exe`, allowing `TaskTrackTunnelGui.exe` to find it
-beside itself without manual runtime-path configuration.
+`verify.ps1` records the exact tested executable hashes and Git provenance in
+the build output. `stage-bin.ps1` refuses dirty source, a different Git HEAD,
+changed build binaries, or a vendor runtime that was not part of verification.
+The vendor runtime is also checked against
+`tunnel-client/runtime-manifest.json` and is staged as `tunnel-client.exe`,
+allowing `TaskTrackTunnelGui.exe` to find it beside itself without manual
+runtime-path configuration.
 
 See [Runtime bundle](bin/README.md).
 
