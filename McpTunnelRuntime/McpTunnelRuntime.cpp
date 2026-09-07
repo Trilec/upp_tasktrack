@@ -1,9 +1,5 @@
 #include "McpTunnelRuntime.h"
 
-#ifdef PLATFORM_WIN32
-#include <windows.h>
-#include <wincred.h>
-#endif
 #ifdef PLATFORM_POSIX
 #include <sys/stat.h>
 #endif
@@ -45,39 +41,17 @@ bool IsCanonicalChannel(const String& channel)
     return true;
 }
 
-#ifdef PLATFORM_WIN32
-String CredentialTarget(const McpTunnelProfile& profile)
-{
-    return profile.credential_ref.IsEmpty()
-        ? McpTunnelDefaultCredentialRef(profile.id)
-        : profile.credential_ref;
-}
-
-String WinErrorText(const char *action)
-{
-    return Format("%s failed (Windows error %lu).", action, (unsigned long)GetLastError());
-}
-#endif
-
 }
 
 String McpTunnelCredentialSourceId(McpTunnelCredentialSource source)
 {
-    return source == MCP_TUNNEL_CREDENTIAL_ENVIRONMENT ? "environment" : "windows_credential_manager";
+    return source == MCP_TUNNEL_CREDENTIAL_ENVIRONMENT ? "environment" : "session";
 }
 
 McpTunnelCredentialSource McpTunnelCredentialSourceFromId(const String& id)
 {
     return id == "environment" ? MCP_TUNNEL_CREDENTIAL_ENVIRONMENT
-                               : MCP_TUNNEL_CREDENTIAL_WINDOWS;
-}
-
-String McpTunnelDefaultCredentialRef(const String& profile_id)
-{
-    String id = NormalizedId(profile_id);
-    if(id.IsEmpty())
-        id = "default";
-    return "Trilec.McpTunnel/" + id;
+                               : MCP_TUNNEL_CREDENTIAL_SESSION;
 }
 
 String McpTunnelDefaultMachineId()
@@ -137,7 +111,6 @@ ValueMap McpTunnelProfileToValue(const McpTunnelProfile& profile)
     out.Add("tunnel_id", profile.tunnel_id);
     out.Add("runtime_path", profile.runtime_path);
     out.Add("credential_source", McpTunnelCredentialSourceId(profile.credential_source));
-    out.Add("credential_ref", profile.credential_ref);
     out.Add("auto_connect", profile.auto_connect);
     out.Add("remember_profile", profile.remember_profile);
     ValueArray services;
@@ -159,7 +132,6 @@ McpTunnelProfile McpTunnelProfileFromValue(const Value& value, int schema_versio
     profile.tunnel_id = AsString(value["tunnel_id"]);
     profile.runtime_path = AsString(value["runtime_path"]);
     profile.credential_source = McpTunnelCredentialSourceFromId(AsString(value["credential_source"]));
-    profile.credential_ref = AsString(value["credential_ref"]);
     profile.auto_connect = !IsNull(value["auto_connect"]) && (bool)value["auto_connect"];
     profile.remember_profile = IsNull(value["remember_profile"]) || (bool)value["remember_profile"];
 
@@ -190,8 +162,6 @@ McpTunnelProfile McpTunnelProfileFromValue(const Value& value, int schema_versio
 
     if(profile.machine_id.IsEmpty())
         profile.machine_id = McpTunnelDefaultMachineId();
-    if(profile.credential_ref.IsEmpty())
-        profile.credential_ref = McpTunnelDefaultCredentialRef(profile.id);
     return profile;
 }
 
@@ -205,7 +175,6 @@ McpTunnelProfile McpTunnelDuplicateProfile(const McpTunnelProfile& source,
     out.machine_id = source.machine_id;
     out.runtime_path = source.runtime_path;
     out.credential_source = source.credential_source;
-    out.credential_ref = McpTunnelDefaultCredentialRef(new_id);
     out.auto_connect = false;
     out.remember_profile = source.remember_profile;
     for(const McpTunnelService& source_service : source.services) {
@@ -355,127 +324,6 @@ String McpTunnelBuildChildEnvironment(const McpTunnelProfile& profile)
     return block;
 }
 
-bool McpTunnelCredentialExists(const McpTunnelProfile& profile, String& error)
-{
-    error.Clear();
-    if(profile.credential_source == MCP_TUNNEL_CREDENTIAL_ENVIRONMENT) {
-        if(GetEnv("CONTROL_PLANE_API_KEY").IsEmpty()) {
-            error = "CONTROL_PLANE_API_KEY is not set.";
-            return false;
-        }
-        return true;
-    }
-
-#ifdef PLATFORM_WIN32
-    String target = CredentialTarget(profile);
-    PCREDENTIALA credential = nullptr;
-    if(!CredReadA(~target, CRED_TYPE_GENERIC, 0, &credential)) {
-        if(GetLastError() == ERROR_NOT_FOUND)
-            error = "No Windows Credential Manager key is stored for this profile.";
-        else
-            error = WinErrorText("CredRead");
-        return false;
-    }
-    CredFree(credential);
-    return true;
-#else
-    error = "Windows Credential Manager is only available on Windows.";
-    return false;
-#endif
-}
-
-bool McpTunnelReadCredential(const McpTunnelProfile& profile, String& secret, String& error)
-{
-    secret.Clear();
-    error.Clear();
-
-    if(profile.credential_source == MCP_TUNNEL_CREDENTIAL_ENVIRONMENT) {
-        secret = GetEnv("CONTROL_PLANE_API_KEY");
-        if(secret.IsEmpty()) {
-            error = "CONTROL_PLANE_API_KEY is not set.";
-            return false;
-        }
-        return true;
-    }
-
-#ifdef PLATFORM_WIN32
-    String target = CredentialTarget(profile);
-    PCREDENTIALA credential = nullptr;
-    if(!CredReadA(~target, CRED_TYPE_GENERIC, 0, &credential)) {
-        if(GetLastError() == ERROR_NOT_FOUND)
-            error = "No Windows Credential Manager key is stored for this profile.";
-        else
-            error = WinErrorText("CredRead");
-        return false;
-    }
-    secret = String((const char *)credential->CredentialBlob, (int)credential->CredentialBlobSize);
-    CredFree(credential);
-    if(secret.IsEmpty()) {
-        error = "The stored Windows credential is empty.";
-        return false;
-    }
-    return true;
-#else
-    error = "Windows Credential Manager is only available on Windows.";
-    return false;
-#endif
-}
-
-bool McpTunnelWriteCredential(const McpTunnelProfile& profile, const String& secret, String& error)
-{
-    error.Clear();
-    if(profile.credential_source != MCP_TUNNEL_CREDENTIAL_WINDOWS) {
-        error = "This profile uses the environment credential source.";
-        return false;
-    }
-    if(secret.IsEmpty()) {
-        error = "API key cannot be empty.";
-        return false;
-    }
-
-#ifdef PLATFORM_WIN32
-    if(secret.GetCount() > CRED_MAX_CREDENTIAL_BLOB_SIZE) {
-        error = "API key exceeds the Windows Credential Manager generic credential limit.";
-        return false;
-    }
-    String target = CredentialTarget(profile);
-    CREDENTIALA credential;
-    Zero(credential);
-    credential.Type = CRED_TYPE_GENERIC;
-    credential.TargetName = const_cast<char *>(~target);
-    credential.CredentialBlobSize = (DWORD)secret.GetCount();
-    credential.CredentialBlob = (LPBYTE)~secret;
-    credential.Persist = CRED_PERSIST_LOCAL_MACHINE;
-    credential.UserName = const_cast<char *>("OpenAI Secure MCP Tunnel");
-    if(!CredWriteA(&credential, 0)) {
-        error = WinErrorText("CredWrite");
-        return false;
-    }
-    return true;
-#else
-    error = "Windows Credential Manager is only available on Windows.";
-    return false;
-#endif
-}
-
-bool McpTunnelDeleteCredential(const McpTunnelProfile& profile, String& error)
-{
-    error.Clear();
-#ifdef PLATFORM_WIN32
-    String target = CredentialTarget(profile);
-    if(CredDeleteA(~target, CRED_TYPE_GENERIC, 0))
-        return true;
-    if(GetLastError() == ERROR_NOT_FOUND)
-        return true;
-    error = WinErrorText("CredDelete");
-    return false;
-#else
-    error = "Windows Credential Manager is only available on Windows.";
-    return false;
-#endif
-}
-
-
 McpTunnelRuntime::McpTunnelRuntime()
 {
 }
@@ -517,9 +365,6 @@ bool McpTunnelRuntime::CreateSecretFile(const String& secret)
     }
 #ifdef PLATFORM_POSIX
     chmod(~secret_file_, 0600);
-#endif
-#ifdef PLATFORM_WIN32
-    SetFileAttributesA(~secret_file_, FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_TEMPORARY);
 #endif
     return true;
 }
