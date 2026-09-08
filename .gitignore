@@ -69,3 +69,4 @@ tasktrack_dashboard_data/
 *.tasktrack-dashboard.json.bak
 *.tasktrack-dashboard.json.tmp
 *.tasktrack-dashboard.lock
+designs/logodesign.psd
