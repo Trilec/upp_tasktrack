@@ -12,6 +12,8 @@ public:
     TaskTrackDashboardWindow();
     ~TaskTrackDashboardWindow() override;
     bool LoadDashboard(const String& path, String& error);
+    void ShowEmptyState();
+    bool PromptLoadDashboard(String& error);
     virtual void Layout() override;
 private:
     void BuildUi(); void Wire(); void RefreshHeader(); void RebuildCategoryChoices();
@@ -25,7 +27,7 @@ private:
     UiPanel surface_; UiBoxLayout root_{UiDirection::V}; UiGroupPanel header_; UiBoxLayout header_box_{UiDirection::H};
     UiProgressRing overall_ring_; UiBoxLayout summary_box_{UiDirection::V}; UiLabel title_label_,phase_label_,meta_label_,attention_label_;
     UiBoxLayout controls_{UiDirection::H}; UiLabel category_label_; UiDropdown category_; UiLabel revision_label_; UiDropdown revision_;
-    UiButton refresh_button_,current_button_,close_button_; UiScrollPanel scroll_; UiBoxLayout panels_box_{UiDirection::V};
+    UiButton load_button_,refresh_button_,current_button_,close_button_; UiScrollPanel scroll_; UiBoxLayout panels_box_{UiDirection::V};
     Array<TaskTrackDashboardPanelCtrl> panel_controls_; UiLabel empty_label_; UiBoxLayout footer_{UiDirection::H}; UiLabel footer_status_;
 };
 }
