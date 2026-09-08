@@ -88,8 +88,14 @@ String McpTunnelNormalizeServiceCommand(const String& command)
     // one executable path and canonicalize separators before persistence and
     // launch. This also repairs older pasted Windows paths on load.
     String candidate = value;
-    if(candidate.GetCount() >= 2 && candidate[0] == '"' && candidate[candidate.GetCount() - 1] == '"')
-        candidate = candidate.Mid(1, candidate.GetCount() - 2);
+    if(candidate.GetCount() >= 2 && candidate[0] == '"') {
+        int quote_end = candidate.Find('"', 1);
+        if(quote_end > 1) {
+            String executable = candidate.Mid(1, quote_end - 1);
+            if(ToLower(executable).EndsWith(".exe"))
+                return McpTunnelCommandForExecutable(executable) + candidate.Mid(quote_end + 1);
+        }
+    }
 
     if(ToLower(candidate).EndsWith(".exe"))
         return McpTunnelCommandForExecutable(candidate);
