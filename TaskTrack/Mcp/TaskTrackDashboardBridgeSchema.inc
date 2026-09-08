@@ -306,9 +306,16 @@ bool LaunchDashboardGui(const String& dashboard_path, String& error)
         return false;
     }
 
+    String normalized_path = NormalizePath(dashboard_path);
+    String ack_path = GetTempFileName("tasktrack-dashboard-launch-ack-");
+    FileDelete(ack_path);
+
     Vector<String> args;
     args.Add("--dashboard");
-    args.Add(dashboard_path);
+    args.Add(normalized_path);
+    args.Add("--launch-ack");
+    args.Add(ack_path);
+
     LocalProcess process;
 #ifndef PLATFORM_WIN32
     process.DoubleFork();
@@ -318,6 +325,36 @@ bool LaunchDashboardGui(const String& dashboard_path, String& error)
         return false;
     }
     process.Detach();
+
+    String ack;
+    for(int i = 0; i < 50; ++i) {
+        if(FileExists(ack_path)) {
+            ack = LoadFile(ack_path);
+            break;
+        }
+        Sleep(100);
+    }
+    FileDelete(ack_path);
+
+    if(IsNull(ack) || ack.IsEmpty()) {
+        error = "TaskTrack dashboard GUI started but did not confirm that it loaded the requested dashboard.";
+        return false;
+    }
+
+    Vector<String> lines = Split(ack, '\n');
+    String status = lines.GetCount() ? TrimBoth(lines[0]) : String();
+    String detail = lines.GetCount() > 1 ? TrimBoth(lines[1]) : String();
+
+    if(status != "ok") {
+        error = detail.IsEmpty()
+            ? String("TaskTrack dashboard GUI reported a launch/load failure.")
+            : detail;
+        return false;
+    }
+    if(detail != normalized_path) {
+        error = "TaskTrack dashboard GUI acknowledged a different dashboard path.";
+        return false;
+    }
     return true;
 }
 
