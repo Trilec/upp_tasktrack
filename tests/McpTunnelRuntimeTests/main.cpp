@@ -327,6 +327,20 @@ CONSOLE_APP_MAIN
     t.Check(McpTunnelCommandForExecutable("C:\\TaskTrack\\TaskTrackMcp.exe") ==
             "C:/TaskTrack/TaskTrackMcp.exe",
             "executable command did not normalize Windows separators");
+#ifdef PLATFORM_WIN32
+    t.Check(McpTunnelNormalizeServiceCommand("E:\\apps\\github\\upp_patchtrack\\bin\\windows-x64\\PatchTrackMcp.exe") ==
+            "E:/apps/github/upp_patchtrack/bin/windows-x64/PatchTrackMcp.exe",
+            "pasted Windows MCP executable path was not canonicalized");
+    t.Check(McpTunnelNormalizeServiceCommand("E:\\Program Files\\PatchTrack\\PatchTrackMcp.exe") ==
+            "\"E:/Program Files/PatchTrack/PatchTrackMcp.exe\"",
+            "Windows MCP executable path with spaces was not canonicalized/quoted");
+    McpTunnelProfile windows_path = MakeProfile();
+    windows_path.services[1].command = "E:\\apps\\github\\upp_patchtrack\\bin\\windows-x64\\PatchTrackMcp.exe";
+    Vector<String> windows_args = McpTunnelBuildRunArgs(windows_path, "file:/dev/stdin", "health.url", "runtime.log");
+    t.Check(HasArgPair(windows_args, "--mcp.command",
+                       "channel=patchtrack,command=E:/apps/github/upp_patchtrack/bin/windows-x64/PatchTrackMcp.exe"),
+            "runtime boundary did not canonicalize persisted Windows PatchTrack command");
+#endif
     t.Check(McpTunnelValidateProfile(profile, error), "valid two-service machine profile rejected: " + error);
 
     Vector<String> args = McpTunnelBuildRunArgs(profile, "file:/dev/stdin", "health.url", "runtime.log");
