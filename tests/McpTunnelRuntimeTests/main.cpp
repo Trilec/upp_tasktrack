@@ -334,6 +334,9 @@ CONSOLE_APP_MAIN
     t.Check(McpTunnelNormalizeServiceCommand("E:\\Program Files\\PatchTrack\\PatchTrackMcp.exe") ==
             "\"E:/Program Files/PatchTrack/PatchTrackMcp.exe\"",
             "Windows MCP executable path with spaces was not canonicalized/quoted");
+    t.Check(McpTunnelNormalizeServiceCommand("\"E:\\Program Files\\PatchTrack\\PatchTrackMcp.exe\" --mode stdio") ==
+            "\"E:/Program Files/PatchTrack/PatchTrackMcp.exe\" --mode stdio",
+            "quoted Windows MCP executable with arguments was not canonicalized");
     McpTunnelProfile windows_path = MakeProfile();
     windows_path.services[1].command = "E:\\apps\\github\\upp_patchtrack\\bin\\windows-x64\\PatchTrackMcp.exe";
     Vector<String> windows_args = McpTunnelBuildRunArgs(windows_path, "file:/dev/stdin", "health.url", "runtime.log");
