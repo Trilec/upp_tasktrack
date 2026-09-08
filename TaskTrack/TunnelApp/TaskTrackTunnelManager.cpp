@@ -95,6 +95,12 @@ String CommandExecutablePath(const String& command)
     return value.Left(end);
 }
 
+bool CommandExecutableLooksLikePath(const String& executable)
+{
+    return executable.Find('/') >= 0 || executable.Find('\\') >= 0 ||
+           (executable.GetCount() >= 2 && IsAlpha(executable[0]) && executable[1] == ':');
+}
+
 }
 
 TaskTrackTunnelManager::TaskTrackTunnelManager(const TaskTrackTunnelManagerOptions& options)
@@ -783,6 +789,7 @@ void TaskTrackTunnelManager::RefreshSaveProjection()
         text = "Auto-save  •  On";
 
     footer_saved_.SetText(text);
+    footer_saved_.SetCustomStyle(MakeLabelStyle(profile_save_failed_ ? DangerColor() : SoftColor(), 9));
     String tip = ProfileStorePath();
     if(profile_save_failed_ && !profile_save_error_.IsEmpty())
         tip << "\n" << profile_save_error_;
@@ -1337,9 +1344,27 @@ void TaskTrackTunnelManager::ConnectRuntime()
 {
     SaveServiceFromUi();
     SaveProfileFromUi();
-    const McpTunnelProfile *profile = CurrentProfile();
+    McpTunnelProfile *profile = CurrentProfile();
     if(!profile)
         return;
+
+    // Canonicalize every service at the final GUI boundary, not only the
+    // currently selected service. This repairs previously pasted Windows paths
+    // before persistence/launch and gives a local error before tunnel-client
+    // starts if an absolute/path-like executable is missing.
+    for(McpTunnelService& service : profile->services) {
+        service.command = McpTunnelNormalizeServiceCommand(service.command);
+        if(!service.enabled)
+            continue;
+        String executable = CommandExecutablePath(service.command);
+        if(CommandExecutableLooksLikePath(executable) && !FileExists(executable)) {
+            SaveProfiles();
+            LoadServiceIntoUi();
+            Exclamation("MCP service '" + service.name + "' executable was not found:\n\n" + executable);
+            return;
+        }
+    }
+    SaveProfiles();
 
     if(runtime_.IsStarted()) {
         RefreshRuntimeStatus(true);
