@@ -352,6 +352,13 @@ bool McpTunnelValidateProfile(const McpTunnelProfile& profile, String& error)
             error = "Every enabled MCP service requires a command.";
             return false;
         }
+#ifdef PLATFORM_WIN32
+        String normalized_command = McpTunnelNormalizeServiceCommand(service.command);
+        if(normalized_command.Find('\\') >= 0) {
+            error = "Windows MCP service commands cannot contain raw backslashes because the tunnel runtime treats them as escapes. Use forward slashes for paths.";
+            return false;
+        }
+#endif
         if(service.command.Find(',') >= 0 || service.command.Find('\n') >= 0 || service.command.Find('\r') >= 0) {
             error = "MCP service commands cannot contain commas or newlines in channel-qualified runtime bindings.";
             return false;
