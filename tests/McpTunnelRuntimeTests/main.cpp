@@ -1,5 +1,6 @@
 #include <Core/Core.h>
 #include <McpTunnelRuntime/McpTunnelRuntime.h>
+#include <TaskTrack/TunnelCore/TaskTrackTunnelCore.h>
 
 using namespace Upp;
 
@@ -461,6 +462,26 @@ CONSOLE_APP_MAIN
     error.Clear();
     t.Check(!McpTunnelValidateProfile(comma_command, error),
             "comma-delimited service command was accepted");
+
+    {
+        String activity_error;
+        TaskTrackTunnelResetActivity(activity_error);
+        for(int i = 0; i < 6; ++i) {
+            TaskTrackTunnelRecordReceived("tools/call", Format("tool-%d", i), activity_error);
+            TaskTrackTunnelRecordSent(100 + i, false, activity_error);
+        }
+        TaskTrackTunnelActivity activity;
+        bool activity_loaded = TaskTrackTunnelLoadActivity(activity, activity_error);
+        t.Check(activity_loaded, "tunnel activity could not be reloaded");
+        t.Check(activity.received == 6 && activity.sent == 6,
+                "tunnel activity counters did not preserve all requests/results");
+        t.Check(activity.recent.GetCount() == 10,
+                "tunnel activity did not retain the last 10 communications");
+        t.Check(activity.recent.GetCount() == 10 &&
+                activity.recent.Top().action == "tool-5",
+                "tunnel activity tail did not preserve the latest communication");
+        TaskTrackTunnelResetActivity(activity_error);
+    }
 
     McpTunnelProfile too_many = MakeProfile();
     too_many.services.Clear();
