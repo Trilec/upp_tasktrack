@@ -1,6 +1,7 @@
 uses
     Core,
-    McpTunnelRuntime;
+    McpTunnelRuntime,
+    TaskTrack/TunnelCore;
 
 file
     main.cpp;
