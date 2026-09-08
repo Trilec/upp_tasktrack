@@ -62,5 +62,9 @@ String TaskTrackDashboardMakeId()
 
 String TaskTrackDashboardDefaultStoreRoot()
 {
-    return NormalizePath(AppendFileName(GetFileFolder(GetExeFilePath()), "tasktrack_dashboard_data"));
+    String root = AppendFileName(AppendFileName(GetAppDataFolder(), "TaskTrack"),
+                                 "dashboard_data");
+    root = NormalizePath(root);
+    MigrateLegacyDashboardStore(root);
+    return root;
 }
