@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.2-rc4 — 2026-09-08
+
+- `open_dashboard` now requires a GUI launch acknowledgement carrying the exact normalized dashboard path before reporting `launched: true`.
+- `TaskTrackDashboardGui.exe --dashboard <path>` opens and foregrounds the requested dashboard; no-argument launch now opens a native empty shell with a visible Load dashboard action and recent-dashboard summary instead of immediately showing a file picker.
+- Tunnel activity retains the last 10 communications and uses a denser 20px row height with smaller text.
+- Acceptance now distinguishes direct stdio host calls from ChatGPT calls that traverse the active OpenAI tunnel.
+
 ## 0.3.2-rc3 — 2026-09-08
 
 - Canonicalizes pasted Windows MCP executable paths before profile persistence and tunnel launch so the upstream stdio command parser cannot consume backslashes as escapes.
