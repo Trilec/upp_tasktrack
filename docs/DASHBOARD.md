@@ -107,6 +107,18 @@ This prevents two agents/sessions from silently overwriting each other. The writ
 
 ## Storage
 
+When `store_root` is omitted, TaskTrack uses a shared per-user application-data
+folder rather than the executable/staged bundle. On Windows this resolves under
+the user's roaming ApplicationData folder as:
+
+`TaskTrack/dashboard_data`
+
+This location is shared by `TaskTrackMcp.exe` and
+`TaskTrackDashboardGui.exe` and survives `bin/windows-x64` restaging. RC4
+also migrates legacy executable-relative `tasktrack_dashboard_data` content
+when it is encountered; the Windows staging script preserves that legacy folder
+before cleaning the runtime bundle.
+
 Current:
 
 `<store>/<dashboard_id>.tasktrack-dashboard.json`
@@ -121,7 +133,18 @@ Current-file replacement is validated/atomic and retains `.bak` recovery. Immuta
 
 ## Native presentation
 
-`TaskTrackDashboardGui.exe` is read-only. It provides:
+`TaskTrackDashboardGui.exe` is read-only. When launched with
+`--dashboard <path>` it loads that exact dashboard and brings the native window
+forward. MCP-driven `open_dashboard` uses a short non-secret launch acknowledgement
+so `launched: true` means the GUI actually loaded the requested normalized path,
+not merely that the process started.
+
+When launched without arguments the application opens a blank Dashboard shell
+instead of immediately opening a file picker. The shell provides a visible
+**Load dashboard** action, a clear empty-state message and a short recent-dashboard
+summary from the default store.
+
+It provides:
 
 - project title/phase/current revision;
 - an overall `UiProgressRing`;

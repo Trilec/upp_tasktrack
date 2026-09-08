@@ -224,8 +224,11 @@ void TaskTrackDashboardWindow::RebuildPanels()
         panels_box_.Add(ctrl).Fit().MinMain(ctrl.GetMinSize().cy).AlignSelf(UiCrossAlign::Stretch);
         ++shown;
     }
-    if(!shown)
+    if(!shown) {
+        empty_label_.SetText("No dashboard panels match this category.")
+                    .SetAlign(UiAlign::CENTER, UiAlign::CENTER);
         panels_box_.Add(empty_label_).Fixed(DPI(54)).AlignSelf(UiCrossAlign::Stretch);
+    }
     panels_box_.RefreshLayout();
     SyncScrollContent();
     scroll_.RefreshLayout();

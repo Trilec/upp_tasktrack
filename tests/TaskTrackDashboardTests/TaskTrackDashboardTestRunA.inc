@@ -1,4 +1,9 @@
     TestState t;
+    String default_store = TaskTrackDashboardDefaultStoreRoot();
+    String app_data = NormalizePath(GetAppDataFolder());
+    t.Check(ToLower(default_store).StartsWith(ToLower(app_data)),
+            "default dashboard store is not under the per-user application-data folder");
+
     String root = NormalizePath(AppendFileName(GetFileFolder(GetExeFilePath()), "_tasktrack_dashboard_tests"));
     RealizeDirectory(root);
     String id = "dashboard-core-regression";

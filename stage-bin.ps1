@@ -35,6 +35,23 @@ function File-Identity {
     }
 }
 
+function Copy-TreeMissing {
+    param([string]$Source, [string]$Destination)
+    if(!(Test-Path -LiteralPath $Source)) { return }
+    New-Item -ItemType Directory -Force -Path $Destination | Out-Null
+    Get-ChildItem -LiteralPath $Source -Force | ForEach-Object {
+        $target = Join-Path $Destination $_.Name
+        if($_.PSIsContainer) {
+            Copy-TreeMissing -Source $_.FullName -Destination $target
+        }
+        elseif(!$_.Name.EndsWith(".tmp", [StringComparison]::OrdinalIgnoreCase) -and
+               !$_.Name.EndsWith(".lock", [StringComparison]::OrdinalIgnoreCase) -and
+               !(Test-Path -LiteralPath $target)) {
+            Copy-Item -LiteralPath $_.FullName -Destination $target
+        }
+    }
+}
+
 $RepoRoot = [IO.Path]::GetFullPath($RepoRoot)
 if([string]::IsNullOrWhiteSpace($BuildDir)) { $BuildDir = Join-Path $RepoRoot "build" }
 else { $BuildDir = Full-Path -Path $BuildDir -Base $RepoRoot }
@@ -117,6 +134,17 @@ if($actualVendorHash -ne $verifiedVendorHash) {
     throw "The vendor runtime changed after verify.ps1 compatibility testing."
 }
 
+$legacyDashboardDir = Join-Path $BinDir "tasktrack_dashboard_data"
+if(Test-Path -LiteralPath $legacyDashboardDir) {
+    $appDataRoot = [Environment]::GetFolderPath([Environment+SpecialFolder]::ApplicationData)
+    if([string]::IsNullOrWhiteSpace($appDataRoot)) {
+        throw "Cannot migrate legacy dashboard data because the Windows ApplicationData folder is unavailable."
+    }
+    $persistentDashboardDir = Join-Path $appDataRoot "TaskTrack\dashboard_data"
+    Write-Host "Migrating legacy dashboard data to $persistentDashboardDir"
+    Copy-TreeMissing -Source $legacyDashboardDir -Destination $persistentDashboardDir
+}
+
 if(Test-Path -LiteralPath $BinDir) {
     Remove-Item -LiteralPath $BinDir -Recurse -Force
 }
@@ -153,7 +181,8 @@ For a local coding-agent MCP connection, register TaskTrackMcp.exe.
 Keep TaskTrackMcp.exe, TaskTrackGui.exe and TaskTrackDashboardGui.exe together.
 
 This directory is a staged runtime bundle. Do not store API keys, vault files,
-profile JSON or logs here.
+profile JSON, dashboards or logs here. Dashboard state belongs in the per-user
+TaskTrack application-data folder.
 
 See manifest.json for SHA-256 identities and third-party/openai-tunnel-client/
 for the bundled vendor notices/SBOM.

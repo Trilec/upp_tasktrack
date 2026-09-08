@@ -52,3 +52,5 @@ directory. For ChatGPT tunnel access, launch `TaskTrackTunnelGui.exe`.
 
 A future installer can consume this staged directory; installer technology
 should not change the runtime/package boundary.
+
+Dashboard state is stored outside this staged bundle in the shared per-user TaskTrack application-data folder. Do not place persistent dashboards under `bin/<platform>/`; generated bundle staging may replace that directory.

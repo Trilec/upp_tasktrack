@@ -28,7 +28,7 @@ that is running:
 
 ```text
 TaskTrack MCP
-version 0.3.2-rc3
+version 0.3.2-rc4
 task core version 0.2.1
 task schema version 2
 dashboard schema version 1
@@ -70,7 +70,7 @@ See `INTERACTION_LIFECYCLE.md` and `QUESTION_TYPES.md`.
 - `validate_dashboard` — validate semantic dashboard state without persisting it.
 - `upsert_dashboard` — create/update current state and append the next immutable accepted revision.
 - `get_dashboard` — retrieve current state and progress/attention summaries.
-- `open_dashboard` — launch `TaskTrackDashboardGui.exe` for an existing dashboard.
+- `open_dashboard` — launch `TaskTrackDashboardGui.exe` for an existing dashboard; success is returned only after the GUI acknowledges that it loaded the exact requested path.
 - `list_dashboards` — list current dashboards.
 - `list_dashboard_revisions` — list accepted immutable revisions.
 - `get_dashboard_revision` — retrieve one historical revision.
