@@ -72,6 +72,43 @@ bool IsSafeDashboardId(const String& id)
     return true;
 }
 
+bool CopyDashboardStoreTreeMissing(const String& source, const String& target)
+{
+    if(!DirectoryExists(source))
+        return true;
+    if(!RealizeDirectory(target))
+        return false;
+
+    bool ok = true;
+    FindFile ff(AppendFileName(source, "*"));
+    while(ff) {
+        String name = ff.GetName();
+        if(name != "." && name != "..") {
+            String src = AppendFileName(source, name);
+            String dst = AppendFileName(target, name);
+            if(ff.IsFolder())
+                ok = CopyDashboardStoreTreeMissing(src, dst) && ok;
+            else if(ff.IsFile()) {
+                String lower = ToLower(name);
+                if(!lower.EndsWith(".tmp") && !lower.EndsWith(".lock") && !FileExists(dst))
+                    ok = FileCopy(src, dst) && ok;
+            }
+        }
+        ff.Next();
+    }
+    return ok;
+}
+
+void MigrateLegacyDashboardStore(const String& target)
+{
+    ONCELOCK {
+        String legacy = NormalizePath(
+            AppendFileName(GetFileFolder(GetExeFilePath()), "tasktrack_dashboard_data"));
+        if(legacy != target && DirectoryExists(legacy))
+            CopyDashboardStoreTreeMissing(legacy, target);
+    }
+}
+
 String EnsureStoreRoot(const String& requested)
 {
     String root = TrimBoth(requested);
