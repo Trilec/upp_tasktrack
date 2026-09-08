@@ -12,7 +12,7 @@ String ActivityClock()
 
 void TrimActivity(TaskTrackTunnelActivity& activity)
 {
-    while(activity.recent.GetCount() > 6)
+    while(activity.recent.GetCount() > 10)
         activity.recent.Remove(0);
 }
 
