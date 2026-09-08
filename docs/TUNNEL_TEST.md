@@ -1,6 +1,6 @@
 # TaskTrack Machine MCP Tunnel
 
-TaskTrack `0.3.2-rc2` uses the official OpenAI Secure MCP Tunnel runtime.
+TaskTrack `0.3.2-rc3` uses the official OpenAI Secure MCP Tunnel runtime.
 TaskTrack does not implement or fork the tunnel wire protocol.
 
 The native `TaskTrackTunnelGui.exe` application now manages a **machine tunnel
@@ -203,6 +203,12 @@ Services manages explicit channel bindings:
 - command;
 - enabled state.
 
+Changes auto-save to the profile JSON. The footer shows the current auto-save
+state and diagnostics include the exact profile-store path. On Windows, pasted
+simple executable paths are canonicalized to forward slashes before persistence
+and launch because the upstream tunnel runtime treats backslash as an escape in
+stdio command strings.
+
 Stop the tunnel before changing profiles or services.
 
 ## Local deterministic validation
@@ -248,14 +254,28 @@ With Curt's real tunnel ID, runtime key and official runtime:
 5. confirm `/healthz` succeeds;
 6. confirm `/readyz` succeeds;
 7. from browser ChatGPT call `version`;
-8. require `build_version = 0.3.2-rc2`, `bundle_verified = true`, and compare `executable_sha256` + `bundle_source_commit` with `bin/windows-x64/manifest.json`;
+8. require `build_version = 0.3.2-rc3`, `bundle_verified = true`, and compare `executable_sha256` + `bundle_source_commit` with `bin/windows-x64/manifest.json`;
 9. if these do not match, stop acceptance and restart/reconfigure the MCP host rather than testing stale code;
 10. click **Send probe**, then call `tunnel_probe` and confirm it reports the same executable/bundle identity;
 11. call `list_dashboards`;
 12. verify TaskTrack remote activity increments;
 13. Stop and reconnect; after reconnect, repeat `version` and require the same identity.
 
-Then add a harmless second MCP service on a distinct channel and perform the
+After the single-channel reconnect passes, create a real dashboard through the
+remote MCP rather than seeding production state in code:
+
+1. call `upsert_dashboard` for a small acceptance dashboard with ID
+   `dashboard-tunnel-acceptance`;
+2. include at least Project State, Verification and Next Steps panels so the
+   native renderer has meaningful content;
+3. call `list_dashboards` and require that dashboard to appear;
+4. call `get_dashboard` and verify the stored content/revision;
+5. call `open_dashboard` and confirm the staged `TaskTrackDashboardGui.exe`
+   opens the same dashboard locally;
+6. leave the dashboard in the store as explicit acceptance data unless Curt
+   chooses to delete it later.
+
+Then add PatchTrack as a second MCP service on a distinct channel and perform the
 multi-channel acceptance:
 
 1. enable the second service;
