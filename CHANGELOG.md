@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.2-rc3 — 2026-09-08
+
+- Canonicalizes pasted Windows MCP executable paths before profile persistence and tunnel launch so the upstream stdio command parser cannot consume backslashes as escapes.
+- Adds local preflight for every enabled path-like MCP service command before starting the shared tunnel runtime.
+- Tunnel Manager footer now exposes profile auto-save state (Saved to disk / failure) and diagnostics include the profile-store path and save status.
+- Keeps TaskTrack/PatchTrack as separate named services; no tunnel-client fork or aggregator added.
+- Extends live acceptance to create/read/open a real TaskTrack dashboard after tunnel connectivity is revalidated.
+
 ## 0.3.2-rc2 — 2026-09-07
 
 - Added exact MCP runtime identity: `version`, `tunnel_probe` and `--version` report the running `TaskTrackMcp.exe` SHA-256.
