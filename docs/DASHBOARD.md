@@ -107,6 +107,18 @@ This prevents two agents/sessions from silently overwriting each other. The writ
 
 ## Storage
 
+When `store_root` is omitted, TaskTrack uses a shared per-user application-data
+folder rather than the executable/staged bundle. On Windows this resolves under
+the user's roaming ApplicationData folder as:
+
+`TaskTrack/dashboard_data`
+
+This location is shared by `TaskTrackMcp.exe` and
+`TaskTrackDashboardGui.exe` and survives `bin/windows-x64` restaging. RC4
+also migrates legacy executable-relative `tasktrack_dashboard_data` content
+when it is encountered; the Windows staging script preserves that legacy folder
+before cleaning the runtime bundle.
+
 Current:
 
 `<store>/<dashboard_id>.tasktrack-dashboard.json`
