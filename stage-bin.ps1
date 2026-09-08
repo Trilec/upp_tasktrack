@@ -35,6 +35,23 @@ function File-Identity {
     }
 }
 
+function Copy-TreeMissing {
+    param([string]$Source, [string]$Destination)
+    if(!(Test-Path -LiteralPath $Source)) { return }
+    New-Item -ItemType Directory -Force -Path $Destination | Out-Null
+    Get-ChildItem -LiteralPath $Source -Force | ForEach-Object {
+        $target = Join-Path $Destination $_.Name
+        if($_.PSIsContainer) {
+            Copy-TreeMissing -Source $_.FullName -Destination $target
+        }
+        elseif(!$_.Name.EndsWith(".tmp", [StringComparison]::OrdinalIgnoreCase) -and
+               !$_.Name.EndsWith(".lock", [StringComparison]::OrdinalIgnoreCase) -and
+               !(Test-Path -LiteralPath $target)) {
+            Copy-Item -LiteralPath $_.FullName -Destination $target
+        }
+    }
+}
+
 $RepoRoot = [IO.Path]::GetFullPath($RepoRoot)
 if([string]::IsNullOrWhiteSpace($BuildDir)) { $BuildDir = Join-Path $RepoRoot "build" }
 else { $BuildDir = Full-Path -Path $BuildDir -Base $RepoRoot }
@@ -115,6 +132,17 @@ if($actualVendorHash -ne $expectedVendorHash) {
 $verifiedVendorHash = ([string]$verificationManifest.vendor_runtime.sha256).ToLowerInvariant()
 if($actualVendorHash -ne $verifiedVendorHash) {
     throw "The vendor runtime changed after verify.ps1 compatibility testing."
+}
+
+$legacyDashboardDir = Join-Path $BinDir "tasktrack_dashboard_data"
+if(Test-Path -LiteralPath $legacyDashboardDir) {
+    $appDataRoot = [Environment]::GetFolderPath([Environment+SpecialFolder]::ApplicationData)
+    if([string]::IsNullOrWhiteSpace($appDataRoot)) {
+        throw "Cannot migrate legacy dashboard data because the Windows ApplicationData folder is unavailable."
+    }
+    $persistentDashboardDir = Join-Path $appDataRoot "TaskTrack\dashboard_data"
+    Write-Host "Migrating legacy dashboard data to $persistentDashboardDir"
+    Copy-TreeMissing -Source $legacyDashboardDir -Destination $persistentDashboardDir
 }
 
 if(Test-Path -LiteralPath $BinDir) {
