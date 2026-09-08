@@ -269,7 +269,7 @@ void TaskTrackTunnelManager::BuildOverview()
 
     activity_title_.SetText("TaskTrack activity");
     activity_live_.EnableRich(true).ClearSpans().AddBulletSpan(OkColor(), DPI(6)).AddTextSpan("  live");
-    activity_count_.SetText("Last 6 communications").SetAlign(UiAlign::RIGHT, UiAlign::CENTER);
+    activity_count_.SetText("Last 10 communications").SetAlign(UiAlign::RIGHT, UiAlign::CENTER);
     send_probe_button_.SetText("Send probe");
     copy_diagnostics_button_.SetText("Copy diagnostics");
     clear_activity_button_.SetText("Clear activity");
@@ -278,7 +278,7 @@ void TaskTrackTunnelManager::BuildOverview()
     activity_table_.SetModel(activity_model_)
                    .ShowRowHeaders(false)
                    .ShowColumnHeaders(false)
-                   .SetRowHeight(DPI(31))
+                   .SetRowHeight(DPI(20))
                    .SetDefaultColumnWidth(DPI(120));
 }
 
@@ -1749,10 +1749,10 @@ void TaskTrackTunnelManager::RefreshActivityTable(const TaskTrackTunnelActivity&
                 cell.ink = MutedColor();
             else
                 cell.ink = TextColor();
-            if(c == 3) {
-                cell.use_custom_font = true;
-                cell.font = StdFont().Bold();
-            }
+            cell.use_custom_font = true;
+            cell.font = SansSerifZ(8);
+            if(c == 3)
+                cell.font.Bold();
             activity_model_.SetCell(r, c, cell);
         }
     }
