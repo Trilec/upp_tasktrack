@@ -181,7 +181,8 @@ For a local coding-agent MCP connection, register TaskTrackMcp.exe.
 Keep TaskTrackMcp.exe, TaskTrackGui.exe and TaskTrackDashboardGui.exe together.
 
 This directory is a staged runtime bundle. Do not store API keys, vault files,
-profile JSON or logs here.
+profile JSON, dashboards or logs here. Dashboard state belongs in the per-user
+TaskTrack application-data folder.
 
 See manifest.json for SHA-256 identities and third-party/openai-tunnel-client/
 for the bundled vendor notices/SBOM.
