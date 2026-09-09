@@ -2,7 +2,7 @@
 
 ## 0.3.2-rc5 — 2026-09-09
 
-- Windows `open_dashboard` now launches the native Dashboard GUI through a visible `CreateProcessW` path instead of U++ `LocalProcess`, whose Windows startup contract uses `SW_HIDE`.
+- Windows `open_dashboard`, `create_task` and `open_task` now launch their native GUIs through a shared visible `CreateProcessW` path instead of U++ `LocalProcess`, whose Windows startup contract uses `SW_HIDE`.
 - Dashboard launch acknowledgement is posted from the GUI event loop after the requested dashboard is loaded and the window has been opened/shown.
 - Project State now uses `UiChartRing` for weighted measurable state while the right-hand state list keeps explicit percentages and shows richer detail; the top-level dashboard retains its single overall `UiProgressRing`.
 - Tunnel profile, probe and activity state moved out of the staged bundle into the shared per-user `TaskTrack/tunnel` application-data folder, with legacy migration and stage-time preservation.
