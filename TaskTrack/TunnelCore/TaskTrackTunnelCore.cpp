@@ -138,16 +138,41 @@ bool ActivityFromValue(const Value& value, TaskTrackTunnelActivity& activity, St
     return true;
 }
 
+void MigrateLegacyTunnelStateFile(const String& name, const String& target_root)
+{
+    String legacy = GetExeDirFile(name);
+    String target = AppendFileName(target_root, name);
+    if(legacy != target && FileExists(legacy) && !FileExists(target))
+        FileCopy(legacy, target);
+}
+
+}
+
+String TaskTrackTunnelStateRoot()
+{
+    String override_root = TrimBoth(GetEnv("TASKTRACK_TUNNEL_STATE_ROOT"));
+    if(!override_root.IsEmpty()) {
+        override_root = NormalizePath(override_root);
+        RealizeDirectory(override_root);
+        return override_root;
+    }
+
+    String root = NormalizePath(
+        AppendFileName(AppendFileName(GetAppDataFolder(), "TaskTrack"), "tunnel"));
+    RealizeDirectory(root);
+    MigrateLegacyTunnelStateFile("tasktrack-tunnel-probe.json", root);
+    MigrateLegacyTunnelStateFile("tasktrack-tunnel-activity.json", root);
+    return root;
 }
 
 String TaskTrackTunnelProbePath()
 {
-    return GetExeDirFile("tasktrack-tunnel-probe.json");
+    return AppendFileName(TaskTrackTunnelStateRoot(), "tasktrack-tunnel-probe.json");
 }
 
 String TaskTrackTunnelActivityPath()
 {
-    return GetExeDirFile("tasktrack-tunnel-activity.json");
+    return AppendFileName(TaskTrackTunnelStateRoot(), "tasktrack-tunnel-activity.json");
 }
 
 bool TaskTrackTunnelLoadProbe(TaskTrackTunnelProbe& probe, String& error)
@@ -178,7 +203,7 @@ bool TaskTrackTunnelSaveProbe(const TaskTrackTunnelProbe& probe, String& error)
 {
     error.Clear();
     if(!SaveFile(TaskTrackTunnelProbePath(), AsJSON(ProbeToValue(probe), true))) {
-        error = "Unable to write local tunnel probe state beside the TaskTrack executables.";
+        error = "Unable to write local tunnel probe state.";
         return false;
     }
     return true;
@@ -212,7 +237,7 @@ bool TaskTrackTunnelSaveActivity(const TaskTrackTunnelActivity& activity, String
 {
     error.Clear();
     if(!SaveFile(TaskTrackTunnelActivityPath(), AsJSON(ActivityToValue(activity), true))) {
-        error = "Unable to write remote tunnel activity state beside the TaskTrack executables.";
+        error = "Unable to write remote tunnel activity state.";
         return false;
     }
     return true;
