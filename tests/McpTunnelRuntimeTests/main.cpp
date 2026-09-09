@@ -464,7 +464,15 @@ CONSOLE_APP_MAIN
             "comma-delimited service command was accepted");
 
     {
+        String old_state_root = GetEnv("TASKTRACK_TUNNEL_STATE_ROOT");
+        String test_state_root = NormalizePath(
+            AppendFileName(GetTempDirectory(), "tasktrack-tunnel-runtime-tests"));
+        RealizeDirectory(test_state_root);
+        SetEnv("TASKTRACK_TUNNEL_STATE_ROOT", test_state_root);
+
         String activity_error;
+        t.Check(TaskTrackTunnelStateRoot() == test_state_root,
+                "tunnel state-root override was not honored");
         TaskTrackTunnelResetActivity(activity_error);
         for(int i = 0; i < 6; ++i) {
             TaskTrackTunnelRecordReceived("tools/call", Format("tool-%d", i), activity_error);
@@ -480,7 +488,11 @@ CONSOLE_APP_MAIN
         t.Check(activity.recent.GetCount() == 10 &&
                 activity.recent.Top().action == "tool-5",
                 "tunnel activity tail did not preserve the latest communication");
-        TaskTrackTunnelResetActivity(activity_error);
+
+        FileDelete(TaskTrackTunnelProbePath());
+        FileDelete(TaskTrackTunnelActivityPath());
+        DirectoryDelete(test_state_root);
+        SetEnv("TASKTRACK_TUNNEL_STATE_ROOT", old_state_root);
     }
 
     McpTunnelProfile too_many = MakeProfile();
