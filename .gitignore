@@ -26,7 +26,7 @@
 
 # Build output
 # Generated runtime bundles; bin/README.md remains tracked.
-/bin/*/
+/bin/*
 /build/
 /out/
 /Build/
@@ -69,4 +69,4 @@ tasktrack_dashboard_data/
 *.tasktrack-dashboard.json.bak
 *.tasktrack-dashboard.json.tmp
 *.tasktrack-dashboard.lock
-designs/logodesign.psd
+
