@@ -693,7 +693,15 @@ void TaskTrackTunnelManager::SelectPage(int page)
 
 String TaskTrackTunnelManager::ProfileStorePath() const
 {
-    return ConfigFile("tasktrack-tunnel-profiles.json");
+    String root = NormalizePath(
+        AppendFileName(AppendFileName(GetAppDataFolder(), "TaskTrack"), "tunnel"));
+    RealizeDirectory(root);
+
+    String target = AppendFileName(root, "tasktrack-tunnel-profiles.json");
+    String legacy = GetExeDirFile("tasktrack-tunnel-profiles.json");
+    if(legacy != target && FileExists(legacy) && !FileExists(target))
+        FileCopy(legacy, target);
+    return target;
 }
 
 void TaskTrackTunnelManager::LoadProfiles()
