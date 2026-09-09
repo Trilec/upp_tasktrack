@@ -134,15 +134,31 @@ if($actualVendorHash -ne $verifiedVendorHash) {
     throw "The vendor runtime changed after verify.ps1 compatibility testing."
 }
 
+$appDataRoot = [Environment]::GetFolderPath([Environment+SpecialFolder]::ApplicationData)
+if([string]::IsNullOrWhiteSpace($appDataRoot)) {
+    throw "Cannot migrate TaskTrack persistent state because the Windows ApplicationData folder is unavailable."
+}
+
 $legacyDashboardDir = Join-Path $BinDir "tasktrack_dashboard_data"
 if(Test-Path -LiteralPath $legacyDashboardDir) {
-    $appDataRoot = [Environment]::GetFolderPath([Environment+SpecialFolder]::ApplicationData)
-    if([string]::IsNullOrWhiteSpace($appDataRoot)) {
-        throw "Cannot migrate legacy dashboard data because the Windows ApplicationData folder is unavailable."
-    }
     $persistentDashboardDir = Join-Path $appDataRoot "TaskTrack\dashboard_data"
     Write-Host "Migrating legacy dashboard data to $persistentDashboardDir"
     Copy-TreeMissing -Source $legacyDashboardDir -Destination $persistentDashboardDir
+}
+
+$persistentTunnelDir = Join-Path $appDataRoot "TaskTrack\tunnel"
+New-Item -ItemType Directory -Force -Path $persistentTunnelDir | Out-Null
+foreach($stateName in @(
+    "tasktrack-tunnel-profiles.json",
+    "tasktrack-tunnel-probe.json",
+    "tasktrack-tunnel-activity.json"
+)) {
+    $legacyState = Join-Path $BinDir $stateName
+    $persistentState = Join-Path $persistentTunnelDir $stateName
+    if((Test-Path -LiteralPath $legacyState) -and !(Test-Path -LiteralPath $persistentState)) {
+        Write-Host "Migrating legacy tunnel state $stateName to $persistentTunnelDir"
+        Copy-Item -LiteralPath $legacyState -Destination $persistentState
+    }
 }
 
 if(Test-Path -LiteralPath $BinDir) {
