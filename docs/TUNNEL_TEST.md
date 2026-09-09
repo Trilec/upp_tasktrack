@@ -281,6 +281,31 @@ remote MCP rather than seeding production state in code:
 8. leave the dashboard in the store as explicit acceptance data unless Curt
    chooses to delete it later.
 
+Before PatchTrack acceptance, test the original human-decision workflow through
+browser ChatGPT. Start with the simplest round-trip so the tunnel/client boundary
+is isolated from agent-assistance callbacks:
+
+1. call `create_task` with one required `confirm` item and `launch=true`;
+2. require the native TaskTrack GUI to become visibly open;
+3. answer the item in the GUI and Submit;
+4. require the SAME ChatGPT tool call/turn to return the completed structured
+   human answer without a manual chat wake-up;
+5. confirm Tunnel Manager activity increments for the create_task request/result.
+
+If that passes, test the harder assistance round-trip separately:
+
+1. create another one-item task;
+2. in the GUI press Suggest or Clarify;
+3. observe whether ChatGPT receives/resolves the pending agent request through
+   modern in-call `input_required` sampling;
+4. if the host cannot service the callback in-call, require the compatibility
+   path (`respond_to_request` + `get_task(... wait_ms=300000)`) to continue
+   without fabricating human evidence;
+5. verify Accept remains the human act that creates `answer.data`.
+
+Classify these independently as HUMAN RETURN PASS/FAIL and ASSISTANCE CALLBACK
+PASS/COMPATIBILITY/FAIL. Do not infer one from the other.
+
 Then add PatchTrack as a second MCP service on a distinct channel and perform the
 multi-channel acceptance:
 
