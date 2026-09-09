@@ -1831,6 +1831,7 @@ String TaskTrackTunnelManager::BuildDiagnostics()
         << "Secret value: [not exposed]\n"
         << "Runtime executable: " << (profile ? profile->runtime_path : String()) << "\n"
         << "Profile store: " << ProfileStorePath() << "\n"
+        << "Tunnel state root: " << TaskTrackTunnelStateRoot() << "\n"
         << "Profile save status: " << (profile_save_failed_ ? "failed" : (profile_store_loaded_ ? "saved" : "not yet saved")) << "\n";
 
     RefreshMcpBinaryIdentity(true);
