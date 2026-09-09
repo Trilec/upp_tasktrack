@@ -6,6 +6,7 @@ uses
 
 file
     TaskTrackAgentMcp.h,
+    TaskTrackMcpGuiLaunch.h,
     TaskTrackDashboardBridge.h,
     TaskTrackDashboardBridge.cpp,
     TaskTrackDashboardBridgeSchema.inc,
