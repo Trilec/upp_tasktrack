@@ -14,7 +14,7 @@ A dashboard is therefore a **container of independent semantic panels**, not one
 
 Schema 1 has eight panel types:
 
-- `project_state` — compact “where are we?” state, typically Now / Next checkpoint / Main concern plus overall progress.
+- `project_state` — compact “where are we?” state. Measurable entries render through a weighted `UiChartRing` while the state list keeps explicit percentages and richer detail; narrative entries such as Now / Next checkpoint / Main concern may omit progress.
 - `timeline` — ordered milestones/checkpoints rendered through the TaskTrack-local timeline rail.
 - `progress_list` — objectives/workstreams/features with individual progress and evidence.
 - `action_list` — ordered next steps or recommended actions.
@@ -147,7 +147,8 @@ summary from the default store.
 It provides:
 
 - project title/phase/current revision;
-- an overall `UiProgressRing`;
+- an overall `UiProgressRing` for the single project-wide progress estimate;
+- a `UiChartRing` inside Project State for weighted measurable state composition;
 - attention count;
 - category filtering;
 - a vertical stack of independent `UiGroupPanel` semantic renderers;
