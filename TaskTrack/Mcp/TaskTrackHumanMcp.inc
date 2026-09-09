@@ -12,6 +12,7 @@
 #include <Core/Core.h>
 #include <TaskTrack/Core/TaskTrackCore.h>
 #include "TaskTrackAgentMcp.h"
+#include "TaskTrackMcpGuiLaunch.h"
 
 #include <stdio.h>
 
@@ -409,13 +410,7 @@ bool LaunchTaskGui(const String& task_path, String& error)
     String gui = AppendFileName(folder, TaskTrackGuiExecutableName());
     if(!FileExists(gui)) { error = "TaskTrack GUI executable not found beside MCP server: " + gui; return false; }
     Vector<String> args; args.Add("--task"); args.Add(task_path);
-    LocalProcess process;
-#ifndef PLATFORM_WIN32
-    process.DoubleFork();
-#endif
-    if(!process.Start(~gui, args)) { error = "Unable to start TaskTrack GUI."; return false; }
-    process.Detach();
-    return true;
+    return TaskTrackMcpLaunchVisibleGui(gui, args, error);
 }
 
 bool ResolveAndLoad(const Value& args, TaskTrackDocument& doc, String& path, String& error)
