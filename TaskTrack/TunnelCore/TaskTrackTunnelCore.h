@@ -32,6 +32,7 @@ struct TaskTrackTunnelActivity {
     Vector<TaskTrackTunnelActivityEvent> recent;
 };
 
+String TaskTrackTunnelStateRoot();
 String TaskTrackTunnelProbePath();
 String TaskTrackTunnelActivityPath();
 
