@@ -293,6 +293,69 @@ bool DReadInt(const Value& map, const char *key, int def, int& out, String& erro
     return true;
 }
 
+#ifdef PLATFORM_WIN32
+String QuoteDashboardWindowsArgument(const String& argument)
+{
+    String out;
+    out << '"';
+    const char *p = argument;
+    for(;;) {
+        int slashes = 0;
+        while(*p == '\\') {
+            ++p;
+            ++slashes;
+        }
+        if(*p == '\0') {
+            out.Cat('\\', slashes * 2);
+            break;
+        }
+        if(*p == '"') {
+            out.Cat('\\', slashes * 2 + 1);
+            out << '"';
+            ++p;
+            continue;
+        }
+        out.Cat('\\', slashes);
+        out.Cat(*p++);
+    }
+    out << '"';
+    return out;
+}
+
+bool StartVisibleDashboardGui(const String& gui, const Vector<String>& args, String& error)
+{
+    String command = QuoteDashboardWindowsArgument(gui);
+    for(const String& arg : args)
+        command << ' ' << QuoteDashboardWindowsArgument(arg);
+
+    Vector<WCHAR> cmd = ToSystemCharsetW(command);
+    cmd.Add(0);
+
+    STARTUPINFOW si;
+    ZeroMemory(&si, sizeof(si));
+    si.cb = sizeof(si);
+    si.dwFlags = STARTF_USESHOWWINDOW;
+    si.wShowWindow = SW_SHOWNORMAL;
+
+    PROCESS_INFORMATION pi;
+    ZeroMemory(&pi, sizeof(pi));
+
+    BOOL ok = CreateProcessW(NULL, cmd.begin(), NULL, NULL, FALSE,
+                             NORMAL_PRIORITY_CLASS, NULL,
+                             ToSystemCharsetW(GetFileFolder(gui)).begin(),
+                             &si, &pi);
+    if(!ok) {
+        error = Format("Unable to start visible TaskTrack dashboard GUI (Windows error %d).",
+                       (int)GetLastError());
+        return false;
+    }
+
+    CloseHandle(pi.hThread);
+    CloseHandle(pi.hProcess);
+    return true;
+}
+#endif
+
 bool LaunchDashboardGui(const String& dashboard_path, String& error)
 {
 #ifdef PLATFORM_WIN32
@@ -316,15 +379,18 @@ bool LaunchDashboardGui(const String& dashboard_path, String& error)
     args.Add("--launch-ack");
     args.Add(ack_path);
 
+#ifdef PLATFORM_WIN32
+    if(!StartVisibleDashboardGui(gui, args, error))
+        return false;
+#else
     LocalProcess process;
-#ifndef PLATFORM_WIN32
     process.DoubleFork();
-#endif
     if(!process.Start(~gui, args)) {
         error = "Unable to start TaskTrack dashboard GUI.";
         return false;
     }
     process.Detach();
+#endif
 
     String ack;
     for(int i = 0; i < 50; ++i) {
