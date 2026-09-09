@@ -1,4 +1,5 @@
 #include "TaskTrackDashboardBridge.h"
+#include "TaskTrackMcpGuiLaunch.h"
 
 #include <TaskTrack/Core/TaskTrackBuild.h>
 #include <TaskTrack/DashboardCore/TaskTrackDashboardCore.h>
