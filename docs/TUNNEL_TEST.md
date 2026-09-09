@@ -1,6 +1,6 @@
 # TaskTrack Machine MCP Tunnel
 
-TaskTrack `0.3.2-rc4` uses the official OpenAI Secure MCP Tunnel runtime.
+TaskTrack `0.3.2-rc5` uses the official OpenAI Secure MCP Tunnel runtime.
 TaskTrack does not implement or fork the tunnel wire protocol.
 
 The native `TaskTrackTunnelGui.exe` application now manages a **machine tunnel
@@ -204,10 +204,13 @@ Services manages explicit channel bindings:
 - enabled state.
 
 Changes auto-save to the profile JSON. The footer shows the current auto-save
-state and diagnostics include the exact profile-store path. On Windows, pasted
-simple executable paths are canonicalized to forward slashes before persistence
-and launch because the upstream tunnel runtime treats backslash as an escape in
-stdio command strings.
+state and diagnostics include the exact profile-store path. RC5 stores the
+profile, local probe and remote-activity JSON under the shared per-user
+`TaskTrack/tunnel` application-data folder rather than inside the staged
+runtime bundle; legacy executable-relative files are migrated/preserved.
+On Windows, pasted simple executable paths are canonicalized to forward slashes
+before persistence and launch because the upstream tunnel runtime treats
+backslash as an escape in stdio command strings.
 
 Stop the tunnel before changing profiles or services.
 
@@ -254,7 +257,7 @@ With Curt's real tunnel ID, runtime key and official runtime:
 5. confirm `/healthz` succeeds;
 6. confirm `/readyz` succeeds;
 7. from browser ChatGPT call `version`;
-8. require `build_version = 0.3.2-rc4`, `bundle_verified = true`, and compare `executable_sha256` + `bundle_source_commit` with `bin/windows-x64/manifest.json`;
+8. require `build_version = 0.3.2-rc5`, `bundle_verified = true`, and compare `executable_sha256` + `bundle_source_commit` with `bin/windows-x64/manifest.json`;
 9. if these do not match, stop acceptance and restart/reconfigure the MCP host rather than testing stale code;
 10. click **Send probe**, then call `tunnel_probe` and confirm it reports the same executable/bundle identity;
 11. call `list_dashboards`;
@@ -270,8 +273,7 @@ remote MCP rather than seeding production state in code:
    native renderer has meaningful content;
 3. call `list_dashboards` and require that dashboard to appear;
 4. call `get_dashboard` and verify the stored content/revision;
-5. call `open_dashboard` and require `launched = true`; RC4 only reports
-   success after the native GUI acknowledges the exact normalized dashboard path;
+5. call `open_dashboard` and require `launched = true`; RC5 launches the Windows GUI through a visible process path and acknowledges from the GUI event loop after the exact normalized dashboard has loaded;
 6. confirm the staged `TaskTrackDashboardGui.exe` is foregrounded with the
    requested dashboard already loaded (no file picker);
 7. also launch `TaskTrackDashboardGui.exe` with no arguments and confirm the
