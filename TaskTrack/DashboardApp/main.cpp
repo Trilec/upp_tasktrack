@@ -79,7 +79,12 @@ GUI_APP_MAIN
     }
 
     window.Open();
+    window.Show();
     window.SetForeground();
-    WriteLaunchAck(launch_ack, true, dashboard_path, String());
+    PostCallback([&window, launch_ack, dashboard_path] {
+        window.Show();
+        window.SetForeground();
+        WriteLaunchAck(launch_ack, true, dashboard_path, String());
+    });
     window.Run();
 }
