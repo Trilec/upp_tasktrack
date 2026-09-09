@@ -140,7 +140,7 @@ private:
     bool expanded_ = false;
     UiBoxLayout content_ { UiDirection::V };
     UiBoxLayout project_row_ { UiDirection::H };
-    UiProgressRing progress_ring_;
+    UiChartRing state_chart_;
     TaskTrackDashboardBodyCtrl body_;
     TaskTrackTimelineRail timeline_;
 };
