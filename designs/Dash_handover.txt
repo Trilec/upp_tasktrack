@@ -1,0 +1,2496 @@
+TASKTRACK DASHBOARD — UI / MCP DESIGN HANDOVER
+==============================================
+
+PURPOSE
+
+The TaskTrack Dashboard is intended to provide something materially better than
+a normal agent-chat project summary.
+
+A chat agent can tell the user:
+
+    "The project is around 70% complete."
+    "These items are finished."
+    "These are the next steps."
+
+The Dashboard should make those relationships directly visible and interactive.
+
+The user should be able to understand, at a glance:
+
+1. Where are we?
+2. What remains before we are finished?
+3. What needs my attention now?
+4. What happened, and roughly when?
+5. What is the current state of every important area?
+6. Why did the completion estimate change?
+7. What evidence supports an asserted state?
+8. What should I refer back to the AI if I want to act on something?
+
+The Dashboard is therefore an INTERACTIVE PROJECT INSTRUMENT rather than a
+formatted agent report.
+
+
+CURRENT HTML DESIGN REFERENCE
+
+Use:
+
+    Dashboard_mockup.html
+
+This is the current visual / interaction reference.
+
+Do NOT copy its CSS positioning or browser implementation literally into U++.
+
+Use it to understand:
+
+- information architecture;
+- visual hierarchy;
+- interaction behaviour;
+- relative sizing;
+- colour identity;
+- section relationships;
+- cross-view selection;
+- the conceptual MCP data contract.
+
+Native U++ layout controls remain the implementation authority.
+
+
+==================================================
+1. FINAL HIGH-LEVEL INFORMATION ARCHITECTURE
+==================================================
+
+The Dashboard has converged to four major information areas:
+
+    OVERVIEW
+        Progress / Timeline alternate views
+        interactive drill-down
+        remaining work
+
+    ATTENTION
+        what needs the human now
+
+    STATE
+        authoritative project register
+
+    RECENT CHANGES
+        chronological history of meaningful state changes
+
+
+This is deliberate.
+
+Previous iterations had separate:
+
+    State
+    Verification
+    Next Steps
+
+Those overlapped too much.
+
+Verification and Next Steps are now properties of an AREA'S CURRENT STATE.
+
+For example:
+
+    AREA
+        Exported ThemeDocument
+
+    STATUS
+        Final validation
+
+    WHERE WE ARE
+        Contract implemented; generated-app fidelity still needs final gate.
+
+    VERIFIED
+        Foundation tests passed.
+
+    NEXT
+        Run final generated-app comparison.
+
+That is one semantic project record, not three unrelated dashboard entries.
+
+
+==================================================
+2. TOP APPLICATION SHELL
+==================================================
+
+The top shell should remain compact.
+
+Left:
+
+    TaskTrack identity
+    Dashboard
+    MCP controlled
+
+Then:
+
+    LIVE / HISTORY state
+    animated activity indicator
+
+Controls:
+
+    Category
+    Revision
+
+Actions:
+
+    Load
+    Refresh
+    Current
+
+Right:
+
+    Help
+    Theme
+    Close
+
+
+Load / Refresh / Current / Help / Theme / Close should be lightweight,
+borderless UiToolButton-style actions.
+
+The LIVE bars are intended as a communication/activity affordance, not a network
+bandwidth graph.
+
+When MCP traffic occurs or a snapshot is being loaded/refreshed, the bars can
+briefly animate.
+
+Classification:
+
+    LIVE bars = NEW SMALL CONTROL
+
+Everything else should use existing controls.
+
+
+SUGGESTED U++ STRUCTURE
+
+TopWindow
+└─ UiBoxLayout V
+   ├─ header shell
+   └─ main content
+
+Header:
+
+UiBoxLayout H
+├─ identity                           Fit
+├─ activity                           Fit
+├─ selectors/actions                 Fit / wrap if necessary
+├─ expanding spacer
+└─ application actions               Fit
+
+
+==================================================
+3. MAIN PAGE LAYOUT
+==================================================
+
+The dashboard can become vertically long.
+
+Recommended native composition:
+
+UiScrollPanel
+└─ UiBoxLayout V
+   ├─ Overview
+   ├─ Attention
+   ├─ State
+   └─ Recent Changes
+
+Each section should be collapsible.
+
+Prefer current UiAccordion / UiTitleCard + UiPanel composition rather than a
+new dashboard-specific accordion implementation.
+
+The HTML section borders and header behaviour are design reference only.
+
+
+==================================================
+4. OVERVIEW — PRIMARY INTERACTIVE SURFACE
+==================================================
+
+Overview is the most important part of the Dashboard.
+
+Most users should be able to spend most of their time in:
+
+    Overview
+    Attention
+
+and only inspect State when they need a conventional detailed register.
+
+
+The Overview heading currently carries compact metadata pills:
+
+    Revision
+    Updated
+    Estimate
+    Confidence
+    Scope revision when applicable
+
+Example:
+
+    Revision 3
+    Updated 12 sec ago
+    Estimate Management
+    Confidence 88%
+    Scope revised 90 → 70%
+
+
+The pills are intentionally on the section heading row.
+
+Do not add a second status row underneath containing the same information.
+
+
+==================================================
+5. OVERVIEW HAS TWO ALTERNATE VIEWS
+==================================================
+
+Overview has:
+
+    [ Progress | Timeline ]
+
+These are two views of THE SAME PROJECT OBJECTS.
+
+They are not separate datasets.
+
+
+U++ IMPLEMENTATION
+
+Recommended:
+
+UiBoxLayout V
+├─ Overview header
+├─ Progress / Timeline selector
+└─ UiStack
+   ├─ Progress page
+   └─ Timeline page
+
+
+The Progress / Timeline selector can be two compact borderless UiToolButtons
+or a suitable segmented treatment.
+
+The pages should live in UiStack.
+
+Classification:
+
+    COMPOSITION
+
+
+CRITICAL RULE
+
+Selection belongs to the DATA MODEL, not the current page.
+
+If:
+
+    secure-mcp-tunnel
+
+is selected in Progress and the user switches to Timeline, its Timeline event
+must also appear selected.
+
+Likewise:
+
+    clicking Secure MCP Tunnel on Timeline
+
+selects:
+
+    Secure MCP Tunnel in Progress
+
+and presents the same detail information.
+
+
+==================================================
+6. PROGRESS VIEW — OVERALL PROJECT CONDITION
+==================================================
+
+The left column contains the overall project estimate.
+
+Example:
+
+    70%
+    COMPLETE
+
+The current mock-up uses UiChartRing-style visual language.
+
+The key semantic point is:
+
+    THIS IS A MANAGEMENT ESTIMATE AGAINST CURRENTLY UNDERSTOOD SCOPE.
+
+It is NOT an irreversible odometer.
+
+
+The Progress view then presents major project areas as wrapping compact entries.
+
+Examples:
+
+    RC5 runtime identity
+    Secure MCP Tunnel
+    Dashboard workflow
+    Human Return workflow
+    Assistance Callback
+    Remaining work
+
+
+Each normal area shows:
+
+    title
+    concise status
+    its OWN progress ring
+
+For example:
+
+    Secure MCP Tunnel
+    Complete
+    100%
+
+
+The small percentage ring means:
+
+    progress of THIS AREA
+
+It does not automatically mean:
+
+    percentage contribution to the entire project.
+
+
+==================================================
+7. U++ STRUCTURE FOR THE OVERVIEW
+==================================================
+
+The desired native structure is important.
+
+Avoid hard-coded X/Y layout.
+
+Conceptually:
+
+UiBoxLayout V
+├─ top overview row
+└─ selected detail rows
+
+
+TOP OVERVIEW ROW
+
+Use approximately:
+
+UiGridLayout
+├─ fixed semantic gauge column
+└─ expanding content column
+
+
+Column 0:
+
+    overall UiChartRing
+
+Column 1:
+
+    horizontal UiBoxLayout
+        SetWrap(true)
+
+containing:
+
+    overview area entries
+
+
+The current HTML uses around a 140 px gauge column.
+
+In U++ this may legitimately be a FIXED DPI-aware style/layout metric because
+the ring requires a stable presentation size.
+
+However:
+
+    DPI(140)
+
+should be a named layout/style metric such as:
+
+    overview_gauge_width
+
+not a collection of hard-coded coordinates.
+
+
+GOOD:
+
+    grid column 0 = Fixed(DPI(140))
+    grid column 1 = Expand()
+
+    box_areas.SetWrap(true)
+    box_areas.Add(...).Fit()/Expand as appropriate
+
+
+BAD:
+
+    item.SetRect(164, 72, 310, 66)
+
+
+The rest of the page must adapt naturally to resizing.
+
+
+==================================================
+8. OVERVIEW DETAIL / DRILL-DOWN
+==================================================
+
+Clicking an Overview item selects it and expands its detail underneath.
+
+The expanded detail uses the SAME two-column alignment as the top Overview:
+
+    fixed gauge column
+    flexible detail column
+
+
+Example:
+
+    [ 100% ring ] | SECURE MCP TUNNEL
+                  | Browser ChatGPT reaches...
+                  |
+                  | EVIDENCE
+                  | probe_present   true
+                  | source          TaskTrackTunnelGui
+
+
+This alignment is intentional.
+
+The percentage ring should not look like a disconnected floating object.
+
+It belongs in the same left-hand gauge column occupied by the overall ring above.
+
+
+U++ STRUCTURE
+
+UiBoxLayout V
+└─ one DetailRow per selection
+
+DetailRow:
+
+UiGridLayout
+├─ gauge column     Fixed(overview_gauge_width)
+└─ content          Expand
+
+
+Content can itself use:
+
+UiGridLayout / UiBoxLayout H
+
+to separate:
+
+    narrative state
+    evidence
+
+
+==================================================
+9. SINGLE SELECT / MULTI SELECT
+==================================================
+
+Normal click:
+
+    select one area
+
+Click same single-selected area again:
+
+    deselect it / hide detail
+
+Ctrl-click:
+
+    add/remove areas from selection
+
+
+Therefore the user can inspect:
+
+    Secure Tunnel
+    Dashboard
+    Human Return
+
+simultaneously if useful.
+
+
+Do not make this interaction dependent on HTML/browser behaviour.
+
+Native selection state should be something conceptually like:
+
+    Index<String> selected_area_ids;
+
+or equivalent.
+
+
+==================================================
+10. STABLE AREA IDs ARE FUNDAMENTAL
+==================================================
+
+Every project area requires a stable semantic ID.
+
+Examples:
+
+    rc5-runtime-identity
+    secure-mcp-tunnel
+    dashboard-workflow
+    human-return
+    assistance-callback
+    modern-assistance-path
+    patchtrack-channel-routing
+
+
+The stable ID is used for:
+
+- cross-view selection;
+- timeline correlation;
+- colour identity;
+- revision comparisons;
+- evidence relationships;
+- attention relationships;
+- next-step relationships;
+- clipboard/reference behaviour.
+
+
+DO NOT use visible title text as the primary identity.
+
+Titles can be renamed.
+
+IDs must survive presentation changes.
+
+
+==================================================
+11. TASK / AREA COLOURING
+==================================================
+
+Colour represents IDENTITY.
+
+Colour does NOT represent STATUS.
+
+
+For example:
+
+    Secure MCP Tunnel = violet
+
+It remains violet when:
+
+    active
+    complete
+    selected
+    shown in Timeline
+    shown in Overview
+
+
+Status is represented separately using:
+
+    ✓ Complete
+    ● Active
+    ! Attention
+    → Next
+    Δ Scope revised
+    × Failed / Blocked
+    ◷ Later
+
+etc.
+
+
+WHY
+
+The same colour appearing in Progress and Timeline gives the user an immediate:
+
+    "That's the same thing."
+
+relationship.
+
+
+NATIVE COLOUR STRATEGY
+
+Do not generate arbitrary RGB values.
+
+Use a curated theme-aware palette, approximately:
+
+    24–32 useful colours
+
+with light/dark equivalents.
+
+Then derive a stable index from:
+
+    area_id
+
+Conceptually:
+
+    palette_index = Hash(area_id) % palette_count;
+
+Optionally MCP may send:
+
+    colour_key
+
+to preserve an established identity explicitly.
+
+If no colour_key is supplied:
+
+    derive it from stable area_id.
+
+
+Do not hash the mutable title.
+
+
+==================================================
+12. OVERALL CHART RING — WEIGHTING WARNING
+==================================================
+
+Be careful not to imply false mathematical precision.
+
+The overall ring is:
+
+    overall project estimate
+
+The area rings are:
+
+    area progress
+
+
+Those values are NOT automatically additive.
+
+If the overall UiChartRing visually segments project areas, there are two valid
+approaches:
+
+A. MCP supplies an authoritative scope/contribution weight per major area.
+
+Then segment sizes can represent actual contribution.
+
+OR
+
+B. No authoritative weighting exists.
+
+Then the ring must NOT visually imply that the task areas mathematically sum to
+the overall percentage.
+
+In that case use either:
+
+- a simpler overall ring;
+- neutral/equal identity accents;
+- or explicitly treat the coloured slices as identity decoration rather than
+  scope weighting.
+
+Never manufacture project weights simply to make a pretty chart.
+
+
+==================================================
+13. THE 90% → 70% PROBLEM
+==================================================
+
+This is a core project-management requirement.
+
+Example:
+
+Revision 2:
+
+    Management progress: 90%
+
+Then significant refactoring is discovered.
+
+Revision 3:
+
+    Management progress: 70%
+
+
+THIS MUST BE VALID.
+
+
+The project did not lose 20% of completed implementation.
+
+Instead:
+
+    THE DEFINITION OF FINISHED EXPANDED.
+
+
+Therefore overall progress needs a semantic kind:
+
+    measured
+    estimated
+    unknown
+
+
+For most software-project supervision:
+
+    progress_kind = estimated
+
+
+A scope change must be preserved as an explicit event / revision.
+
+Example:
+
+scope_revision
+    previous_progress: 90
+    current_progress: 70
+    reason:
+        Architecture refactor expanded the accepted definition of finished.
+
+
+The Dashboard should then show:
+
+    70% complete
+    Scope revised 90 → 70%
+
+
+Completed areas remain:
+
+    100% Complete
+
+
+This is crucial.
+
+Never silently reduce completed area states simply to make the overall arithmetic
+fit.
+
+
+==================================================
+14. CONFIDENCE IS SEPARATE FROM PROGRESS
+==================================================
+
+The Dashboard should communicate uncertainty.
+
+Example:
+
+    Progress       70%
+    Estimate       Management
+    Confidence     88%
+
+
+A project could be:
+
+    90% complete
+    confidence low
+
+because the remaining scope is poorly understood.
+
+Or:
+
+    70% complete
+    confidence high
+
+because the remaining work is clearly known.
+
+
+The MCP schema should allow confidence to be:
+
+    numeric
+    enum
+    or both
+
+depending on final schema design.
+
+
+==================================================
+15. UNKNOWN SCOPE MUST BE REPRESENTABLE
+==================================================
+
+Do not force the AI to invent percentages.
+
+Early project example:
+
+    Progress: 25%
+    Known remaining: substantial
+    Scope confidence: low
+
+
+Or:
+
+    progress_kind: unknown
+
+
+If the agent cannot defend a numeric progress estimate, the dashboard should be
+allowed to show:
+
+    Completion estimate unavailable
+
+or:
+
+    Known remaining work
+    Additional scope possible
+
+
+Honest uncertainty is more useful than fake precision.
+
+
+==================================================
+16. REMAINING WORK IS A FIRST-CLASS OVERVIEW OBJECT
+==================================================
+
+This was one of the most important redesign changes.
+
+If Overview says:
+
+    70% COMPLETE
+
+the user immediately asks:
+
+    "What is the other 30%?"
+
+
+They should NOT have to scroll down through three sections to discover it.
+
+Therefore Progress contains a special aggregate entry:
+
+    Remaining work
+    4 next steps · 2 attention
+    30%
+
+
+Remaining Work is not a normal historical project component.
+
+It is a COMPUTED PROJECT-MANAGEMENT VIEW.
+
+
+Clicking it expands:
+
+    REMAINING WORK
+
+    1. Architecture refactor execution
+    2. PatchTrack named-channel routing
+    3. Prove modern in-call assistance callback
+    4. Refresh current main and ACTIVE_WORK
+
+
+It also includes information such as:
+
+    progress kind
+    next-step count
+    attention count
+    known remaining amount
+    estimate change
+    why scope changed
+    finish estimate / unknown
+
+
+==================================================
+17. REMAINING WORK AND SCOPE CHANGES
+==================================================
+
+Example:
+
+Before refactor:
+
+    90% complete
+    10% remaining
+
+
+After refactor:
+
+    70% complete
+    30% remaining
+
+
+Remaining Work should explain:
+
+    +20 percentage points were introduced because scope expanded.
+
+NOT:
+
+    twenty percent of completed work failed.
+
+
+Example expanded explanation:
+
+    Remaining work increased because the accepted finish scope changed.
+    Previously completed areas remain complete.
+
+    Added work:
+        architecture refactor
+        regression/integration
+        related validation
+
+
+This makes the progress number defensible.
+
+
+==================================================
+18. REMAINING WORK AS A PROXY SELECTION
+==================================================
+
+Remaining Work aggregates unresolved sub-areas.
+
+Examples:
+
+    architecture-refactor
+    modern-assistance-path
+    patchtrack-channel-routing
+
+
+When Remaining Work is selected in Progress, Timeline may highlight the currently
+active timeline objects that comprise that remaining work.
+
+This is useful because:
+
+Progress says:
+
+    "Here is what is left."
+
+Timeline says:
+
+    "Here is where that unfinished work is happening."
+
+
+This relationship should be implemented from semantic IDs/relationships, not
+special-case visual coordinates.
+
+
+==================================================
+19. TIMELINE — CORE SEMANTICS
+==================================================
+
+Timeline DOES NOT represent percentage completion along its X axis.
+
+This was an important redesign correction.
+
+Timeline represents:
+
+    TIME / ACTIVITY
+
+
+The horizontal position means:
+
+    when something occurred
+
+NOT:
+
+    what percentage of the project it contributed.
+
+
+Example:
+
+21 Aug        2 Sep  3 Sep            8 Sep  9 Sep     Today
+
+  ●-------------●----●------------------●-----●----------│
+ Runtime       Tunnel Dashboard      Human  Callback
+
+
+If Tunnel and Dashboard completed very close together, their points appear close.
+
+If nothing meaningful happened for two weeks, there is a large gap.
+
+THAT GAP IS INFORMATION.
+
+
+==================================================
+20. TIMELINE ACTIVITY TYPES
+==================================================
+
+Timeline should support at least:
+
+A. POINT EVENT
+
+Example:
+
+    ●
+
+Meaning:
+
+    accepted/completed event at a known time
+
+
+B. ACTIVITY SPAN
+
+Example:
+
+    ━━━━━
+
+Meaning:
+
+    work was active over a period
+
+
+C. ACTIVE / INCOMPLETE ITEM
+
+A small partial UiProgressRing-style marker may show the AREA'S progress.
+
+Example:
+
+    ◔
+
+This progress is:
+
+    progress of that activity
+
+NOT:
+
+    project completion percentage.
+
+
+D. SCOPE / MANAGEMENT EVENT
+
+Example:
+
+    Δ Scope revised
+
+A project-management event may appear on Timeline even though it is not an
+implementation task.
+
+
+==================================================
+21. TIMELINE CAN CONTAIN MORE THAN OVERVIEW
+==================================================
+
+Overview should show major project concepts.
+
+Timeline can show additional sub-work.
+
+Example:
+
+Overview may contain:
+
+    Assistance Callback
+
+Timeline may additionally show:
+
+    Modern in-call assistance path
+
+because it has been active for several days.
+
+
+Likewise:
+
+    PatchTrack named-channel routing
+
+can appear on Timeline even before it becomes a major top-level Overview area.
+
+
+This is intentional.
+
+Timeline answers:
+
+    "What has activity actually been happening on?"
+
+
+It is not restricted to the Overview-card list.
+
+
+==================================================
+22. MULTIPLE THINGS CAN HAPPEN AT ONCE
+==================================================
+
+The Timeline must support overlapping work.
+
+Do not assume one project task at a time.
+
+Native timeline layout should automatically assign lanes.
+
+For example:
+
+              Callback
+                 ●
+-----------------|------------------- NOW
+        ═════════════ Modern callback work
+                 ═════ Refactor
+                    ◔ PatchTrack
+
+
+Use above/below lanes or automatic collision avoidance.
+
+Do NOT hard-code HTML-style:
+
+    left: 72%
+    top: 68px
+
+in the native implementation.
+
+
+==================================================
+23. RECOMMENDED TIMELINE IMPLEMENTATION
+==================================================
+
+Classification:
+
+    NEW SMALL CONTROL
+
+Suggested control:
+
+    UiDashboardTimeline
+
+or similar.
+
+
+Input should be semantic:
+
+TimelineView
+    start_time
+    end_time / now
+    events[]
+    spans[]
+    selected_ids[]
+
+
+For each timestamp:
+
+    t = (event_time - view_start) /
+        (view_end - view_start)
+
+    x = content_left + t * content_width
+
+
+For spans:
+
+    x1 = timestamp(start)
+    x2 = timestamp(end or now)
+
+
+Lane allocation should be geometry-driven.
+
+A simple greedy lane allocator is sufficient:
+
+1. sort objects by start time;
+2. test occupied label/span rectangles;
+3. place in first free lane;
+4. create additional lane if necessary.
+
+
+Keep it lightweight.
+
+There is no need for a giant general-purpose scheduling framework merely for
+this dashboard visualization.
+
+
+==================================================
+24. TIMELINE SELECTION
+==================================================
+
+Click Timeline event:
+
+    select its area/event
+
+The same lower drill-down mechanism used by Progress appears underneath Timeline.
+
+
+Ctrl-click:
+
+    multi-select
+
+
+Switch back to Progress:
+
+    corresponding Overview item remains selected if it has one.
+
+
+If a Timeline-only subtask is selected:
+
+    its detail remains available even if there is no direct top-level Overview
+    card.
+
+
+Selection is project-model state, not widget-local state.
+
+
+==================================================
+25. ATTENTION — "WHAT NEEDS ME?"
+==================================================
+
+Attention has a very narrow purpose.
+
+It answers:
+
+    "What currently requires human awareness, decision or intervention?"
+
+
+Examples:
+
+    Modern in-call assistance path not yet proven
+
+    Remote GitHub refresh unavailable in this session
+
+
+Attention should contain:
+
+- blockers;
+- unresolved decisions;
+- risk;
+- missing proof;
+- human approvals;
+- important uncertainty;
+- external dependency requiring action.
+
+
+Attention should NOT contain:
+
+- every incomplete task;
+- all next steps;
+- ordinary background work;
+- completed state.
+
+
+That distinction keeps Attention useful.
+
+
+VISUAL DESIGN
+
+Attention items remain compact.
+
+Example:
+
+    !  Modern in-call assistance path not yet proven
+       Compatibility accepted; direct modern path needs proof.
+
+       PENDING                               [copy]
+
+
+The user should be able to scan the section very quickly.
+
+
+==================================================
+26. COPY / REFERENCE ACTIONS
+==================================================
+
+A key dashboard advantage is the ability to feed context back into the AI.
+
+Most meaningful records should have a small borderless copy action.
+
+Examples:
+
+- expanded Overview detail;
+- Attention item;
+- State row;
+- Recent Change.
+
+
+Copy useful SEMANTIC TEXT, not just the heading.
+
+For example:
+
+    Modern in-call assistance path — Attention.
+    Compatibility is accepted; modern path is still unproven.
+    Next: prove the direct in-call callback.
+
+
+The user can then paste that into ChatGPT and say:
+
+    "Do this."
+
+or:
+
+    "Explain why this is still unresolved."
+
+
+Native:
+
+    UiToolButton
+        Copy to Clipboard
+
+
+No custom control is needed.
+
+
+==================================================
+27. STATE — THE AUTHORITATIVE PROJECT REGISTER
+==================================================
+
+State is deliberately more conventional than Overview.
+
+This is good.
+
+Overview is the interactive intelligence surface.
+
+State is the dependable project register.
+
+
+The design was based on the useful structure that agents naturally produce:
+
+    Status
+    Area
+    Where we are
+
+
+Example:
+
+STATUS
+    ✓ Complete
+
+AREA
+    Secure MCP Tunnel
+
+WHERE WE ARE
+    Browser ChatGPT reaches local TaskTrack through TaskTrackTunnelGui.
+
+    Verified:
+        probe present; source TaskTrackTunnelGui
+
+
+Another example:
+
+STATUS
+    ! Attention
+
+AREA
+    Modern in-call assistance path
+
+WHERE WE ARE
+    Compatibility is accepted; modern path remains unproven.
+
+    Next:
+        prove direct in-call callback
+
+    Verified:
+        compatibility acceptance
+
+
+==================================================
+28. STATE ABSORBS VERIFICATION AND NEXT STEPS
+==================================================
+
+Do NOT restore separate:
+
+    Verification
+    Next Steps
+
+sections.
+
+
+They are fields inside State.
+
+An area can contain:
+
+    current status
+    summary
+    evidence / verification
+    next action
+    dependencies
+    progress
+    dates
+
+
+Only render applicable information.
+
+
+Example COMPLETED row:
+
+    ✓ Complete
+    Human Return workflow
+    Accepted through the live TaskTrack workflow.
+    Verified: live acceptance.
+
+
+Example ACTIVE row:
+
+    ● Active
+    PatchTrack named-channel routing
+    Current highest-priority implementation task.
+    Next: prove and document routing.
+
+
+Example DEFERRED:
+
+    ◷ Later
+    AI / AgentFlow assistant
+    Explicitly post-RC; not part of current finish scope.
+
+
+==================================================
+29. STATE STATUS VOCABULARY
+==================================================
+
+The visual vocabulary should remain small and predictable.
+
+Recommended semantic states:
+
+    COMPLETE
+    ACTIVE
+    ATTENTION
+    NEXT
+    BLOCKED
+    LATER
+    SCOPE_CHANGED
+
+Possible symbols:
+
+    ✓ Complete
+    ● Active
+    ! Attention
+    → Next
+    × Blocked
+    ◷ Later
+    Δ Scope revised
+
+
+Colour of these status symbols should represent STATUS.
+
+This is separate from AREA IDENTITY COLOUR.
+
+
+Do not confuse the two systems.
+
+
+==================================================
+30. STATE ORDERING
+==================================================
+
+The current design places immediately relevant items first:
+
+    Scope revision
+    Attention
+    Active
+    Next
+
+followed by recently completed areas.
+
+
+Recommended sort concept:
+
+1. scope/major management change if currently relevant;
+2. Attention;
+3. Active;
+4. Next;
+5. Blocked as appropriate;
+6. recent Complete;
+7. Later/deferred.
+
+
+Within groups use:
+
+    last_changed_at
+
+or appropriate chronology.
+
+
+This makes State useful as a live project register instead of a dead checklist.
+
+
+==================================================
+31. STATE VISUAL TREATMENT
+==================================================
+
+Do NOT surround every State item with a card.
+
+The user explicitly preferred a traditional clean register.
+
+Use:
+
+    column headers
+    quiet row separators
+    small status symbol
+    readable title
+    textual current-state summary
+    small copy action
+
+
+Conceptually:
+
+UiGridLayout
+
+Columns:
+
+    Status
+    Area
+    Where we are
+    Action
+
+
+The "Where we are" column should receive most of the expandable width.
+
+
+Example proportions are semantic, not absolute:
+
+    Status       Fit / sensible min
+    Area         moderate
+    Where we are Expand
+    Copy         Fit
+
+
+If rebuilding dynamic rows in UiGridLayout becomes awkward, a vertical
+UiBoxLayout containing row controls is acceptable provided column alignment is
+maintained consistently.
+
+Do not use manually positioned labels.
+
+
+==================================================
+32. RECENT CHANGES REMAINS SEPARATE
+==================================================
+
+Recent Changes is not current state.
+
+It answers:
+
+    "What changed?"
+
+
+Therefore it stays separate.
+
+Examples:
+
+    Δ Scope expanded for architecture refactor
+      Today
+
+    • Assistance Callback compatibility accepted
+      9 Sep
+
+    • Human Return accepted
+      8 Sep
+
+
+Keep it quiet:
+
+    icon
+    change title
+    short description
+    date
+    copy
+
+
+No large cards needed.
+
+
+==================================================
+33. REVISION / HISTORY MODEL
+==================================================
+
+The Dashboard supports revision viewing.
+
+Header selector:
+
+    Current · r3
+    Revision · r2
+    Revision · r1
+
+
+When looking at current:
+
+    LIVE
+
+
+When examining older revision:
+
+    HISTORY
+
+
+Returning to Current restores the latest accepted snapshot.
+
+
+Important:
+
+Historical revisions should show the PROJECT AS UNDERSTOOD AT THAT REVISION.
+
+
+Example:
+
+r2:
+
+    90%
+    no scope-change badge
+
+
+r3:
+
+    70%
+    Scope revised 90 → 70%
+
+
+This makes the 90→70 transition understandable rather than mysterious.
+
+
+==================================================
+34. AGENT / MCP RESPONSIBILITY
+==================================================
+
+The AI MUST NOT send HTML.
+
+The AI MUST NOT send screen coordinates.
+
+The AI MUST NOT decide:
+
+    "put this card 380 px from the left"
+
+or:
+
+    "draw this in purple at x/y."
+
+
+TaskTrack owns presentation.
+
+
+The AI sends a SEMANTIC PROJECT MODEL.
+
+TaskTrack turns that into:
+
+    Overview
+    Timeline
+    Attention
+    State
+    Recent Changes
+
+
+==================================================
+35. PROPOSED MCP DATA MODEL
+==================================================
+
+Conceptually:
+
+dashboard
+    title
+    overall_progress
+    progress_kind
+    confidence
+
+    revision
+        number
+        timestamp
+
+    scope_revision
+        changed
+        previous_progress
+        current_progress
+        reason
+        timestamp
+
+areas[]
+    id
+    title
+
+    status
+    summary
+
+    progress
+    progress_kind
+
+    colour_key
+
+    overview_visibility
+    scope_weight              OPTIONAL
+
+    started_at
+    completed_at
+    last_changed_at
+
+    evidence[]
+    next_steps[]
+    dependency_ids[]
+    attention_ids[]
+
+events[]
+    id
+    area_id
+
+    timestamp
+    type
+
+    summary
+
+activity_spans[]
+    id
+    area_id
+
+    started_at
+    ended_at                  nullable while active
+
+    progress                  optional
+    summary
+
+attention[]
+    id
+    area_id
+
+    severity
+    summary
+    action
+
+recent_changes[]
+    id
+    area_id
+    timestamp
+    type
+    summary
+
+
+Exact names can change during schema design.
+
+The important thing is semantic separation.
+
+
+==================================================
+36. PROGRESS DATA
+==================================================
+
+Overall project progress and area progress are separate.
+
+Dashboard:
+
+    overall_progress: 70
+    progress_kind: estimated
+
+
+Area:
+
+    id: patchtrack-channel-routing
+    progress: 30
+    progress_kind: estimated
+
+
+Do not infer:
+
+    area.progress contributes 30 percentage points to project.
+
+
+If contribution is meaningful and defensible, add:
+
+    scope_weight
+
+explicitly.
+
+
+==================================================
+37. SCOPE REVISION DATA
+==================================================
+
+Scope revision needs FIRST-CLASS support.
+
+Example:
+
+scope_revision
+    changed: true
+    previous_progress: 90
+    current_progress: 70
+    reason:
+        "Architecture refactor expanded the accepted definition of finished."
+    timestamp:
+        ...
+
+
+Prefer preserving scope revisions as events/history rather than only overwriting
+the latest number.
+
+
+Potential future model:
+
+scope_revisions[]
+    revision
+    timestamp
+    previous_progress
+    current_progress
+    reason
+
+
+That enables proper historical explanation.
+
+
+==================================================
+38. REMAINING WORK DATA
+==================================================
+
+Remaining Work should preferably be COMPUTED from semantic project state.
+
+Inputs include:
+
+- overall progress estimate;
+- unfinished areas;
+- next steps;
+- attention;
+- active scope;
+- blockers.
+
+
+However the AI may also provide a management-level explanation:
+
+remaining_work
+    known: true
+    summary
+    items[]
+    scope_uncertain
+    estimated_remaining
+
+
+The renderer can create the Remaining Work Overview object from this information.
+
+
+Do not require the AI to create a fake "remaining" area ID just to satisfy the UI.
+
+
+==================================================
+39. ATTENTION RELATIONSHIPS
+==================================================
+
+Attention records should refer to area IDs.
+
+Example:
+
+attention
+    id: modern-callback-proof
+    area_id: modern-assistance-path
+    severity: warning
+    summary:
+        "Modern in-call assistance path not yet proven."
+    action:
+        "Prove direct in-call callback."
+
+
+That gives TaskTrack enough information to:
+
+- show it in Attention;
+- mark State appropriately;
+- include it in Remaining Work;
+- select its Timeline activity.
+
+
+==================================================
+40. EVENTS AND TIMELINE
+==================================================
+
+Timeline events should be explicit semantic events.
+
+Example:
+
+event
+    id: dashboard-accepted-r2
+    area_id: dashboard-workflow
+    timestamp: ...
+    type: accepted
+    summary:
+        "Dashboard live acceptance completed."
+
+
+Timeline should not derive every event from freeform prose.
+
+Explicit events make historical rendering deterministic.
+
+
+Activity spans likewise need explicit start/end semantics.
+
+Example:
+
+activity_span
+    area_id: modern-assistance-path
+    started_at: ...
+    ended_at: null
+    progress: 35
+
+
+This naturally renders as active work extending to NOW.
+
+
+==================================================
+41. COLOUR DATA
+==================================================
+
+Preferred:
+
+    colour_key
+
+rather than raw RGB.
+
+Example:
+
+    colour_key: 7
+
+
+Or:
+
+    colour_key: "area-7"
+
+
+If absent:
+
+    hash(area_id)
+
+
+Renderer resolves key using current theme palette.
+
+This permits:
+
+    light theme
+    dark theme
+
+without the AI knowing presentation colours.
+
+
+==================================================
+42. EVIDENCE
+==================================================
+
+Evidence should remain structured where possible.
+
+Instead of:
+
+    "It seems to have been tested."
+
+
+Prefer:
+
+evidence[]
+    label: probe_present
+    value: true
+
+    label: source
+    value: TaskTrackTunnelGui
+
+    label: status
+    value: accepted
+
+
+Evidence belongs to the AREA state.
+
+Verification is therefore not a separate dashboard concept.
+
+
+==================================================
+43. NEXT STEPS
+==================================================
+
+Next steps belong to the relevant AREA.
+
+Example:
+
+area:
+    Modern assistance path
+
+next_steps:
+    - prove direct in-call callback
+
+
+TaskTrack can use these to build:
+
+    Remaining Work
+
+and:
+
+    State -> Where we are -> Next
+
+
+There is therefore no need for a dedicated Next Steps dashboard section.
+
+
+==================================================
+44. "WHERE WE ARE" SHOULD BE AGENT-FRIENDLY
+==================================================
+
+The AI is already naturally good at producing:
+
+    Area
+    Status
+    Where we are
+
+
+The MCP protocol should embrace that rather than fight it.
+
+
+For each area ask the agent to provide something conceptually equivalent to:
+
+    What is this area?
+
+    What is its status?
+
+    Where are we now?
+
+    What evidence supports that?
+
+    What remains?
+
+    Is human attention required?
+
+    When did it change?
+
+
+That semantic vocabulary maps very cleanly into the dashboard.
+
+
+==================================================
+45. LIVE UPDATE / REVISION FLOW
+==================================================
+
+Likely runtime flow:
+
+Agent
+  ↓
+TaskTrack MCP
+  ↓
+semantic project snapshot / update
+  ↓
+TaskTrack stores revision
+  ↓
+Dashboard model updates
+  ↓
+Views refresh from same model
+
+
+The Dashboard should not keep separate authoritative copies for:
+
+    Overview
+    Timeline
+    State
+
+
+All views derive from the same model.
+
+
+This avoids the worst architecture failure:
+
+    Progress says Complete
+    State says Active
+    Timeline says Pending
+
+
+One semantic source of truth; multiple visual projections.
+
+
+==================================================
+46. UPDATE GRANULARITY
+==================================================
+
+The protocol can eventually support either:
+
+A. FULL SNAPSHOT
+
+Agent sends the current complete dashboard model.
+
+Simple and robust.
+
+OR
+
+B. PATCH / EVENT UPDATE
+
+Agent sends:
+
+    area changed
+    attention added
+    event accepted
+    progress estimate revised
+
+TaskTrack applies it to the current model and creates a revision.
+
+
+For early implementation, a full semantic snapshot is probably easier to make
+reliable.
+
+Incremental patching can be layered on once schema/state authority is solid.
+
+
+==================================================
+47. LIGHT / DARK THEMING
+==================================================
+
+HTML supports both themes.
+
+Native implementation should use existing UiTheme behaviour.
+
+Do not hard-code all HTML RGB values into controls.
+
+Use:
+
+    UiThemeContext
+    UiThemeMode
+    semantic roles
+
+and a theme-aware task identity palette.
+
+
+Status colours and task colours have different jobs:
+
+TASK COLOUR
+    identifies the area
+
+STATUS COLOUR
+    identifies state
+
+
+Both need light/dark variants.
+
+
+==================================================
+48. U++ CONTROL MAPPING
+==================================================
+
+Expected existing controls:
+
+Application surfaces:
+    UiPanel
+    UiTitleCard
+    UiAccordion
+
+Layouts:
+    UiBoxLayout
+    UiGridLayout
+    UiStack
+
+Actions:
+    UiButton
+    UiToolButton
+
+Selectors:
+    UiDropdown
+
+Data / indicators:
+    UiChartRing
+    UiProgressRing
+
+Labels / text:
+    UiLabel
+
+Scrolling:
+    UiScrollPanel or existing appropriate scroll host
+
+
+Purpose-built control:
+
+    UiDashboardTimeline
+
+
+Potential very small control:
+
+    dashboard LIVE activity bars
+
+
+Do not revive retired UiComposite* patterns.
+
+
+==================================================
+49. RESPONSIVE / RESIZABLE LAYOUT
+==================================================
+
+The HTML uses browser CSS to demonstrate resizing.
+
+Native implementation should reproduce the behaviour through layout rules.
+
+
+Examples:
+
+Overview area cards:
+
+    UiBoxLayout H
+    SetWrap(true)
+
+
+At normal width:
+
+    multiple area entries per row
+
+
+At narrower width:
+
+    wrap naturally
+
+
+State:
+
+    maintain column alignment while space allows
+
+At narrow width:
+
+    allow Where-we-are text to wrap
+    or change row layout responsively
+
+
+Do NOT duplicate browser media-query pixel breakpoints blindly.
+
+Native resizing behaviour should follow available space and minimum sizes.
+
+
+==================================================
+50. FIXED VALUES VS HARD-CODED LAYOUT
+==================================================
+
+Some fixed semantic dimensions are valid.
+
+Examples:
+
+    ring diameter
+    icon size
+    header height
+    gauge column width
+    standard control height
+
+
+Those should be:
+
+    DPI-aware
+    centralized
+    named style/layout metrics
+
+
+They are NOT the same thing as hard-coded positioning.
+
+
+GOOD:
+
+    const int gauge_width = DPI(140);
+    grid.SetColumnWidth(0, gauge_width);
+
+
+BAD:
+
+    ring.SetRect(29, 93, 124, 124);
+    detail.SetRect(164, 93, 900, 122);
+
+
+The layout engine should decide the final coordinates.
+
+
+==================================================
+51. WHAT NOT TO COPY FROM THE HTML
+==================================================
+
+Do NOT copy:
+
+- CSS grid pixel coordinates;
+- CSS left: 72% timeline locations;
+- media-query implementation;
+- browser SVG dependency;
+- arbitrary RGB colours;
+- DOM selection logic;
+- CSS conic gradients merely because the mock-up uses them;
+- fixed browser widths;
+- hard-coded element positions.
+
+
+Translate:
+
+    concept
+    hierarchy
+    state
+    relationship
+    interaction
+
+into U++.
+
+
+==================================================
+52. INTERACTION MODEL SUMMARY
+==================================================
+
+OVERVIEW / PROGRESS
+
+Click area:
+    inspect it
+
+Click selected single area:
+    close it
+
+Ctrl-click:
+    multi-select
+
+
+OVERVIEW / TIMELINE
+
+Same selection model.
+
+Click event/span:
+    inspect same semantic object
+
+Ctrl-click:
+    multi-select
+
+
+SWITCH PROGRESS ↔ TIMELINE
+
+Selection persists.
+
+
+REMAINING WORK
+
+Select:
+    show outstanding project work
+
+Timeline:
+    highlight unresolved/active contributing work
+
+
+ATTENTION
+
+Copy:
+    copy actionable context
+
+
+STATE
+
+Copy:
+    copy current semantic record
+
+
+RECENT CHANGES
+
+Copy:
+    copy historical change context
+
+
+REVISION
+
+Select old revision:
+    HISTORY mode
+
+Current:
+    LIVE mode
+
+
+==================================================
+53. MAIN REDESIGN CHANGES FROM EARLY DASHBOARD
+==================================================
+
+The redesign process made several important simplifications.
+
+1. Removed redundant status strip beneath Overview header.
+
+   Revision / Updated / Confidence / Phase moved into compact heading pills.
+
+
+2. Shortened section names.
+
+   PROJECT OVERVIEW -> OVERVIEW
+   PROJECT STATE -> STATE
+
+
+3. Removed explanatory "Level 1 / Level 2" subtitles.
+
+   Explanation moved to hover/tooltips where useful.
+
+
+4. Moved progress into Overview itself.
+
+   Major project areas now carry compact progress/state information.
+
+
+5. Added interactive drill-down.
+
+   Overview entries can be opened rather than requiring the user to scroll to
+   another State card.
+
+
+6. Added multi-select.
+
+   Ctrl-click allows several area details to remain visible.
+
+
+7. Connected Timeline and Progress selection.
+
+   They are alternate projections of the same semantic project model.
+
+
+8. Reinterpreted Timeline correctly.
+
+   It is now TIME / ACTIVITY, not percentage.
+
+
+9. Added Remaining Work.
+
+   The user can immediately answer:
+       "What is preventing 100%?"
+
+
+10. Solved the 90% -> 70% issue.
+
+    Overall progress is an estimate against current scope.
+    Scope revision is explicit and historical.
+    Completed work does not magically become incomplete.
+
+
+11. Consolidated State / Verification / Next Steps.
+
+    STATE now contains:
+        Status
+        Area
+        Where we are
+        Verified
+        Next
+        Depends on
+
+
+12. Simplified State visually.
+
+    Traditional register rows with subtle separators rather than a field of
+    individual cards.
+
+
+13. Kept Attention distinct.
+
+    Attention means:
+        "What needs me now?"
+
+    It is not synonymous with:
+        "unfinished work."
+
+
+14. Kept Recent Changes distinct.
+
+    State = what is true now.
+    Recent Changes = what changed.
+
+
+15. Added copy/reference affordances.
+
+    User can take dashboard context directly back to the AI.
+
+
+16. Added stable identity colouring.
+
+    Colours link the same area across Progress / Timeline / details.
+
+
+==================================================
+54. DESIGN NORTH STAR
+==================================================
+
+The dashboard should feel substantially better than asking an AI:
+
+    "Where are we?"
+
+
+The answer should be visible before the user starts reading paragraphs.
+
+
+Within seconds the user should understand:
+
+    70% estimated complete
+    confidence 88%
+    scope changed
+    30% remaining
+    2 things need attention
+    these are the active areas
+    this is when activity happened
+
+
+Then interaction lets them ask visually:
+
+    "What is that?"
+    "Why is this incomplete?"
+    "What changed?"
+    "What evidence do we have?"
+    "What do I need to do next?"
+
+
+This is the central reason for building the Dashboard.
+
+
+==================================================
+55. IMPLEMENTATION PRINCIPLE
+==================================================
+
+Do not build separate feature islands for:
+
+    Progress
+    Timeline
+    Attention
+    State
+    History
+
+
+Build ONE semantic project model.
+
+Then provide several clean projections of it.
+
+
+MODEL
+  ├─ Progress projection
+  ├─ Timeline projection
+  ├─ Attention projection
+  ├─ State projection
+  └─ Recent Changes projection
+
+
+That is the architecture that will keep the dashboard coherent as it grows.
+
+
+==================================================
+56. IMPLEMENTATION ACCEPTANCE TARGET
+==================================================
+
+A good first U++ implementation should prove:
+
+1. Main shell and collapsible sections.
+2. Progress / Timeline UiStack.
+3. Wrapping Overview areas.
+4. Fixed gauge + expanding-content layout.
+5. UiChartRing overall estimate.
+6. UiProgressRing area progress.
+7. Stable cross-view selection.
+8. Ctrl multi-select.
+9. Remaining Work aggregation.
+10. Date-based Timeline control.
+11. Timeline event/span selection.
+12. Attention projection.
+13. State register.
+14. Recent Changes.
+15. Clipboard actions.
+16. Current / historical revision switching.
+17. Light / dark theme.
+18. Layout remains usable while resizing.
+19. No browser-derived absolute positioning.
+20. All visible views derive from the same semantic model.
+
+
+The HTML is the current DESIGN REFERENCE.
+
+The native U++ implementation should preserve its information architecture and
+interaction model while using proper U++ controls, layouts, styling and data
+ownership.

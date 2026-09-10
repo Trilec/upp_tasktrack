@@ -1,0 +1,767 @@
+MCP TUNNEL — UI REDESIGN HANDOVER
+=================================
+
+PURPOSE
+
+The MCP Tunnel UI has been redesigned as a cleaner companion to the TaskTrack
+dashboard.
+
+The tunnel is the infrastructure layer through which TaskTrack, PatchTrack and
+dashboard functionality reach ChatGPT/local MCP services, so the interface
+should communicate three things very quickly:
+
+1. Is the tunnel healthy and running?
+2. What service is exposed through it?
+3. If something needs configuration, where do I change it?
+
+The redesign intentionally reduces visual noise and makes the Overview tab the
+operational/status surface, while Setup and Services remain conventional,
+clear configuration forms.
+
+
+HTML DESIGN REFERENCE
+
+Current interactive HTML mock-up:
+
+    mcp_tunnel_mockup.html
+
+The HTML is a design/reference implementation only.
+
+It contains:
+- working Overview / Setup / Services tabs;
+- light/dark theme switching;
+- Start / Stop tunnel interaction;
+- LIVE activity animation;
+- Send Probe simulation;
+- Clear Activity;
+- Copy Diagnostics;
+- health popup;
+- Setup toggles;
+- Services enable/expose toggle;
+- responsive behaviour.
+
+Do NOT translate the HTML/CSS literally into fixed U++ coordinates.
+
+Use the HTML to reproduce:
+- information hierarchy;
+- relative proportions;
+- interaction model;
+- visual treatment;
+- spacing rhythm;
+- control grouping.
+
+Native implementation should primarily use upp_Ui layout controls.
+
+
+GENERAL U++ STRUCTURE
+
+Recommended high-level composition:
+
+TopWindow
+└─ UiBoxLayout V
+   ├─ Header / application identity
+   ├─ UiTab
+   │  ├─ Overview page
+   │  ├─ Setup page
+   │  └─ Services page
+   └─ Footer/status bar
+
+The current upp_Ui control surface supports the required design.
+
+Use:
+- UiTab
+- UiPanel
+- UiGroupPanel where useful
+- UiBoxLayout
+- UiGridLayout
+- UiButton
+- UiToolButton
+- UiDropdown
+- UiLineEdit
+- UiToggle
+- UiLabel
+- normal Image assets for icons
+
+Do NOT revive old UiComposite* APIs.
+
+
+LAYOUT PRINCIPLE
+
+Prefer layout composition over absolute geometry.
+
+Typical patterns:
+
+    UiBoxLayout V
+        header
+        content
+        footer
+
+    UiBoxLayout H
+        left status area      Fit / Fixed where semantically appropriate
+        main details          Expand
+        actions               Fit
+
+    UiGridLayout
+        label column
+        expanding field column
+        optional status/action column
+
+Use:
+- Fit() for naturally sized labels/buttons/icons;
+- Expand() for fields/panels that should consume remaining width;
+- Fixed() only where the design genuinely calls for a stable semantic size;
+- SetGap / SetInset for rhythm;
+- wrapping UiBoxLayout where horizontal content must adapt.
+
+Avoid reproducing browser pixel widths such as "field = 712 px" or
+"panel starts at x = 226".
+
+The layout should survive resizing naturally.
+
+
+==================================================
+1. APPLICATION HEADER
+==================================================
+
+REDESIGN
+
+The header was cleaned up substantially.
+
+Left:
+- MCP Tunnel icon
+- "MCP Tunnel"
+- subtitle:
+  "Secure ChatGPT ↔ local MCP services"
+
+Right:
+- LIVE state
+- small activity indicator
+- Help
+- Theme
+- Power / Exit
+
+The Help, Theme and Power actions are deliberately borderless icon actions.
+
+WHY
+
+These are application-shell controls, not primary workflow buttons.
+Heavy button frames made the previous interface feel unnecessarily busy.
+
+The LIVE indicator also makes the tunnel feel active rather than looking like
+a static settings panel.
+
+
+U++ IMPLEMENTATION
+
+Recommended:
+
+UiBoxLayout H
+├─ identity group
+│  ├─ image
+│  └─ UiBoxLayout V
+│     ├─ title
+│     └─ subtitle
+├─ expanding spacer
+├─ live/activity group
+└─ UiToolButton group
+
+The LIVE bar indicator is the only element likely to justify a small custom
+control.
+
+Classification:
+
+    NEW SMALL CONTROL
+
+It can simply paint five vertical bars whose heights animate from a
+UiFrameTicker/timer while communication is active.
+
+It should NOT represent network bandwidth numerically.
+It is merely visual activity feedback.
+
+
+==================================================
+2. TAB NAVIGATION
+==================================================
+
+Tabs remain:
+
+    Overview
+    Setup
+    Services
+
+The redesigned tab treatment is simple underline navigation.
+
+Use the current UiTab with:
+
+    UITAB_UNDERLINE
+
+Do not create a custom navigation widget.
+
+The small "Machine tunnel control" descriptor at the right of the strip is
+supporting information and should remain visually quiet.
+
+
+==================================================
+3. OVERVIEW TAB
+==================================================
+
+GOAL
+
+Overview should answer the user's operational questions without requiring them
+to inspect Setup or Services.
+
+The redesigned Overview is intentionally dashboard-like but significantly
+simpler than TaskTrack's project dashboard.
+
+
+PRIMARY TUNNEL STATE PANEL
+
+Prominent information:
+
+    TUNNEL STATE
+    READY
+    Machine tunnel connected
+
+Also shows:
+
+    Machine
+    Tunnel
+    Last sync
+
+Actions:
+
+    Stop
+    Open health
+
+WHY
+
+READY is the most important piece of information in this application.
+The old screen had the same data, but it did not establish as strong a visual
+hierarchy.
+
+The redesign makes state recognition nearly instantaneous.
+
+
+SUGGESTED LAYOUT
+
+UiPanel
+└─ UiBoxLayout H
+   ├─ status glyph              Fit
+   ├─ UiBoxLayout V             Fit/Expand
+   │  ├─ "TUNNEL STATE"
+   │  ├─ "READY"
+   │  └─ connection subtitle
+   ├─ separator/spacer
+   ├─ details grid              Expand
+   │  ├─ Machine | value
+   │  ├─ Tunnel  | value
+   │  └─ Last sync | value
+   └─ UiBoxLayout V             Fit
+      ├─ Stop
+      └─ Open health
+
+Do not position the fields using coordinates.
+
+The left status block can have a sensible minimum/fixed visual width if desired,
+but the central details area should expand.
+
+
+STATUS GLYPH
+
+The green state square/circle is intentionally simple.
+
+This could be:
+- UiPanel + small painted status control;
+- or a purpose-built tiny status glyph control.
+
+No need for a complex widget.
+
+
+OPEN HEALTH ICON
+
+The shield is simply an icon asset.
+
+It does not imply a custom control.
+
+Load a suitable monochrome shield/check Image and allow UiButton/UiToolButton
+icon tinting to follow theme/state.
+
+
+==================================================
+4. OVERVIEW SUMMARY TILES
+==================================================
+
+Four compact summaries:
+
+    MAIN MCP
+    TaskTrack • current
+
+    OPENAI TUNNEL
+    Healthy
+
+    TASKTRACK ACTIVITY
+    0 in / 0 out
+    Live
+
+    SERVICES
+    2 enabled
+
+WHY
+
+These replace scattered technical information with four immediate system facts.
+
+They are intentionally compact and should not become independent feature cards.
+
+
+U++ IMPLEMENTATION
+
+Use:
+
+UiBoxLayout H with wrap enabled
+or
+UiGridLayout with responsive column decisions
+
+Each tile:
+UiPanel / UiTitleCard-style composition
+└─ UiBoxLayout V
+   ├─ small caption
+   └─ UiBoxLayout H
+      ├─ icon
+      └─ status/value
+
+If window width becomes constrained, allow wrapping.
+
+Do not lock the design to exactly four equal pixel-width rectangles.
+
+
+==================================================
+5. TASKTRACK ACTIVITY PANEL
+==================================================
+
+REDESIGN
+
+The lower Overview panel now has a clear hierarchy:
+
+Header:
+    TaskTrack activity     • Live
+                          Last 0 communications
+
+Body when empty:
+    simple empty-state icon
+    No recent communications
+    Waiting for remote traffic
+
+Footer actions:
+    Send probe
+    Copy diagnostics
+    Clear activity
+
+Small supporting note:
+    TaskTrack traffic visible when its service is used.
+
+
+WHY
+
+The original activity panel felt like a large mostly-empty diagnostic widget.
+
+The redesign embraces that empty state instead of filling it with technical
+noise.
+
+When traffic exists, the same area can host communication entries.
+
+
+U++ IMPLEMENTATION
+
+UiPanel
+└─ UiBoxLayout V
+   ├─ header row
+   ├─ activity content area         Expand
+   └─ action/footer row
+
+The content area could later contain UiList / UiTable if communication records
+are shown.
+
+For the empty state, use ordinary controls arranged centrally.
+No special browser centering tricks are needed.
+
+
+==================================================
+6. SETUP TAB
+==================================================
+
+PURPOSE
+
+Setup configures the MACHINE tunnel.
+
+The redesign keeps it conventional and predictable.
+
+
+TOP PROFILE SELECTOR
+
+    Machine profile
+    [ Local machine v ]
+
+                    + New
+                    Duplicate
+                    Delete
+
+This remains visually separate from the selected profile's properties.
+
+
+MACHINE PROFILE
+
+Fields:
+
+    Profile name
+    Machine ID
+    Tunnel ID
+    Credential
+
+Credential also shows:
+
+    Environment variable
+    • Available
+
+and actions:
+
+    Set key
+    Clear
+
+with concise helper text beneath.
+
+
+RUNTIME
+
+    Runtime executable
+    [ path ................................ ] [ Browse ]
+
+
+LAUNCH BEHAVIOUR
+
+    Auto-connect on launch       toggle
+    helper text
+
+    Remember machine profile     toggle
+    helper text
+
+
+WHY
+
+The previous page contained the correct information but looked more like raw
+configuration.
+
+The redesign groups related properties into three understandable concepts:
+
+1. identity/authentication;
+2. executable/runtime;
+3. launch behaviour.
+
+
+U++ IMPLEMENTATION
+
+Overall:
+
+UiBoxLayout V
+├─ profile selector panel
+├─ machine profile panel
+├─ runtime panel
+└─ launch behaviour panel
+
+
+FORMS
+
+Use UiGridLayout for stable label/control alignment:
+
+Column 0:
+    labels             Fit / sensible minimum
+
+Column 1:
+    UiLineEdit /
+    UiDropdown         Expand
+
+Column 2:
+    availability /
+    Browse etc.        Fit
+
+Do not manually place each edit control.
+
+
+Credential secondary row can be another UiBoxLayout H beneath the main
+credential field.
+
+Launch behaviour:
+
+UiBoxLayout V
+├─ UiBoxLayout H
+│  ├─ UiToggle
+│  └─ UiBoxLayout V
+│     ├─ main label
+│     └─ helper text
+└─ second toggle row
+
+
+==================================================
+7. SERVICES TAB
+==================================================
+
+PURPOSE
+
+Services configures WHAT is exposed through the machine tunnel.
+
+This should remain clearly separate from Setup.
+
+
+TOP SERVICE SELECTOR
+
+    MCP service
+    [ TaskTrack v ]
+
+                    + New
+                    Duplicate
+                    Delete
+
+
+SERVICE BINDING
+
+Fields:
+
+    Display name
+    Service ID
+    MCP channel
+    MCP command
+
+MCP channel currently:
+
+    main
+
+A quiet green information treatment communicates:
+
+    This service is exposed through the machine tunnel.
+    Channel 'main' is used for the active service.
+
+
+ENABLED
+
+    [toggle] Expose this service
+
+Helper text:
+
+    Enabled services are launched under one machine tunnel.
+    Exactly one enabled service must use channel 'main'.
+
+
+WHY
+
+The previous screen contained everything needed but channel semantics and
+service exposure were not especially obvious.
+
+The redesign makes the relationship explicit:
+
+    Machine Tunnel
+        └─ exposed MCP services
+             └─ one service owns "main"
+
+
+U++ IMPLEMENTATION
+
+Use essentially the same form structure as Setup:
+
+UiBoxLayout V
+├─ service selector
+└─ service binding panel
+   └─ UiGridLayout
+
+This consistency is deliberate.
+
+Setup and Services should feel like two variations of the same editing pattern,
+not unrelated interfaces.
+
+
+INFO CALLOUT
+
+The green service-exposure message does NOT need a custom widget.
+
+Composition:
+
+UiPanel with subtle/semantic role
+└─ UiBoxLayout H
+   ├─ shield/status Image
+   └─ UiBoxLayout V
+      ├─ primary message
+      └─ secondary message
+
+Classification:
+
+    COMPOSITION
+
+
+==================================================
+8. FOOTER / STATUS BAR
+==================================================
+
+Shared across all three pages:
+
+    TaskTrack 0.3.2-rc5
+    MCP schema 2
+    Dashboard schema 1
+    • Auto-save • Saved to disk
+
+Right:
+
+    Help
+    Copy diagnostics
+
+This is deliberately low-contrast.
+
+It exists for technical confidence and diagnostics but should never compete
+with the primary UI.
+
+
+U++ IMPLEMENTATION
+
+UiBoxLayout H
+├─ status labels
+├─ expanding spacer
+└─ action buttons
+
+No absolute placement.
+
+
+==================================================
+9. LIGHT / DARK THEME
+==================================================
+
+The HTML mock-up supports light/dark mode.
+
+Native implementation should NOT reproduce the CSS colours individually.
+
+Use the existing UiTheme architecture:
+
+    UiThemeContext
+    UiThemeMode::Light
+    UiThemeMode::Dark
+
+Prefer semantic roles:
+
+    Standard
+    Subtle
+    Accent
+    Alert
+
+and panel roles:
+
+    Surface
+    Subtle
+    Strong
+
+Only introduce explicit custom colours where the product identity genuinely
+requires them, such as the TaskTrack/MCP purple accent.
+
+Healthy/connected state should use the theme's success/appropriate semantic
+treatment rather than duplicated hard-coded RGB values throughout Paint().
+
+
+==================================================
+10. ICONS
+==================================================
+
+The HTML uses simple SVG icons because that is convenient for a browser mock-up.
+
+Native U++ should use Image assets.
+
+Likely assets needed include:
+
+- help
+- moon/theme
+- power
+- stop
+- shield/check / health
+- server/service
+- transfer arrows
+- service grid
+- play/probe
+- copy/document
+- trash
+- browse/folder
+- key
+- duplicate
+
+These should preferably be a consistent monochrome icon family so upp_Ui can
+tint them through semantic ink/icon colours.
+
+The health shield is just an asset requirement, not a new control.
+
+
+==================================================
+11. WHAT NOT TO COPY FROM THE HTML
+==================================================
+
+Do NOT copy:
+
+- CSS pixel positioning;
+- browser media-query implementation;
+- SVG dependency;
+- CSS gradients solely because they are present;
+- DOM-specific behaviours;
+- exact card widths;
+- absolute x/y placement;
+- arbitrary magic spacing values.
+
+Instead reproduce the DESIGN LOGIC with native layout rules.
+
+
+Good:
+
+    box.Add(identity).Fit();
+    box.Add(details).Expand();
+    box.Add(actions).Fit();
+
+    grid.Add(label);
+    grid.Add(edit).Expand();
+
+    summary_box.SetWrap(true);
+
+Bad:
+
+    SetRect(241, 138, 712, 42);
+
+
+==================================================
+12. IMPLEMENTATION PHILOSOPHY
+==================================================
+
+The tunnel should remain lighter and simpler than the TaskTrack dashboard.
+
+TaskTrack Dashboard:
+    project intelligence / rich interactive project state
+
+MCP Tunnel:
+    infrastructure health / configuration / diagnostics
+
+Do not gradually turn MCP Tunnel into another dashboard.
+
+The Overview page should make tunnel state obvious.
+Setup edits the machine tunnel.
+Services edits exposed services.
+
+That separation is the core design.
+
+
+==================================================
+13. ACCEPTANCE TARGET
+==================================================
+
+A successful native implementation should allow a user to answer within a few
+seconds:
+
+    Is my tunnel running?
+    Is it healthy?
+    Is TaskTrack exposed?
+    Is traffic moving?
+    Which services are enabled?
+
+And configuration should be discoverable without requiring knowledge of the
+underlying MCP architecture.
+
+The current HTML is the visual/interaction reference, while current upp_Ui
+controls and layout semantics are the implementation authority.
