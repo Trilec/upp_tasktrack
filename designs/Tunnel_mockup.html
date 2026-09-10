@@ -1,0 +1,575 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MCP Tunnel — U++ Grounded HTML Mock-up</title>
+<style>
+:root{
+  color-scheme:light;
+  --bg:#f3f5f8;
+  --surface:#ffffff;
+  --surface-2:#f8f9fc;
+  --surface-3:#f1f3f8;
+  --border:#d9deea;
+  --border-strong:#c5ccdc;
+  --ink:#111827;
+  --muted:#6b7690;
+  --muted-2:#8b94a7;
+  --purple:#6f2fe8;
+  --purple-2:#7f45ef;
+  --purple-soft:#f1eaff;
+  --green:#18ad63;
+  --green-soft:#e9f8f0;
+  --green-border:#b6e7ce;
+  --blue:#3d7bd9;
+  --blue-soft:#eaf2fd;
+  --red:#e5484d;
+  --amber:#d79023;
+  --amber-soft:#fff6df;
+  --track:#e4e8f0;
+  --shadow:0 1px 2px rgba(25,35,55,.04);
+  --radius:12px;
+  --radius-sm:8px;
+  --footer-h:40px;
+}
+html[data-theme="dark"]{
+  color-scheme:dark;
+  --bg:#17191f;
+  --surface:#20232a;
+  --surface-2:#272b33;
+  --surface-3:#2c313b;
+  --border:#3a404c;
+  --border-strong:#4a5261;
+  --ink:#f3f5f8;
+  --muted:#b0b8c8;
+  --muted-2:#8f98aa;
+  --purple:#a07cff;
+  --purple-2:#b59aff;
+  --purple-soft:#31294a;
+  --green:#45cf8a;
+  --green-soft:#1e3529;
+  --green-border:#2f6d4c;
+  --blue:#72a6ee;
+  --blue-soft:#25374f;
+  --red:#ff7579;
+  --amber:#efb44d;
+  --amber-soft:#45351d;
+  --track:#39404a;
+  --shadow:none;
+}
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:var(--bg);color:var(--ink);font-size:14px;line-height:1.35}
+button,input,select{font:inherit;color:inherit}
+button{cursor:pointer}
+svg{display:block}
+.app{min-height:100vh;padding-bottom:var(--footer-h)}
+
+/* U++ correspondence: top shell = UiPanel + UiBoxLayout(H), icon actions = UiToolButton */
+.top-shell.upp-UiPanel{
+  min-height:78px;background:var(--surface);border-bottom:1px solid var(--border);
+  display:flex;align-items:center;gap:16px;padding:12px 18px;box-shadow:var(--shadow);
+}
+.brand{display:flex;align-items:center;gap:12px;min-width:330px}
+.logo{width:48px;height:48px;border-radius:7px;background:linear-gradient(145deg,#7b2bef,#5710c9);display:grid;place-items:center;color:#fff;box-shadow:inset 0 0 0 1px rgba(255,255,255,.18)}
+.logo svg{width:34px;height:34px;stroke:white;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.brand-title{font-size:23px;font-weight:800;letter-spacing:-.3px;line-height:1.05}
+.brand-sub{margin-top:4px;color:var(--muted);font-size:13px;font-weight:560}
+.header-actions{margin-left:auto;display:flex;align-items:center;gap:8px}
+.live-cluster{display:flex;align-items:center;gap:8px;margin-right:8px;color:var(--ink)}
+.live-dot{width:10px;height:10px;border-radius:50%;background:var(--green);box-shadow:0 0 0 3px color-mix(in srgb,var(--green) 12%,transparent)}
+.live-word{font-size:14px;font-weight:700}
+.activity-bars{width:34px;height:26px;display:flex;align-items:flex-end;gap:3px;padding:3px 2px;margin-left:2px}
+.activity-bars i{display:block;width:4px;border-radius:3px 3px 1px 1px;background:var(--green);height:6px;transition:height .18s ease,opacity .18s ease}
+.activity-bars.live i:nth-child(1){animation:b1 .65s infinite alternate}.activity-bars.live i:nth-child(2){animation:b2 .52s infinite alternate}.activity-bars.live i:nth-child(3){animation:b3 .72s infinite alternate}.activity-bars.live i:nth-child(4){animation:b2 .58s infinite alternate-reverse}.activity-bars.live i:nth-child(5){animation:b1 .47s infinite alternate-reverse}
+@keyframes b1{from{height:7px;opacity:.5}to{height:15px;opacity:1}}@keyframes b2{from{height:10px;opacity:.6}to{height:21px;opacity:1}}@keyframes b3{from{height:12px;opacity:.7}to{height:24px;opacity:1}}
+.vsep{width:1px;height:34px;background:var(--border);margin:0 4px}
+.icon-btn.upp-UiToolButton{width:36px;height:36px;border:0;background:transparent;border-radius:8px;display:grid;place-items:center;color:var(--ink);padding:0}
+.icon-btn:hover{background:var(--surface-3)}
+.icon-btn.danger{color:var(--red)}
+.icon-btn svg{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+
+/* UiTab, underline visual */
+.tabs.upp-UiTab{height:48px;background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:stretch;padding:0 20px;gap:14px}
+.tab-btn{position:relative;min-width:92px;border:0;background:transparent;color:var(--ink);font-weight:650;font-size:14px;padding:0 12px}
+.tab-btn:hover{background:var(--surface-2)}
+.tab-btn.active{color:var(--purple);font-weight:780}
+.tab-btn.active::after{content:"";position:absolute;left:12px;right:12px;bottom:0;height:3px;border-radius:3px 3px 0 0;background:var(--purple)}
+.tab-spacer{flex:1}.tab-context{display:flex;align-items:center;color:var(--muted);font-size:12px;padding-right:4px}
+
+main{max-width:1700px;margin:0 auto;padding:16px 18px 18px}
+.page{display:none}.page.active{display:block}
+
+/* Panels map to UiPanel / UiGroupPanel; internal layouts to UiBoxLayout / UiGridLayout */
+.panel.upp-UiPanel,.group.upp-UiGroupPanel{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow)}
+.group{padding:16px 18px}
+.group-title{font-size:11px;text-transform:uppercase;letter-spacing:.55px;color:var(--muted);font-weight:800;margin:0 0 14px}
+
+/* Overview */
+.hero{display:grid;grid-template-columns:minmax(330px,1.15fr) minmax(300px,.95fr) 210px;align-items:stretch;overflow:hidden;margin-bottom:12px}
+.hero-state{padding:24px 28px;display:grid;grid-template-columns:98px minmax(0,1fr);align-items:center;gap:22px}
+.status-square{width:86px;height:86px;border-radius:15px;border:1px solid var(--green);background:var(--green-soft);display:grid;place-items:center}
+.status-square .pulse{width:28px;height:28px;border-radius:50%;background:var(--green);box-shadow:0 0 0 10px color-mix(in srgb,var(--green) 9%,transparent)}
+.eyebrow{font-size:11px;letter-spacing:.55px;color:var(--muted);font-weight:800;text-transform:uppercase}
+.ready{font-size:40px;font-weight:850;letter-spacing:-1.2px;line-height:1;margin-top:5px}
+.ready-sub{font-size:15px;color:var(--muted);margin-top:7px}
+.hero-kv{border-left:1px solid var(--border);padding:23px 28px;display:grid;align-content:center;gap:14px}
+.kv-row{display:grid;grid-template-columns:86px minmax(0,1fr);gap:12px;align-items:center}
+.kv-row span:first-child{color:var(--muted);font-size:13px}.kv-row strong{font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hero-actions{border-left:1px solid var(--border);padding:22px 18px;display:flex;flex-direction:column;justify-content:center;gap:10px}
+.btn.upp-UiButton{height:38px;border:1px solid var(--border-strong);border-radius:8px;background:var(--surface);padding:0 13px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;gap:8px}
+.btn:hover{background:var(--surface-2);border-color:var(--border-strong)}
+.btn.primary{background:var(--purple);border-color:var(--purple);color:white}.btn.primary:hover{background:var(--purple-2)}
+.btn.danger-soft{color:var(--red)}
+.btn svg{width:17px;height:17px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+
+.summary-grid.upp-UiBoxLayout{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:12px}
+.summary-card{min-height:102px;padding:15px 16px;display:flex;flex-direction:column;justify-content:center}
+.summary-title{font-size:11px;color:var(--muted);font-weight:800;letter-spacing:.5px;text-transform:uppercase;margin-bottom:10px}
+.summary-main{display:flex;align-items:center;gap:9px;font-size:16px;font-weight:760;min-width:0}
+.summary-main svg{width:28px;height:28px;stroke:var(--blue);fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;flex:0 0 auto}
+.summary-main svg.green{stroke:var(--green)}
+.summary-main svg.purple{stroke:var(--purple)}
+.status-inline{width:8px;height:8px;border-radius:50%;background:var(--green);flex:0 0 auto}
+.subtle-dot{width:7px;height:7px;border-radius:50%;background:var(--border-strong);flex:0 0 auto}
+.muted{color:var(--muted);font-weight:550}
+.pill{border-radius:999px;padding:4px 8px;font-size:11px;background:var(--green-soft);color:var(--green);font-weight:800;margin-left:auto}
+
+.activity-panel{min-height:350px;padding:0;overflow:hidden}
+.activity-head{display:flex;align-items:center;gap:8px;padding:16px 18px 10px}
+.activity-head h2{font-size:17px;margin:0;font-weight:800}.activity-head .right{margin-left:auto;color:var(--muted);font-size:12px}
+.activity-body{min-height:235px;display:flex;align-items:center;justify-content:center;padding:18px}
+.empty{text-align:center;color:var(--muted)}
+.empty svg{width:58px;height:58px;margin:0 auto 12px;stroke:var(--border-strong);fill:none;stroke-width:1.5}
+.empty strong{display:block;color:var(--ink);font-size:17px;margin-bottom:5px}.empty span{font-size:13px}
+.activity-list{width:100%;display:grid;gap:0;align-self:stretch}
+.activity-row{display:grid;grid-template-columns:74px 110px minmax(0,1fr) 150px;gap:14px;padding:11px 2px;border-bottom:1px solid var(--border);align-items:center;font-size:12px}
+.activity-row:last-child{border-bottom:0}.activity-row .dir{font-weight:800}.activity-row .dir.in{color:var(--blue)}.activity-row .dir.out{color:var(--purple)}
+.activity-footer{border-top:1px solid var(--border);padding:11px 16px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}.activity-footer .hint{margin-left:auto;color:var(--muted);font-size:11px}
+
+/* Setup / Services */
+.selector-panel{padding:12px 14px;display:grid;grid-template-columns:minmax(250px,1fr) auto;gap:14px;align-items:end;margin-bottom:12px}
+.selector-field{max-width:720px}.field-label{display:block;color:var(--muted);font-size:12px;margin:0 0 6px 1px}
+.action-row{display:flex;gap:8px;align-items:center}
+.select.upp-UiDropdown,.edit.upp-UiLineEdit{width:100%;height:38px;border:1px solid var(--border-strong);border-radius:8px;background:var(--surface);padding:0 12px;outline:none}
+.select:focus,.edit:focus{border-color:var(--purple);box-shadow:0 0 0 3px color-mix(in srgb,var(--purple) 14%,transparent)}
+.select:disabled,.edit:disabled{background:var(--surface-2);color:var(--muted)}
+.form-grid.upp-UiGridLayout{display:grid;grid-template-columns:150px minmax(0,1fr);gap:10px 14px;align-items:center}
+.form-label{color:var(--muted);font-size:12px}.form-note{grid-column:2;color:var(--muted);font-size:11px;margin-top:-3px}
+.credential-wrap{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center}
+.avail{display:flex;align-items:center;gap:7px;color:var(--green);font-size:12px;font-weight:800;white-space:nowrap}
+.inline-actions{grid-column:2;display:flex;align-items:center;gap:8px;flex-wrap:wrap}.inline-actions .note{color:var(--muted);font-size:11px;margin-left:4px}
+.path-row{display:grid;grid-template-columns:minmax(0,1fr) 118px;gap:10px}
+.toggle-row{grid-column:2;display:grid;grid-template-columns:50px minmax(0,1fr);gap:10px;align-items:start;padding:2px 0}
+.toggle.upp-UiToggle{width:38px;height:22px;border:0;border-radius:999px;background:#d9deea;position:relative;padding:0;transition:background .15s ease}
+.toggle::after{content:"";position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:white;box-shadow:0 1px 2px rgba(0,0,0,.15);transition:left .15s ease}
+.toggle.on{background:var(--purple)}.toggle.on::after{left:19px}
+.toggle-copy strong{display:block;font-size:13px}.toggle-copy span{display:block;color:var(--muted);font-size:11px;margin-top:3px}
+.group + .group{margin-top:12px}
+.info-callout{grid-column:2;border:1px solid var(--green-border);background:var(--green-soft);border-radius:8px;padding:10px 12px;display:flex;align-items:flex-start;gap:10px;color:var(--green)}
+.info-callout svg{width:21px;height:21px;stroke:currentColor;fill:none;stroke-width:1.8;flex:0 0 auto}.info-callout strong{display:block;font-size:12px}.info-callout span{display:block;font-size:11px;margin-top:2px;color:color-mix(in srgb,var(--green) 75%,var(--ink))}
+
+.footer{position:fixed;left:0;right:0;bottom:0;height:var(--footer-h);background:var(--surface);border-top:1px solid var(--border);display:flex;align-items:center;padding:0 12px;gap:0;z-index:20}
+.footer-item{font-size:11px;color:var(--muted);padding:0 14px;border-right:1px solid var(--border);white-space:nowrap}.footer-item:first-child{padding-left:0}.footer-status{display:flex;align-items:center;gap:7px}.footer-actions{margin-left:auto;display:flex;gap:6px}.footer .btn{height:30px;font-size:11px;padding:0 10px}
+
+/* Modal = UiPanel overlay in mock-up; in U++ use Prompt/TopWindow or dedicated panel */
+.modal-backdrop{position:fixed;inset:0;background:rgba(10,14,24,.35);display:none;align-items:center;justify-content:center;padding:22px;z-index:80}.modal-backdrop.show{display:flex}
+.modal{width:min(720px,94vw);background:var(--surface);border:1px solid var(--border);border-radius:12px;box-shadow:0 18px 50px rgba(0,0,0,.25);overflow:hidden}.modal-head{display:flex;align-items:center;padding:13px 15px;border-bottom:1px solid var(--border)}.modal-head strong{font-size:15px}.modal-head button{margin-left:auto}.modal-body{padding:15px}.modal-body p{color:var(--muted);font-size:12px;margin:0 0 12px}.mapping{width:100%;border-collapse:collapse;font-size:12px}.mapping th,.mapping td{text-align:left;vertical-align:top;padding:8px;border-bottom:1px solid var(--border)}.mapping th{font-size:10px;text-transform:uppercase;letter-spacing:.4px;color:var(--muted)}.kind{font-size:10px;font-weight:800;color:var(--purple)}
+.toast{position:fixed;right:18px;bottom:54px;background:var(--ink);color:var(--surface);border-radius:8px;padding:9px 12px;font-size:12px;opacity:0;transform:translateY(8px);pointer-events:none;transition:.18s;z-index:120}.toast.show{opacity:1;transform:translateY(0)}
+
+@media(max-width:1050px){
+  .hero{grid-template-columns:1fr 1fr}.hero-actions{grid-column:1/-1;border-left:0;border-top:1px solid var(--border);flex-direction:row}.summary-grid.upp-UiBoxLayout{grid-template-columns:repeat(2,1fr)}
+}
+@media(max-width:760px){
+  .top-shell.upp-UiPanel{flex-wrap:wrap}.brand{min-width:0}.header-actions{margin-left:0;width:100%;justify-content:flex-end}.tabs.upp-UiTab{padding:0 8px}.tab-context{display:none}.tab-btn{min-width:74px}
+  main{padding:10px}.hero{grid-template-columns:1fr}.hero-kv,.hero-actions{border-left:0;border-top:1px solid var(--border)}.hero-actions{grid-column:auto}.summary-grid.upp-UiBoxLayout{grid-template-columns:1fr}.selector-panel{grid-template-columns:1fr}.action-row{justify-content:flex-start;flex-wrap:wrap}.form-grid.upp-UiGridLayout{grid-template-columns:1fr}.form-note,.inline-actions,.toggle-row,.info-callout{grid-column:1}.credential-wrap{grid-template-columns:1fr}.path-row{grid-template-columns:1fr}.activity-row{grid-template-columns:60px 90px 1fr}.activity-row span:last-child{display:none}.footer-item:nth-child(2),.footer-item:nth-child(3){display:none}
+}
+</style>
+</head>
+<body>
+<div id="app" class="app">
+  <header class="top-shell upp-UiPanel upp-UiBoxLayout">
+    <div class="brand">
+      <div class="logo" aria-hidden="true">
+        <svg viewBox="0 0 48 48"><path d="M8 10h26v8H20v20H8z"/><path d="M19 31c2-7 6-12 11-12 5 0 7 5 10 8"/><path d="M34 16l7 0 0 17-7 0"/><path d="M13 14h15"/></svg>
+      </div>
+      <div>
+        <div class="brand-title">MCP Tunnel</div>
+        <div class="brand-sub">Secure ChatGPT ↔ local MCP services</div>
+      </div>
+    </div>
+
+    <div class="header-actions">
+      <div class="live-cluster" title="Tunnel communication activity">
+        <span id="headerLiveDot" class="live-dot"></span>
+        <span id="headerLiveWord" class="live-word">Live</span>
+        <span id="headerBars" class="activity-bars live"><i></i><i></i><i></i><i></i><i></i></span>
+      </div>
+      <span class="vsep" aria-hidden="true"></span>
+      <button id="helpBtn" class="icon-btn upp-UiToolButton" aria-label="Help" title="U++ mapping">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.8 9a2.35 2.35 0 0 1 4.5 1c0 1.6-1.5 2.1-2.3 2.9-.5.5-.6 1-.6 1.4"/><path d="M12 17.4h.01"/></svg>
+      </button>
+      <button id="themeBtn" class="icon-btn upp-UiToolButton" aria-label="Toggle light dark theme" title="Toggle theme">
+        <svg viewBox="0 0 24 24"><path d="M20.5 14.8A8.2 8.2 0 0 1 9.2 3.5 8.7 8.7 0 1 0 20.5 14.8z"/></svg>
+      </button>
+      <button id="powerBtn" class="icon-btn danger upp-UiToolButton" aria-label="Power" title="Start / stop tunnel">
+        <svg viewBox="0 0 24 24"><path d="M12 2.8v8"/><path d="M6.7 6.4A8 8 0 1 0 17.3 6.4"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <nav class="tabs upp-UiTab" aria-label="Tunnel sections">
+    <button class="tab-btn active" data-tab="overview">Overview</button>
+    <button class="tab-btn" data-tab="setup">Setup</button>
+    <button class="tab-btn" data-tab="services">Services</button>
+    <span class="tab-spacer"></span>
+    <span class="tab-context">Machine tunnel control</span>
+  </nav>
+
+  <main>
+    <!-- OVERVIEW PAGE: UiPanel + UiGridLayout + wrapping UiBoxLayout summary row -->
+    <section id="page-overview" class="page active">
+      <div class="hero panel upp-UiPanel">
+        <div class="hero-state">
+          <div id="statusSquare" class="status-square"><span class="pulse"></span></div>
+          <div>
+            <div class="eyebrow">Tunnel state</div>
+            <div id="readyText" class="ready">READY</div>
+            <div id="readySub" class="ready-sub">Machine tunnel connected</div>
+          </div>
+        </div>
+        <div class="hero-kv upp-UiGridLayout">
+          <div class="kv-row"><span>Machine</span><strong>desktop-gfx1</strong></div>
+          <div class="kv-row"><span>Tunnel</span><strong title="tunnel_6a991c7e54819183996c0eb0717d59">tunnel_6a991c7e…</strong></div>
+          <div class="kv-row"><span>Last sync</span><strong id="lastSync">—</strong></div>
+        </div>
+        <div class="hero-actions upp-UiBoxLayout">
+          <button id="stopBtn" class="btn primary upp-UiButton">
+            <svg viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="1"/></svg><span>Stop</span>
+          </button>
+          <button id="healthBtn" class="btn upp-UiButton">
+            <svg viewBox="0 0 24 24"><path d="M12 3l7 3v5c0 4.5-2.9 7.7-7 10-4.1-2.3-7-5.5-7-10V6z"/><path d="M9 12l2 2 4-5"/></svg><span>Open health</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="summary-grid upp-UiBoxLayout">
+        <div class="summary-card panel upp-UiPanel">
+          <div class="summary-title">Main MCP</div>
+          <div class="summary-main">
+            <svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="6" rx="2"/><rect x="4" y="14" width="16" height="6" rx="2"/><path d="M8 7h.01M8 17h.01"/></svg>
+            <span class="status-inline"></span><span>TaskTrack</span><span class="subtle-dot"></span><span class="muted">current</span>
+          </div>
+        </div>
+        <div class="summary-card panel upp-UiPanel">
+          <div class="summary-title">OpenAI tunnel</div>
+          <div class="summary-main">
+            <svg class="green" viewBox="0 0 24 24"><path d="M12 3l7 3v5c0 4.5-2.9 7.7-7 10-4.1-2.3-7-5.5-7-10V6z"/><path d="M9 12l2 2 4-5"/></svg>
+            <span class="status-inline"></span><span id="healthSummary">Healthy</span>
+          </div>
+        </div>
+        <div class="summary-card panel upp-UiPanel">
+          <div class="summary-title">TaskTrack activity</div>
+          <div class="summary-main">
+            <svg class="purple" viewBox="0 0 24 24"><path d="M8 18V6M5 9l3-3 3 3"/><path d="M16 6v12M13 15l3 3 3-3"/></svg>
+            <span id="activityCount">0 in / 0 out</span><span class="pill">Live</span>
+          </div>
+        </div>
+        <div class="summary-card panel upp-UiPanel">
+          <div class="summary-title">Services</div>
+          <div class="summary-main">
+            <svg viewBox="0 0 24 24"><rect x="4" y="4" width="6" height="6"/><rect x="14" y="4" width="6" height="6"/><rect x="4" y="14" width="6" height="6"/><rect x="14" y="14" width="6" height="6"/></svg>
+            <span class="status-inline"></span><span id="serviceSummary">2 enabled</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="activity-panel panel upp-UiPanel">
+        <div class="activity-head">
+          <h2>TaskTrack activity</h2><span class="status-inline"></span><span style="color:var(--green);font-weight:700">Live</span>
+          <span id="lastCommLabel" class="right">Last 0 communications</span>
+        </div>
+        <div id="activityBody" class="activity-body">
+          <div id="emptyState" class="empty">
+            <svg viewBox="0 0 64 64"><path d="M14 16h36a8 8 0 0 1 8 8v15a8 8 0 0 1-8 8H31l-11 8v-8h-6a8 8 0 0 1-8-8V24a8 8 0 0 1 8-8z"/><circle cx="24" cy="32" r="2"/><circle cx="32" cy="32" r="2"/><circle cx="40" cy="32" r="2"/></svg>
+            <strong>No recent communications</strong><span>Waiting for remote traffic</span>
+          </div>
+          <div id="activityList" class="activity-list" hidden></div>
+        </div>
+        <div class="activity-footer">
+          <button id="probeBtn" class="btn upp-UiButton">
+            <svg viewBox="0 0 24 24"><path d="M8 5l11 7-11 7z"/></svg>Send probe
+          </button>
+          <button id="copyDiagBtn" class="btn upp-UiButton">
+            <svg viewBox="0 0 24 24"><path d="M8 4h8l3 3v13H8z"/><path d="M16 4v4h4"/></svg>Copy diagnostics
+          </button>
+          <button id="clearActivityBtn" class="btn upp-UiButton">
+            <svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M8 10v8M12 10v8M16 10v8M6 7l1 14h10l1-14"/></svg>Clear activity
+          </button>
+          <span class="hint">TaskTrack traffic is visible when its service is used.</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- SETUP PAGE: selector UiPanel, grouped form panels, UiDropdown/UiLineEdit/UiToggle -->
+    <section id="page-setup" class="page">
+      <div class="selector-panel panel upp-UiPanel upp-UiGridLayout">
+        <div class="selector-field">
+          <label class="field-label" for="profileSelect">Machine profile</label>
+          <select id="profileSelect" class="select upp-UiDropdown"><option>Local machine</option><option>Studio workstation</option></select>
+        </div>
+        <div class="action-row upp-UiBoxLayout">
+          <button class="btn upp-UiButton" data-demo="new-profile">+ New</button>
+          <button class="btn upp-UiButton" data-demo="duplicate-profile">
+            <svg viewBox="0 0 24 24"><rect x="8" y="8" width="10" height="11" rx="1"/><path d="M6 16H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>Duplicate
+          </button>
+          <button class="btn danger-soft upp-UiButton" data-demo="delete-profile">
+            <svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M8 10v8M12 10v8M16 10v8M6 7l1 14h10l1-14"/></svg>Delete
+          </button>
+        </div>
+      </div>
+
+      <div class="group upp-UiGroupPanel">
+        <div class="group-title">Machine profile</div>
+        <div class="form-grid upp-UiGridLayout">
+          <label class="form-label" for="profileName">Profile name</label><input id="profileName" class="edit upp-UiLineEdit" value="Local machine">
+          <label class="form-label" for="machineId">Machine ID</label><input id="machineId" class="edit upp-UiLineEdit" value="desktop-gfx1">
+          <label class="form-label" for="tunnelId">Tunnel ID</label><input id="tunnelId" class="edit upp-UiLineEdit" value="tunnel_6a991c7e54819183996c0eb0717d59">
+          <label class="form-label" for="credentialSelect">Credential</label>
+          <div class="credential-wrap">
+            <select id="credentialSelect" class="select upp-UiDropdown"><option>Environment variable</option><option>Session key</option></select>
+            <span class="avail"><span class="status-inline"></span>Available</span>
+          </div>
+          <div class="inline-actions">
+            <button class="btn upp-UiButton" data-demo="set-key"><svg viewBox="0 0 24 24"><circle cx="8" cy="12" r="3"/><path d="M11 12h9M17 12v3M14 12v2"/></svg>Set key</button>
+            <button class="btn upp-UiButton" data-demo="clear-key">Clear</button>
+            <span class="note">Testing/automation mode: CONTROL_PLANE_API_KEY is read at launch. Durable cross-platform authentication.</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="group upp-UiGroupPanel">
+        <div class="group-title">Runtime</div>
+        <div class="form-grid upp-UiGridLayout">
+          <label class="form-label" for="runtimePath">Runtime executable</label>
+          <div class="path-row"><input id="runtimePath" class="edit upp-UiLineEdit" value="E:\apps\github\upp_tasktrack\bin\windows-x64\tunnel-client.exe"><button class="btn upp-UiButton" data-demo="browse-runtime"><svg viewBox="0 0 24 24"><path d="M3 7h6l2 2h10v10H3z"/></svg>Browse</button></div>
+        </div>
+      </div>
+
+      <div class="group upp-UiGroupPanel">
+        <div class="group-title">Launch behaviour</div>
+        <div class="form-grid upp-UiGridLayout">
+          <span class="form-label">Auto-connect</span>
+          <div class="toggle-row"><button id="autoConnectToggle" class="toggle upp-UiToggle" aria-pressed="false"></button><div class="toggle-copy"><strong>Auto-connect on launch</strong><span>Start this machine tunnel and all enabled services when the manager opens.</span></div></div>
+          <span class="form-label">Remember profile</span>
+          <div class="toggle-row"><button id="rememberToggle" class="toggle on upp-UiToggle" aria-pressed="true"></button><div class="toggle-copy"><strong>Remember machine profile</strong><span>Reopen with the last selected machine profile.</span></div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SERVICES PAGE: selector + service binding form -->
+    <section id="page-services" class="page">
+      <div class="selector-panel panel upp-UiPanel upp-UiGridLayout">
+        <div class="selector-field">
+          <label class="field-label" for="serviceSelect">MCP service</label>
+          <select id="serviceSelect" class="select upp-UiDropdown"><option>TaskTrack</option><option>PatchTrack</option></select>
+        </div>
+        <div class="action-row upp-UiBoxLayout">
+          <button class="btn upp-UiButton" data-demo="new-service">+ New</button>
+          <button class="btn upp-UiButton" data-demo="duplicate-service"><svg viewBox="0 0 24 24"><rect x="8" y="8" width="10" height="11" rx="1"/><path d="M6 16H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>Duplicate</button>
+          <button class="btn danger-soft upp-UiButton" data-demo="delete-service"><svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M8 10v8M12 10v8M16 10v8M6 7l1 14h10l1-14"/></svg>Delete</button>
+        </div>
+      </div>
+
+      <div class="group upp-UiGroupPanel">
+        <div class="group-title">Service binding</div>
+        <div class="form-grid upp-UiGridLayout">
+          <label class="form-label" for="displayName">Display name</label><input id="displayName" class="edit upp-UiLineEdit" value="TaskTrack">
+          <label class="form-label" for="serviceId">Service ID</label><input id="serviceId" class="edit upp-UiLineEdit" value="tasktrack">
+          <label class="form-label" for="channel">MCP channel</label><input id="channel" class="edit upp-UiLineEdit" value="main">
+          <div></div>
+          <div id="exposedCallout" class="info-callout">
+            <svg viewBox="0 0 24 24"><path d="M12 3l7 3v5c0 4.5-2.9 7.7-7 10-4.1-2.3-7-5.5-7-10V6z"/><path d="M9 12l2 2 4-5"/></svg>
+            <div><strong>This service is exposed through the machine tunnel.</strong><span>Channel 'main' is used for the active service.</span></div>
+          </div>
+          <label class="form-label" for="mcpCommand">MCP command</label>
+          <div class="path-row"><input id="mcpCommand" class="edit upp-UiLineEdit" value="E:/apps/github/upp_tasktrack/bin/windows-x64/TaskTrackMcp.exe"><button class="btn upp-UiButton" data-demo="browse-mcp"><svg viewBox="0 0 24 24"><path d="M3 7h6l2 2h10v10H3z"/></svg>Browse</button></div>
+          <span class="form-label">Enabled</span>
+          <div class="toggle-row"><button id="serviceToggle" class="toggle on upp-UiToggle" aria-pressed="true"></button><div class="toggle-copy"><strong>Expose this service</strong><span>Enabled services are launched under one machine tunnel. Exactly one enabled service must use channel 'main'.</span></div></div>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<footer class="footer upp-UiPanel">
+  <span class="footer-item">TaskTrack 0.3.2-rc5</span>
+  <span class="footer-item">MCP schema 2</span>
+  <span class="footer-item">Dashboard schema 1</span>
+  <span class="footer-item footer-status"><span class="status-inline"></span><span>Auto-save • Saved to disk</span></span>
+  <span class="footer-actions"><button class="btn upp-UiButton" id="footerHelpBtn">Help</button><button class="btn upp-UiButton" id="footerCopyBtn">Copy diagnostics</button></span>
+</footer>
+
+<div id="helpModal" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="helpTitle">
+  <div class="modal">
+    <div class="modal-head"><strong id="helpTitle">U++ implementation correspondence</strong><button id="helpClose" class="icon-btn upp-UiToolButton" aria-label="Close"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+    <div class="modal-body">
+      <p>This HTML is a design prototype. The accepted layout is intentionally composed from current `upp_Ui` concepts rather than browser-specific widgets.</p>
+      <table class="mapping">
+        <thead><tr><th>Mock-up surface</th><th>Classification</th><th>Likely U++ structure</th></tr></thead>
+        <tbody>
+          <tr><td>Overview / Setup / Services tabs</td><td><span class="kind">EXISTING CONTROL</span></td><td>UiTab with `UITAB_UNDERLINE`, three pages, standard SetActiveTab/WhenAction flow.</td></tr>
+          <tr><td>Hero and grouped form surfaces</td><td><span class="kind">COMPOSITION</span></td><td>UiPanel / UiGroupPanel containing UiGridLayout or UiBoxLayout roots.</td></tr>
+          <tr><td>Fields and selectors</td><td><span class="kind">EXISTING CONTROL</span></td><td>UiLineEdit and UiDropdown.</td></tr>
+          <tr><td>Launch/service switches</td><td><span class="kind">EXISTING CONTROL</span></td><td>UiToggle.</td></tr>
+          <tr><td>Header / footer icon actions</td><td><span class="kind">EXISTING CONTROL</span></td><td>UiToolButton / UiButton using monochrome icons.</td></tr>
+          <tr><td>Four overview summary tiles</td><td><span class="kind">COMPOSITION</span></td><td>UiPanel children in horizontal UiBoxLayout; SetWrap(true) is suitable when the window narrows.</td></tr>
+          <tr><td>Live activity bars</td><td><span class="kind">NEW SMALL CONTROL</span></td><td>Paint-only five-bar Ctrl with a small frame ticker; height animation only.</td></tr>
+          <tr><td>Health shield and service icons</td><td><span class="kind">ICON ASSET</span></td><td>Normal `Image` assets. The SVGs here are visual placeholders, not a browser dependency of the native implementation.</td></tr>
+          <tr><td>Light / dark mode</td><td><span class="kind">EXISTING THEME PATH</span></td><td>UiThemeContext / UiThemeMode; controls stay theme-driven rather than hard-coding app colours.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div id="healthModal" class="modal-backdrop" role="dialog" aria-modal="true">
+  <div class="modal" style="width:min(520px,94vw)">
+    <div class="modal-head"><strong>Tunnel health</strong><button id="healthClose" class="icon-btn upp-UiToolButton" aria-label="Close"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+    <div class="modal-body">
+      <div class="info-callout" style="grid-column:auto"><svg viewBox="0 0 24 24"><path d="M12 3l7 3v5c0 4.5-2.9 7.7-7 10-4.1-2.3-7-5.5-7-10V6z"/><path d="M9 12l2 2 4-5"/></svg><div><strong>Healthy</strong><span>Machine tunnel is connected and the TaskTrack service is available.</span></div></div>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="toast">Copied</div>
+
+<script>
+(() => {
+  const root = document.documentElement;
+  const tabButtons = [...document.querySelectorAll('.tab-btn')];
+  const pages = [...document.querySelectorAll('.page')];
+  const headerBars = document.getElementById('headerBars');
+  const headerLiveWord = document.getElementById('headerLiveWord');
+  const headerLiveDot = document.getElementById('headerLiveDot');
+  const readyText = document.getElementById('readyText');
+  const readySub = document.getElementById('readySub');
+  const statusSquare = document.getElementById('statusSquare');
+  const stopBtn = document.getElementById('stopBtn');
+  const activityBody = document.getElementById('activityBody');
+  const emptyState = document.getElementById('emptyState');
+  const activityList = document.getElementById('activityList');
+  const activityCount = document.getElementById('activityCount');
+  const lastCommLabel = document.getElementById('lastCommLabel');
+  const lastSync = document.getElementById('lastSync');
+  const serviceToggle = document.getElementById('serviceToggle');
+  const serviceSummary = document.getElementById('serviceSummary');
+  const exposedCallout = document.getElementById('exposedCallout');
+  const toast = document.getElementById('toast');
+
+  let running = true;
+  let inCount = 0;
+  let outCount = 0;
+  let comms = [];
+  let toastTimer = null;
+
+  function showToast(text){
+    clearTimeout(toastTimer); toast.textContent = text; toast.classList.add('show');
+    toastTimer = setTimeout(() => toast.classList.remove('show'), 1200);
+  }
+
+  function setTab(name){
+    tabButtons.forEach(b => b.classList.toggle('active', b.dataset.tab === name));
+    pages.forEach(p => p.classList.toggle('active', p.id === `page-${name}`));
+  }
+  tabButtons.forEach(b => b.addEventListener('click', () => setTab(b.dataset.tab)));
+
+  function setToggle(btn, on){btn.classList.toggle('on', on); btn.setAttribute('aria-pressed', String(on));}
+  document.getElementById('autoConnectToggle').addEventListener('click', e => setToggle(e.currentTarget, !e.currentTarget.classList.contains('on')));
+  document.getElementById('rememberToggle').addEventListener('click', e => setToggle(e.currentTarget, !e.currentTarget.classList.contains('on')));
+  serviceToggle.addEventListener('click', () => {
+    const on = !serviceToggle.classList.contains('on'); setToggle(serviceToggle, on);
+    serviceSummary.textContent = on ? '2 enabled' : '1 enabled';
+    exposedCallout.style.opacity = on ? '1' : '.45';
+    showToast(on ? 'TaskTrack service exposed' : 'TaskTrack service disabled');
+  });
+
+  function setRunning(on){
+    running = on;
+    headerBars.classList.toggle('live', on);
+    headerLiveWord.textContent = on ? 'Live' : 'Stopped';
+    headerLiveDot.style.background = on ? 'var(--green)' : 'var(--red)';
+    readyText.textContent = on ? 'READY' : 'STOPPED';
+    readySub.textContent = on ? 'Machine tunnel connected' : 'Machine tunnel is not running';
+    statusSquare.style.borderColor = on ? 'var(--green)' : 'var(--red)';
+    statusSquare.style.background = on ? 'var(--green-soft)' : 'color-mix(in srgb,var(--red) 8%,var(--surface))';
+    statusSquare.querySelector('.pulse').style.background = on ? 'var(--green)' : 'var(--red)';
+    stopBtn.classList.toggle('primary', on);
+    stopBtn.innerHTML = on
+      ? '<svg viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="1"/></svg><span>Stop</span>'
+      : '<svg viewBox="0 0 24 24"><path d="M8 5l11 7-11 7z"/></svg><span>Start</span>';
+  }
+  stopBtn.addEventListener('click', () => setRunning(!running));
+  document.getElementById('powerBtn').addEventListener('click', () => setRunning(!running));
+
+  function nowTime(){return new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit'});}
+  function renderActivity(){
+    if(!comms.length){emptyState.hidden = false; activityList.hidden = true;}
+    else{
+      emptyState.hidden = true; activityList.hidden = false;
+      activityList.innerHTML = comms.map(c => `<div class="activity-row"><span>${c.time}</span><span class="dir ${c.dir}">${c.dir.toUpperCase()}</span><span>${c.message}</span><span>${c.source}</span></div>`).join('');
+    }
+    activityCount.textContent = `${inCount} in / ${outCount} out`;
+    lastCommLabel.textContent = `Last ${comms.length} communication${comms.length === 1 ? '' : 's'}`;
+  }
+  function addComm(dir,message,source){
+    comms.unshift({time:nowTime(),dir,message,source}); comms = comms.slice(0,6);
+    if(dir==='in') inCount++; else outCount++;
+    lastSync.textContent = 'now'; renderActivity();
+    headerBars.classList.add('live'); setTimeout(()=>{if(running) headerBars.classList.add('live')},650);
+  }
+  document.getElementById('probeBtn').addEventListener('click', () => {
+    if(!running){showToast('Start the tunnel first');return;}
+    addComm('out','tunnel_probe','TaskTrack');
+    setTimeout(()=>addComm('in','probe response · healthy','TaskTrackTunnelGui'),420);
+  });
+  document.getElementById('clearActivityBtn').addEventListener('click', () => {comms=[];inCount=0;outCount=0;lastSync.textContent='—';renderActivity();showToast('Activity cleared');});
+
+  function diagnosticsText(){
+    return [
+      'MCP Tunnel diagnostics',
+      `state: ${running ? 'READY' : 'STOPPED'}`,
+      'machine: desktop-gfx1',
+      'tunnel: tunnel_6a991c7e54819183996c0eb0717d59',
+      `activity: ${inCount} in / ${outCount} out`,
+      `tasktrack_service: ${serviceToggle.classList.contains('on') ? 'enabled' : 'disabled'}`,
+      'mcp_schema: 2',
+      'dashboard_schema: 1'
+    ].join('\n');
+  }
+  async function copyDiagnostics(){
+    try{await navigator.clipboard.writeText(diagnosticsText());showToast('Diagnostics copied');}
+    catch{showToast('Clipboard unavailable in this browser');}
+  }
+  document.getElementById('copyDiagBtn').addEventListener('click', copyDiagnostics);
+  document.getElementById('footerCopyBtn').addEventListener('click', copyDiagnostics);
+
+  document.getElementById('themeBtn').addEventListener('click', () => root.dataset.theme = root.dataset.theme === 'dark' ? 'light' : 'dark');
+
+  const helpModal = document.getElementById('helpModal');
+  const healthModal = document.getElementById('healthModal');
+  const openHelp = () => helpModal.classList.add('show');
+  document.getElementById('helpBtn').addEventListener('click', openHelp);
+  document.getElementById('footerHelpBtn').addEventListener('click', openHelp);
+  document.getElementById('helpClose').addEventListener('click', () => helpModal.classList.remove('show'));
+  document.getElementById('healthBtn').addEventListener('click', () => healthModal.classList.add('show'));
+  document.getElementById('healthClose').addEventListener('click', () => healthModal.classList.remove('show'));
+  [helpModal,healthModal].forEach(m => m.addEventListener('click', e => {if(e.target===m)m.classList.remove('show')}));
+  document.addEventListener('keydown', e => {if(e.key==='Escape'){helpModal.classList.remove('show');healthModal.classList.remove('show')}});
+
+  document.querySelectorAll('[data-demo]').forEach(btn => btn.addEventListener('click', () => showToast(btn.textContent.trim() + ' · mock-up action')));
+  renderActivity();
+})();
+</script>
+</body>
+</html>
