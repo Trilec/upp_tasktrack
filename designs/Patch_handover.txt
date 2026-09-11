@@ -1,0 +1,493 @@
+PATCH — PRODUCT / ARCHITECTURE HANDOVER
+
+ROLE
+
+Patch is the controlled filesystem and source-editing service in the emerging
+TaskTrack application family.
+
+Product family working model:
+
+    Task    = human / agent decisions
+    Dash    = live project state
+    Patch   = controlled filesystem and source mutation
+    Tunnel  = MCP connectivity and service routing
+
+The overall product may continue to use TaskTrack as a working umbrella name.
+Do not assume the final product name has been decided.
+
+Patch evolves from the proven PatchTrack work, but should present a cleaner,
+more complete agent-facing editing protocol.
+
+Do NOT throw away the existing PatchTrack implementation blindly.
+Use it as a proven reference and migrate functionality contract-by-contract.
+
+
+EXISTING PROVEN PATCHTRACK BASELINE
+
+Existing PatchTrack 1.1.1 provides an important reference implementation.
+
+Known core concepts include:
+
+- preview-before-apply;
+- hash verification;
+- transaction IDs;
+- atomic/controlled writes;
+- rollback;
+- transaction history;
+- recovery scanning;
+- journaling/snapshots;
+- workspace containment;
+- concise MCP responses.
+
+Existing edit operations include:
+
+- replace_exact;
+- insert_before_exact;
+- insert_after_exact;
+- delete_exact;
+- create_file;
+- rewrite_file.
+
+Existing MCP surface includes:
+
+- version;
+- preview;
+- apply;
+- rollback;
+- hash;
+- history;
+- recovery_scan.
+
+Preserve the useful contracts and safety properties rather than reproducing
+them differently without reason.
+
+
+PRIMARY GOAL
+
+Make normal AI coding/file workflows substantially cleaner and faster.
+
+The agent should not normally need miscellaneous shell/PowerShell commands for
+ordinary filesystem discovery and source editing.
+
+Instead of:
+
+    shell → find file
+    shell → read file
+    shell → search text
+    shell → create directory
+    shell → edit
+    shell → inspect diff
+    shell → repair failed edit
+
+prefer:
+
+    Patch → inspect
+    Patch → preview transaction
+    Patch → apply
+    Patch → verify result
+
+Patch should become an explicit controlled editing protocol rather than a thin
+wrapper around arbitrary shell commands.
+
+
+ARCHITECTURAL RULE
+
+Patch is NOT a general remote shell.
+
+Patch exposes bounded semantic filesystem/editing operations.
+
+The Patch core remains independent of Tunnel.
+
+    Patch Core
+        ↓
+    Patch MCP service
+        ↓
+    Tunnel / local MCP transport
+
+Transport policy belongs at the service/machine boundary, not inside the core.
+
+
+WORKSPACE AUTHORITY
+
+Every Patch session operates inside one or more explicitly approved workspace
+roots.
+
+Never allow remote callers to convert Patch into unrestricted filesystem
+browsing or mutation.
+
+Requirements:
+
+- server-authoritative allowed roots;
+- canonical path checking;
+- protection against traversal outside a root;
+- safe symlink/reparse-point handling;
+- clear rejection of paths outside authority;
+- operations identify the workspace/project they belong to.
+
+
+INSPECTION / READ CAPABILITIES
+
+Patch should efficiently support:
+
+- list directory;
+- recursive project/file discovery;
+- stat/path information;
+- read complete small text file;
+- read bounded line/range from large file;
+- search text;
+- search exact string;
+- optional regex search;
+- find files by name/pattern;
+- return matching lines with useful surrounding context;
+- calculate file hash;
+- inspect multiple requested files/searches in one MCP call.
+
+Batch inspection is important.
+
+Do not force the agent to spend one round trip per file or per search when a
+bounded group can safely be returned together.
+
+
+FILESYSTEM MANAGEMENT
+
+Patch should support controlled operations for:
+
+- create directory;
+- create file;
+- rewrite file;
+- copy file/path where appropriate;
+- move/rename file;
+- move/rename directory;
+- delete file;
+- delete directory where explicitly permitted.
+
+Destructive operations must participate in the same transaction/safety model
+as source edits.
+
+Deletion must be previewable and recoverable where practical.
+
+
+TEXT EDITING OPERATIONS
+
+Retain the existing strong exact-edit model:
+
+- replace_exact;
+- insert_before_exact;
+- insert_after_exact;
+- delete_exact;
+- create_file;
+- rewrite_file.
+
+Consider additional operations only where they materially simplify workflows.
+
+Prefer content anchors/preconditions for mutation authority.
+
+Line numbers are useful for inspection but should not normally be trusted as
+the sole authority for an edit because preceding changes can invalidate them.
+
+
+TRANSACTION MODEL
+
+A modification may contain multiple operations across multiple files.
+
+Treat the group as ONE logical transaction where requested.
+
+Typical flow:
+
+    inspect
+        ↓
+    construct mutation plan
+        ↓
+    preview
+        ↓
+    verify preconditions/hashes
+        ↓
+    apply atomically or fail safely
+        ↓
+    transaction ID
+        ↓
+    concise result / diff
+        ↓
+    optional rollback
+
+Do not leave a partially-applied multi-file transaction silently.
+
+
+PREVIEW
+
+Preview must not mutate the workspace.
+
+It should return concise useful information:
+
+- affected paths;
+- operation type;
+- meaningful diff;
+- files created/moved/deleted;
+- expected before hashes where applicable;
+- expected resulting state;
+- warnings/conflicts.
+
+Avoid returning huge redundant file bodies when a compact diff/context is
+sufficient.
+
+
+APPLY
+
+Before mutation:
+
+- revalidate workspace containment;
+- revalidate required source hashes/preconditions;
+- detect conflicting file changes since preview.
+
+On success return:
+
+- transaction ID;
+- affected files;
+- resulting hashes;
+- concise change summary;
+- Git working-tree summary when applicable.
+
+On failure:
+
+- report exactly what failed;
+- do not silently partially continue;
+- preserve recoverability.
+
+
+ROLLBACK
+
+Rollback remains a first-class Patch capability.
+
+Given a valid Patch transaction ID, Patch should be able to restore the state
+owned by that transaction when safe to do so.
+
+A failed edit should therefore normally be:
+
+    inspect failure
+    → rollback transaction
+    → verify restoration
+    → retry with corrected plan
+
+Never fabricate successful rollback.
+
+Return resulting hashes/status so restoration can be independently checked.
+
+
+HISTORY / RECOVERY
+
+Keep durable transaction history.
+
+Support:
+
+- recent transaction listing;
+- affected paths;
+- timestamps;
+- before/after identity;
+- transaction result;
+- rollback state;
+- interrupted transaction detection;
+- recovery_scan.
+
+Process loss or tunnel interruption must not leave an ambiguous mutation state.
+
+
+GIT AWARENESS
+
+Patch should detect when the active workspace is inside a Git repository.
+
+Useful read-only Git awareness includes:
+
+- repository root;
+- current branch;
+- HEAD commit;
+- clean/dirty state;
+- tracked/untracked affected files;
+- concise diff/status for Patch-owned changes.
+
+Before mutation, preserve awareness of the pre-existing working-tree state.
+
+Do not assume a dirty tree is an error, but never overwrite unrelated existing
+changes without detecting the conflict.
+
+After mutation provide enough information for the supervisor/agent to decide
+whether validation and commit are appropriate.
+
+PATCH DOES NOT IMPLICITLY:
+
+- commit;
+- push;
+- pull;
+- merge;
+- reset;
+- force checkout.
+
+Those are separate source-control decisions unless deliberately added later as
+explicit bounded functionality.
+
+
+PERFORMANCE / AGENT EFFICIENCY
+
+Patch is intended to reduce tool chatter.
+
+Design for:
+
+- batch reads;
+- batch searches;
+- multi-file transaction plans;
+- concise results;
+- bounded context;
+- cached/identified previews where useful;
+- avoiding repeated scans of unchanged project trees;
+- hashes/preconditions rather than rereading entire files unnecessarily.
+
+The goal is fewer tool calls without weakening safety.
+
+
+PROTOCOL DESIGN
+
+Keep the external MCP surface small.
+
+Do not create one MCP tool for every possible filesystem operation if the same
+operations can be expressed clearly as structured actions.
+
+A candidate conceptual surface is:
+
+    version
+    inspect
+    preview
+    apply
+    rollback
+    history
+    recovery_scan
+
+`hash` may remain independently exposed if it continues to provide useful
+low-cost verification.
+
+Filesystem and edit actions can be typed operations inside inspect/preview
+requests.
+
+Exact schema must be designed before implementation.
+
+
+TUNNEL INTEGRATION
+
+Patch should appear as a separately addressable MCP service/channel.
+
+Example family:
+
+    Task
+    Dash
+    Patch
+
+Tunnel is responsible for making those local services available to permitted
+remote MCP clients.
+
+Do not make Patch aware of tunnel implementation details.
+
+
+TUNNEL CLIENT
+
+The external tunnel client may be distributed and managed as part of the
+Tunnel application without necessarily being rewritten.
+
+Tunnel should own:
+
+- configuration;
+- launch/stop lifecycle;
+- process monitoring;
+- channel/service association;
+- diagnostics;
+- staging/distribution.
+
+Do not rewrite proven transport code solely to unify implementation language.
+
+
+MIGRATION STRATEGY
+
+Prefer a clean new product structure, but migrate from proven implementations.
+
+For each Patch capability:
+
+1. identify the current PatchTrack contract;
+2. preserve or deliberately revise the semantic contract;
+3. port/reuse implementation where appropriate;
+4. port/add tests;
+5. prove parity;
+6. only then retire the old path.
+
+Keep the existing PatchTrack repository/source available as reference until the
+new Patch service has reached accepted parity.
+
+Do not perform a big-bang rewrite.
+
+
+FIRST ACCEPTANCE WORKFLOW
+
+A credible initial Patch integration test should prove:
+
+1. connect through the normal MCP service path;
+2. identify approved workspace;
+3. detect Git repository and current HEAD;
+4. list/read/search source files;
+5. calculate original target hash;
+6. preview a bounded text edit;
+7. prove preview caused no mutation;
+8. apply;
+9. receive transaction ID;
+10. verify resulting hash/content;
+11. inspect concise Git diff/status;
+12. query Patch history;
+13. rollback;
+14. prove original bytes/content restored;
+15. run recovery_scan and require clean result.
+
+Then repeat with a small multi-file transaction.
+
+
+SECOND ACCEPTANCE WORKFLOW
+
+Prove filesystem/project management:
+
+- create directory;
+- create file;
+- populate file;
+- rename/move file;
+- search/read it at new location;
+- delete it;
+- rollback transaction;
+- verify full restoration.
+
+All operations must stay within the approved workspace.
+
+
+NON-GOALS FOR FIRST PASS
+
+Do not turn Patch into:
+
+- a generic shell;
+- an unrestricted remote filesystem API;
+- a Git replacement;
+- an IDE;
+- a build system;
+- a source-control policy engine;
+- a Tunnel implementation;
+- an autonomous publisher.
+
+Its job is narrower:
+
+    inspect project files
+    → express exact intended mutation
+    → preview
+    → safely apply
+    → verify
+    → recover/rollback
+
+Make that path exceptionally clean.
+
+
+PRODUCT PRINCIPLE
+
+Patch should make the safe path the fast path.
+
+An agent should prefer Patch over ad-hoc shell editing not because it is forced
+to, but because Patch is quicker, clearer, transactional and easier to verify.
